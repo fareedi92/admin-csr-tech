@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSR Dashboard App</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+<div class="flex min-h-screen flex-col md:h-screen md:flex-row">
+    <div class="bg-slate-900 text-gray-200 p-6 md:w-80 md:flex-shrink-0 flex flex-col justify-between">
+        <div>
+            <h1 class="text-xl font-semibold mb-6 flex items-center gap-2">
+                <i class="fa-solid fa-robot text-blue-400"></i>
+                AI Console
+            </h1>
+
+            <div class="bg-slate-800 p-4 rounded-lg shadow">
+                <p class="text-sm text-gray-400 mb-2">Server Dashboard</p>
+                <a href="http://52.74.227.205:5003/dashboard"
+                   class="text-blue-400 hover:text-blue-300 break-all">
+                   http://52.74.227.205:5003/dashboard
+                </a>
+            </div>
+        </div>
+
+        <div class="text-xs text-gray-500">
+            CSR Widget Integration
+        </div>
+    </div>
+
+    <div class="flex-1 bg-white min-h-[70vh] md:min-h-0">
+        <div class="h-[70vh] md:h-full" id="csr-console"></div>
+    </div>
+</div>
+
+<script
+src="http://52.74.227.205:5003/static/js/csr-dashboard-widget.js"
+data-base-url="http://52.74.227.205:5003"
+data-csr-key="csr_aridian_52_74_227_205_demo"
+data-container-id="csr-console">
+</script>
+</body>
+</html>
