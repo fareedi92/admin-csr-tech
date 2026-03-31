@@ -1,62 +1,167 @@
-# CSR Dashboard Widget Flask App
+# CSR Workspace App
 
-A Flask application that integrates and runs the CSR Dashboard widget on port 5002.
+Flask app for a simple multi-CSR workspace that receives incoming handoffs from `QSTP_New`, auto-assigns them to CSRs, and lets every CSR see the queue while only the assigned CSR can open and reply to the chat.
 
-## Setup Instructions
+## Main Flow
 
-### 1. Install Dependencies
+1. `QSTP_New` escalates a widget conversation to CSR.
+2. It sends the transcript to this app through `POST /init`.
+3. This app auto-assigns the chat to the lightest available CSR.
+4. All logged-in CSRs can see the chat in the list.
+5. Only the assigned CSR can open the transcript and reply.
+6. New visitor messages arrive through `POST /send`.
+7. When the assigned CSR resolves the chat, queued chats are rebalanced automatically.
+
+## Database Schema
+
+### `users`
+
+- `id`
+- `email`
+- `password_hash`
+- `display_name`
+- `role`
+- `is_active`
+- `is_available`
+- `max_concurrent_chats`
+- `last_assigned_at`
+- `created_at`
+
+### `chat_conversations`
+
+- `id`
+- `external_chat_id`
+- `customer_name`
+- `customer_email`
+- `subject`
+- `priority`
+- `status`
+- `source`
+- `reverted_reason`
+- `last_customer_message`
+- `assigned_csr_id`
+- `assigned_at`
+- `reverted_at`
+- `last_activity_at`
+- `resolved_at`
+- `created_at`
+- `updated_at`
+
+### `chat_assignment_events`
+
+- `id`
+- `chat_id`
+- `event_type`
+- `from_csr_id`
+- `to_csr_id`
+- `acted_by_user_id`
+- `notes`
+- `created_at`
+
+### `chat_messages`
+
+- `id`
+- `chat_id`
+- `sender_type`
+- `content`
+- `created_at`
+
+## Assignment Logic
+
+- Incoming chats are assigned automatically from `/init`.
+- The app checks all active and available `admin` and `csr` users.
+- It counts each CSR's active chats.
+- The next chat goes to the CSR with the lowest load.
+- If loads tie, the chat goes to the CSR who has waited longest since the last assignment.
+- If everyone is full, the chat stays queued until capacity opens.
+
+## Access Rules
+
+- Every logged-in CSR can see all chats in the list.
+- Only the assigned CSR can open the transcript.
+- Only the assigned CSR can reply.
+- Admins can manually reassign chats, but the UI still keeps non-owned chats locked for normal CSR handling.
+
+## Setup
+
+### 1. Create a virtual environment
 
 ```bash
-pip install -r requirements_widget.txt
+cd /home/ubuntu/csr_widget_app
+python3 -m venv .venv
 ```
 
-### 2. Run the Application
+### 2. Install dependencies
 
 ```bash
-python csr_widget_app.py
+./.venv/bin/pip install -r requirements.txt
 ```
 
-The app will be available at: `http://localhost:5002`
+### 3. Run the app
 
-### 3. Features
-
-- ✅ CSR Dashboard widget integrated
-- ✅ CORS enabled for cross-origin requests
-- ✅ Health check endpoint at `/health`
-- ✅ Professional UI with sidebar dashboard
-- ✅ Real-time widget integration
-- ✅ Connection to backend server at `http://52.74.227.205:5003`
-
-## File Structure
-
-```
-/home/ubuntu/
-├── csr_widget_app.py          # Flask application
-├── requirements_widget.txt    # Python dependencies
-└── templates/
-    └── csr_dashboard.html     # CSR Dashboard widget template
+```bash
+./.venv/bin/python app.py
 ```
 
-## Configuration
+The app runs on `http://localhost:5002`.
 
-The widget configuration can be modified in `templates/csr_dashboard.html`:
+## Important Environment Variables
 
-```html
-<script
-    src="http://52.74.227.205:5003/static/js/csr-dashboard-widget.js"
-    data-base-url="http://52.74.227.205:5003"
-    data-csr-key="csr_aridian_52_74_227_205_demo"
-    data-container-id="csr-console">
-</script>
+- `CENTRAL_API_URL`
+  Default: `http://52.74.227.205:5003`
+
+- `CSR_WIDGET_KEY`
+  Required if you want CSR replies and resolve actions to relay back to the real QSTP customer widget.
+
+Example:
+
+```bash
+export CENTRAL_API_URL="http://52.74.227.205:5003"
+export CSR_WIDGET_KEY="your_real_widget_key"
+./.venv/bin/python app.py
 ```
-
-## Troubleshooting
-
-- **Port already in use**: Change the port in `csr_widget_app.py` (line 24)
-- **Widget not loading**: Check that `http://52.74.227.205:5003` is accessible
-- **CORS issues**: Review the CORS configuration in `csr_widget_app.py`
 
 ## Endpoints
 
-- `GET /` - Main dashboard page with widget
-- `GET /health` - Health check endpoint
+- `GET /`
+  CSR workspace UI
+
+- `GET /health`
+  Health check
+
+- `POST /init`
+  Receives a new QSTP handoff with transcript and auto-assigns it
+
+- `POST /send`
+  Receives new visitor messages after handoff
+
+- `POST /cleanup`
+  Best-effort external cleanup hook
+
+- `GET /api/dashboard-data`
+  Returns summaries, visible chats, and CSR workload
+
+- `GET /api/chats/<id>/messages`
+  Returns transcript only if the chat is assigned to the current CSR
+
+- `POST /api/chats/<id>/reply`
+  Assigned CSR reply
+
+- `POST /api/chats/<id>/resolve`
+  Resolve chat and rebalance queue
+
+- `POST /api/chats/<id>/assign`
+  Admin reassignment
+
+- `POST /api/chats/rebalance`
+  Admin queue rebalance
+
+- `POST /api/csrs/<id>/settings`
+  Admin CSR capacity and availability update
+
+## Notes
+
+- Existing `users.db` files are upgraded in place on startup.
+- The first user becomes `admin` if no admin exists.
+- Later signups become `csr`.
+- If `CSR_WIDGET_KEY` is not configured, replies and resolves still work locally in the CSR workspace but they will not relay back to the live QSTP widget.
