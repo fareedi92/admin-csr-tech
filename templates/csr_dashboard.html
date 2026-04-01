@@ -812,6 +812,13 @@
             return `${Math.floor(seconds / 86400)} day ago`;
         }
 
+        function formatPresenceRelative(csr) {
+            const reference = csr.last_seen_at || csr.last_assigned_at;
+            if (csr.is_online) return 'Active now';
+            if (!reference) return 'No heartbeat yet';
+            return `Last seen ${formatRelative(reference)}`;
+        }
+
         function showBanner(message, tone = 'success') {
             flashBanner.textContent = message;
             flashBanner.className = `flash-banner show ${tone}`;
@@ -977,7 +984,7 @@
                     <div class="load-bar"><span style="width:${Math.max(4, csr.load_pct)}%"></span></div>
                     <div class="message-row">
                         <div class="tiny-note">${csr.is_online ? 'Online' : 'Offline'} · ${csr.is_available ? 'Available' : 'Paused'}</div>
-                        <div class="tiny-note">${escapeHtml(formatRelative(csr.last_seen_at || csr.last_assigned_at))}</div>
+                        <div class="tiny-note">${escapeHtml(formatPresenceRelative(csr))}</div>
                     </div>
                 </div>
             `).join('');
