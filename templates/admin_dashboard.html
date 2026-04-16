@@ -1,0 +1,2340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Operations Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #08101d;
+            --sidebar: #0d1627;
+            --surface: #111c2f;
+            --surface-2: #172338;
+            --surface-3: #0e1728;
+            --border: rgba(148, 163, 184, 0.16);
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --subtle: #64748b;
+            --blue: #3b82f6;
+            --green: #10b981;
+            --amber: #f59e0b;
+            --red: #ef4444;
+            --cyan: #06b6d4;
+            --radius: 18px;
+        }
+
+        html, body { height: 100%; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(circle at top left, rgba(59,130,246,0.14), transparent 30%), linear-gradient(180deg, #08101d 0%, #0a1220 100%);
+            color: var(--text);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-shell {
+            height: 100vh;
+            display: grid;
+            grid-template-columns: 280px minmax(0, 1fr);
+            overflow: hidden;
+        }
+
+        .sidebar {
+            background: rgba(13, 22, 39, 0.98);
+            border-right: 1px solid var(--border);
+            padding: 24px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+            min-height: 0;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            box-shadow: 0 12px 28px rgba(59, 130, 246, 0.35);
+        }
+
+        .brand-title {
+            font-size: 16px;
+            font-weight: 800;
+        }
+
+        .brand-copy {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 2px;
+            line-height: 1.5;
+        }
+
+        .nav-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .nav-label {
+            font-size: 11px;
+            color: var(--subtle);
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            padding: 0 8px;
+        }
+
+        .nav-btn,
+        .action-link,
+        .pill,
+        .btn,
+        .mini-btn,
+        .input,
+        .textarea {
+            font-family: inherit;
+            border-radius: 14px;
+        }
+
+        .nav-btn,
+        .action-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border: 1px solid transparent;
+            color: var(--text);
+            background: transparent;
+            text-decoration: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .nav-btn:hover,
+        .action-link:hover,
+        .nav-btn.active {
+            border-color: rgba(59, 130, 246, 0.22);
+            background: rgba(59, 130, 246, 0.10);
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .account-card {
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+            padding: 14px;
+        }
+
+        .account-name {
+            font-size: 14px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .account-role {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .content {
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            z-index: 1;
+        }
+
+        .topbar {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(8, 16, 29, 0.84);
+            backdrop-filter: blur(14px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .topbar h1 {
+            font-size: 24px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .topbar p {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .top-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .pill.good {
+            color: #86efac;
+            border-color: rgba(16, 185, 129, 0.25);
+            background: rgba(16, 185, 129, 0.08);
+        }
+
+        .pill.warn {
+            color: #fcd34d;
+            border-color: rgba(245, 158, 11, 0.25);
+            background: rgba(245, 158, 11, 0.08);
+        }
+
+        .workspace {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 20px 24px 28px;
+        }
+
+        .flash-banner {
+            padding: 12px 14px;
+            border-radius: 14px;
+            display: none;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 18px;
+        }
+
+        .flash-banner.show { display: block; }
+        .flash-banner.success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: #86efac;
+        }
+        .flash-banner.error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+        }
+
+        .section {
+            margin-bottom: 22px;
+            scroll-margin-top: 24px;
+        }
+
+        .section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 14px;
+            margin-bottom: 12px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .section-copy {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .summary-card,
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .summary-card {
+            padding: 16px;
+        }
+
+        .summary-label {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+
+        .summary-value {
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 6px;
+        }
+
+        .summary-sub {
+            font-size: 12px;
+            color: var(--subtle);
+        }
+
+        .panel {
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        .panel-head {
+            padding: 12px 16px 10px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .panel-title {
+            font-size: 15px;
+            font-weight: 800;
+        }
+
+        .panel-copy {
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.5;
+            padding: 0 16px 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .panel-body {
+            padding: 8px 12px;
+        }
+
+        .overview-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+            gap: 18px;
+        }
+
+        .chart-stack,
+        .overview-stack {
+            display: grid;
+            grid-template-rows: auto auto;
+            gap: 14px;
+            align-content: start;
+        }
+
+        .overview-stack .leaderboard-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+            gap: 10px;
+        }
+
+        .overview-stack .leaderboard-item {
+            padding: 10px 12px;
+        }
+
+        .chart-stack .leaderboard-list {
+            gap: 8px;
+        }
+
+        .chart-stack .leaderboard-item {
+            padding: 10px 12px;
+        }
+
+        .coverage-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .coverage-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            gap: 12px;
+            align-items: center;
+            border: 1px solid var(--border);
+            background: var(--surface-3);
+            border-radius: 14px;
+            padding: 10px 12px;
+        }
+
+        .coverage-name {
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .coverage-stat {
+            font-size: 11px;
+            color: var(--subtle);
+            white-space: nowrap;
+        }
+
+        canvas {
+            width: 100%;
+            max-width: 100%;
+            display: block;
+        }
+
+        .chart-canvas {
+            height: 190px;
+            border-radius: 16px;
+            background:
+                linear-gradient(180deg, rgba(59, 130, 246, 0.08), transparent 42%),
+                rgba(8, 16, 29, 0.3);
+        }
+
+        .chart-canvas--lg {
+            height: 280px;
+        }
+
+        .leaderboard-list,
+        .activity-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .leaderboard-item,
+        .activity-item,
+        .chat-meta-card {
+            border: 1px solid var(--border);
+            background: var(--surface-3);
+            border-radius: 14px;
+            padding: 14px;
+        }
+
+        .item-head,
+        .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .tiny-note,
+        .cell-subtle,
+        .message-label,
+        .message-time {
+            font-size: 11px;
+            color: var(--subtle);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5px 10px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+
+        .badge.online {
+            color: #86efac;
+            background: rgba(16, 185, 129, 0.14);
+        }
+
+        .badge.offline {
+            color: #fcd34d;
+            background: rgba(245, 158, 11, 0.14);
+        }
+
+        .badge.blue {
+            color: #bfdbfe;
+            background: rgba(59, 130, 246, 0.14);
+        }
+
+        .load-bar {
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.06);
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .load-bar span {
+            display: block;
+            height: 100%;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+        }
+
+        .team-grid {
+            display: grid;
+            grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+            gap: 18px;
+        }
+
+        .credentials-grid {
+            display: grid;
+            grid-template-columns: minmax(320px, 0.95fr) minmax(0, 1.05fr);
+            gap: 18px;
+            align-items: start;
+        }
+
+        .stack-form,
+        .settings-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .stack-form label,
+        .settings-form label {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .input,
+        .textarea {
+            width: 100%;
+            border: 1px solid var(--border);
+            background: var(--surface-2);
+            color: var(--text);
+            padding: 11px 12px;
+            outline: none;
+        }
+
+        .btn,
+        .mini-btn {
+            border: 1px solid var(--border);
+            background: var(--surface-2);
+            color: var(--text);
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .btn.primary,
+        .mini-btn.primary {
+            background: linear-gradient(135deg, var(--blue), #2563eb);
+            border-color: transparent;
+        }
+
+        .form-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 4px;
+        }
+
+        .field-hint {
+            font-size: 11px;
+            color: var(--subtle);
+            line-height: 1.5;
+        }
+
+        .info-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .info-card {
+            border: 1px solid var(--border);
+            background: var(--surface-3);
+            border-radius: 14px;
+            padding: 14px;
+        }
+
+        .info-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            color: var(--subtle);
+            margin-bottom: 8px;
+        }
+
+        .info-value {
+            font-size: 13px;
+            line-height: 1.6;
+            word-break: break-word;
+        }
+
+        .info-value a {
+            color: #93c5fd;
+            text-decoration: none;
+        }
+
+        .info-value a:hover {
+            color: #bfdbfe;
+        }
+
+        .code-preview {
+            min-height: 220px;
+            resize: vertical;
+            white-space: pre;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .btn.danger,
+        .mini-btn.danger {
+            background: rgba(239, 68, 68, 0.12);
+            color: #fca5a5;
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+        .topbar-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+
+        .csr-table-wrap,
+        .chat-table-wrap {
+            overflow: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 760px;
+        }
+
+        th, td {
+            padding: 13px 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+            font-size: 13px;
+        }
+
+        th {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: var(--muted);
+            position: sticky;
+            top: 0;
+            background: var(--surface);
+            z-index: 1;
+        }
+
+        tr.is-selected {
+            background: rgba(59, 130, 246, 0.08);
+        }
+
+        .action-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .chat-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.1fr) minmax(380px, 0.9fr);
+            gap: 18px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .chat-meta-card {
+            padding: 12px;
+        }
+
+        .meta-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            color: var(--subtle);
+            margin-bottom: 6px;
+        }
+
+        .meta-value {
+            font-size: 13px;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+
+        .detail-columns {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+            gap: 16px;
+            min-height: 0;
+        }
+
+        .messages,
+        .event-timeline {
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--surface-3);
+            min-height: 320px;
+            max-height: 520px;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .messages {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message {
+            max-width: 82%;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .message.user,
+        .message.ai,
+        .message.system {
+            align-self: flex-start;
+        }
+
+        .message.csr {
+            align-self: flex-end;
+        }
+
+        .message-bubble {
+            padding: 12px 14px;
+            border-radius: 16px;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .message.user .message-bubble {
+            background: var(--surface);
+            border: 1px solid var(--border);
+        }
+
+        .message.ai .message-bubble,
+        .message.system .message-bubble {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px dashed rgba(148, 163, 184, 0.16);
+            color: var(--muted);
+        }
+
+        .message.csr .message-bubble {
+            background: linear-gradient(135deg, var(--blue), #2563eb);
+            color: white;
+        }
+
+        .timeline-item {
+            border-left: 2px solid rgba(59, 130, 246, 0.22);
+            padding-left: 12px;
+            margin-bottom: 14px;
+        }
+
+        .timeline-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .utility-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .embed-frame {
+            width: 100%;
+            min-height: 820px;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: white;
+        }
+
+        .empty-state {
+            padding: 28px;
+            text-align: center;
+            color: var(--muted);
+        }
+
+        .empty-state i {
+            font-size: 40px;
+            margin-bottom: 12px;
+            color: var(--subtle);
+        }
+
+        @media (max-width: 1450px) {
+            .card-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .app-shell {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                display: none;
+            }
+
+            .overview-grid,
+            .credentials-grid,
+            .team-grid,
+            .chat-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .chart-stack {
+                grid-template-rows: auto;
+            }
+
+            .overview-stack .leaderboard-list {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 900px) {
+            .card-grid,
+            .info-list,
+            .detail-grid,
+            .detail-columns {
+                grid-template-columns: 1fr;
+            }
+
+            .coverage-row {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .workspace,
+            .topbar {
+                padding-left: 14px;
+                padding-right: 14px;
+            }
+
+            .card-grid {
+                gap: 10px;
+            }
+
+            .topbar {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body data-admin-name="{{ (user.display_name or user.email) if user else 'Admin' }}">
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon"><i class="fa-solid fa-user-shield"></i></div>
+                <div>
+                    <div class="brand-title">Admin Control Center</div>
+                    <div class="brand-copy">Separate admin portal for CSR operations, reporting, and chat governance.</div>
+                </div>
+            </div>
+
+            <div class="nav-group">
+                <div class="nav-label">Sections</div>
+                <a class="nav-btn active" href="#overview-section" data-target="overview-section"><i class="fa-solid fa-chart-pie"></i><span>Overview</span></a>
+                <a class="nav-btn" href="#credentials-section" data-target="credentials-section"><i class="fa-solid fa-key"></i><span>Credentials</span></a>
+                <a class="nav-btn" href="#knowledge-base-section" data-target="knowledge-base-section"><i class="fa-solid fa-book-open-reader"></i><span>Knowledge Base</span></a>
+                <a class="nav-btn" href="#team-section" data-target="team-section"><i class="fa-solid fa-users-gear"></i><span>CSR Management</span></a>
+                <a class="nav-btn" href="#chat-section" data-target="chat-section"><i class="fa-solid fa-comments"></i><span>Chat Ledger</span></a>
+                <a class="nav-btn" href="#activity-section" data-target="activity-section"><i class="fa-solid fa-clock-rotate-left"></i><span>Activity Timeline</span></a>
+            </div>
+
+            <div class="nav-group">
+                <div class="nav-label">Actions</div>
+                <button class="action-link" id="refresh-btn" type="button"><i class="fa-solid fa-rotate-right"></i><span>Refresh Dashboard</span></button>
+                <button class="action-link" id="rebalance-btn" type="button"><i class="fa-solid fa-shuffle"></i><span>Rebalance Queue</span></button>
+                <a class="action-link" href="/logout"><i class="fa-solid fa-right-from-bracket"></i><span>Logout</span></a>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="account-card">
+                    <div class="account-name">{{ (user.display_name or user.email) if user else 'Admin User' }}</div>
+                    <div class="account-role">Administrator account</div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="content">
+            <header class="topbar">
+                <div>
+                    <h1>Admin Operations Dashboard</h1>
+                    <p>Complete control of CSR registration, online presence, chat ownership, resolution tracking, and transcript history.</p>
+                </div>
+                <div class="top-actions">
+                    <a class="btn danger topbar-link" href="/logout"><i class="fa-solid fa-right-from-bracket"></i><span>Admin Logout</span></a>
+                </div>
+            </header>
+
+            <div class="workspace">
+                <div class="flash-banner" id="flash-banner"></div>
+
+                <section class="section" id="overview-section">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-title">Overview</div>
+                            <div class="section-copy">See registered CSRs, who is online, how many chats are open, and how resolution performance is trending today and yesterday.</div>
+                        </div>
+                    </div>
+
+                    <div class="card-grid">
+                        <div class="summary-card">
+                            <div class="summary-label">Registered CSRs</div>
+                            <div class="summary-value" id="stat-registered">0</div>
+                            <div class="summary-sub">CSR login accounts</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">Online CSRs</div>
+                            <div class="summary-value" id="stat-online">0</div>
+                            <div class="summary-sub">Heartbeat seen in last 60 seconds</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">Active CSRs</div>
+                            <div class="summary-value" id="stat-active-csrs">0</div>
+                            <div class="summary-sub">Currently handling open chats</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">Active Chats</div>
+                            <div class="summary-value" id="stat-active">0</div>
+                            <div class="summary-sub">Queued, assigned, and in progress</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">Resolved Today</div>
+                            <div class="summary-value" id="stat-resolved-today">0</div>
+                            <div class="summary-sub">CSR resolution count</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">Resolved Yesterday</div>
+                            <div class="summary-value" id="stat-resolved-yesterday">0</div>
+                            <div class="summary-sub">Previous day comparison</div>
+                        </div>
+                    </div>
+
+                    <div class="overview-grid" style="margin-top:12px;">
+                        <div class="overview-stack">
+                            <section class="panel">
+                                <div class="panel-head">
+                                    <div class="panel-title">Resolution Performance</div>
+                                    <span class="tiny-note">Today vs yesterday by CSR</span>
+                                </div>
+                                <div class="panel-copy">Bar chart of which CSR resolved how many chats today and yesterday, alongside their current open workload.</div>
+                                <div class="panel-body">
+                                    <canvas id="resolution-chart" class="chart-canvas chart-canvas--lg" height="280"></canvas>
+                                </div>
+                            </section>
+
+                            <section class="panel">
+                                <div class="panel-head">
+                                    <div class="panel-title">CSR resolution details</div>
+                                    <span class="tiny-note">Today / yesterday / open chats · all CSRs</span>
+                                </div>
+                                <div class="panel-copy">Per-rep workload and resolution counts; matches the bar chart above.</div>
+                                <div class="panel-body">
+                                    <div class="leaderboard-list" id="leaderboard-list">
+                                        <div class="tiny-note">Loading leaderboard...</div>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+
+                        <div class="chart-stack">
+                            <section class="panel">
+                                <div class="panel-head">
+                                    <div class="panel-title">Open Chat Status Mix</div>
+                                    <span class="tiny-note">Queue and resolution distribution</span>
+                                </div>
+                                <div class="panel-copy">Pie-style chart of queued, assigned, in progress, and resolved chat records.</div>
+                                <div class="panel-body">
+                                    <canvas id="status-chart" class="chart-canvas" height="190"></canvas>
+                                </div>
+                            </section>
+
+                            <section class="panel">
+                                <div class="panel-head">
+                                    <div class="panel-title">CSR coverage snapshot</div>
+                                    <span class="tiny-note">Live roster and workload</span>
+                                </div>
+                                <div class="panel-copy">Quick view of who is online and current remaining capacity.</div>
+                                <div class="panel-body">
+                                    <div class="coverage-list" id="coverage-list">
+                                        <div class="tiny-note">Loading CSR coverage...</div>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="section" id="credentials-section">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-title">Integration Credentials</div>
+                            <div class="section-copy">Update CSR widget connection settings here instead of editing files by hand. These values are saved to a local server file, not the database, and the example CSR HTML page is regenerated automatically.</div>
+                        </div>
+                    </div>
+
+                    <div class="credentials-grid">
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div class="panel-title">CSR Widget Settings</div>
+                            </div>
+                            <div class="panel-copy">Edit the exact page title, widget config object, and script asset used by the CSR website embed without opening the codebase.</div>
+                            <div class="panel-body">
+                                <form class="settings-form" id="integration-settings-form">
+                                    <div class="info-label">Page Header</div>
+                                    <label>
+                                        <span>Page Title</span>
+                                        <input class="input" type="text" name="page_title" placeholder="Frontline Customer Care CSR Widget">
+                                    </label>
+                                    <label>
+                                        <span>Container ID</span>
+                                        <input class="input" type="text" name="container_id" placeholder="csr-console">
+                                    </label>
+
+                                    <div class="info-label">Widget Config</div>
+                                    <label>
+                                        <span>Base URL</span>
+                                        <input class="input" type="url" name="base_url" placeholder="http://52.74.227.205:5004" required>
+                                        <span class="field-hint">This becomes `window.CSRDashboardWidgetConfig.baseUrl`.</span>
+                                    </label>
+                                    <label>
+                                        <span>CSR Key</span>
+                                        <input class="input" type="text" name="csr_key" placeholder="csr_aridian_52_74_227_205_demo" required>
+                                    </label>
+                                    <label>
+                                        <span>Widget Title</span>
+                                        <input class="input" type="text" name="widget_title" placeholder="FLT CSR">
+                                    </label>
+                                    <label>
+                                        <span>Primary Color</span>
+                                        <input class="input" type="text" name="primary_color" placeholder="#2563EB">
+                                    </label>
+                                    <label>
+                                        <span>Chat List Poll (ms)</span>
+                                        <input class="input" type="number" min="1" name="chat_list_poll" value="5000">
+                                    </label>
+                                    <label>
+                                        <span>Message Poll (ms)</span>
+                                        <input class="input" type="number" min="1" name="message_poll" value="3000">
+                                    </label>
+                                    <label class="checkbox-row">
+                                        <input type="checkbox" name="auto_activate">
+                                        <span>Auto activate widget on page load</span>
+                                    </label>
+
+                                    <div class="info-label">Script Asset</div>
+                                    <label>
+                                        <span>Script Source</span>
+                                        <input class="input" type="text" name="script_src" placeholder="http://52.74.227.205:5004/widget-assets/csr-dashboard-widget.js">
+                                    </label>
+
+                                    <div class="info-label">Relay Override</div>
+                                    <label>
+                                        <span>Relay API URL</span>
+                                        <input class="input" type="url" name="relay_api_url" placeholder="http://52.74.227.205:5003">
+                                        <span class="field-hint">Optional backend relay endpoint for reply and resolve actions.</span>
+                                    </label>
+                                    <label>
+                                        <span>Relay API Key Override</span>
+                                        <input class="input" type="text" name="relay_api_key" placeholder="Optional separate relay key">
+                                    </label>
+                                    <div class="form-actions">
+                                        <button class="btn primary" type="submit">Save Credentials</button>
+                                        <button class="btn" type="button" id="integration-reset-btn">Reload Saved Values</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </section>
+
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div class="panel-title">Generated Preview</div>
+                            </div>
+                            <div class="panel-copy">Review the saved widget settings, open the regenerated preview page, and copy the full HTML that will be used on the website.</div>
+                            <div class="panel-body">
+                                <div class="info-list">
+                                    <article class="info-card">
+                                        <div class="info-label">Relay Status</div>
+                                        <div class="info-value" id="integration-relay-status">Checking relay configuration...</div>
+                                    </article>
+                                    <article class="info-card">
+                                        <div class="info-label">Preview Page</div>
+                                        <div class="info-value"><a id="integration-preview-link" href="/static/csr-dashboard-app.html" target="_blank" rel="noreferrer">Open preview page</a></div>
+                                    </article>
+                                    <article class="info-card">
+                                        <div class="info-label">Base URL</div>
+                                        <div class="info-value" id="integration-base-url">Not configured</div>
+                                    </article>
+                                    <article class="info-card">
+                                        <div class="info-label">Script Source</div>
+                                        <div class="info-value" id="integration-script-src">Not configured</div>
+                                    </article>
+                                </div>
+
+                                <label>
+                                    <span>Generated HTML</span>
+                                    <textarea class="textarea code-preview" id="integration-script-preview" rows="10" readonly></textarea>
+                                </label>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+
+                <section class="section" id="knowledge-base-section">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-title">Knowledge Base Updater</div>
+                            <div class="section-copy">Upload buyer, organizer, and policy knowledge files directly from the admin dashboard using the hosted n8n form.</div>
+                        </div>
+                    </div>
+
+                    <section class="panel">
+                        <div class="panel-head">
+                            <div class="panel-title">Knowledge Base Upload Form</div>
+                        </div>
+                        <div class="panel-copy">Use this form to choose the namespace and submit a new knowledge base file without leaving the admin page.</div>
+                        <div class="panel-body">
+                            <div class="utility-row">
+                                <div class="tiny-note">Supported namespaces: Buyers Guide, Organizer guide, Event Policies.</div>
+                                <a class="btn primary" href="{{ knowledge_base_updater_url }}" target="_blank" rel="noreferrer">Open Form In New Tab</a>
+                            </div>
+                            <iframe
+                                class="embed-frame"
+                                src="{{ knowledge_base_updater_url }}"
+                                title="Knowledge Base Updater"
+                                loading="lazy"
+                                referrerpolicy="no-referrer-when-downgrade"
+                            ></iframe>
+                        </div>
+                    </section>
+                </section>
+
+                <section class="section" id="team-section">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-title">CSR Management</div>
+                            <div class="section-copy">Add CSR login accounts, control each CSR’s max concurrent chat limit, and see exactly who is online, offline, paused, or overloaded.</div>
+                        </div>
+                    </div>
+
+                    <div class="team-grid">
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div class="panel-title">Add CSR Account</div>
+                            </div>
+                            <div class="panel-copy">Admins can register CSR accounts directly here. Those CSRs can then log in through the CSR portal and reach the original CSR workspace.</div>
+                            <div class="panel-body">
+                                <form class="stack-form" id="create-csr-form">
+                                    <label>
+                                        <span>CSR Name</span>
+                                        <input class="input" type="text" name="display_name" placeholder="CSR full name">
+                                    </label>
+                                    <label>
+                                        <span>CSR Email</span>
+                                        <input class="input" type="email" name="email" placeholder="csr@example.com" required>
+                                    </label>
+                                    <label>
+                                        <span>Password</span>
+                                        <input class="input" type="password" name="password" placeholder="Minimum 6 characters" required minlength="6">
+                                    </label>
+                                    <label>
+                                        <span>Max Concurrent Chats</span>
+                                        <input class="input" type="number" min="1" name="max_concurrent_chats" value="4">
+                                    </label>
+                                    <label class="checkbox-row">
+                                        <input type="checkbox" name="is_available" checked>
+                                        <span>Available for assignments immediately</span>
+                                    </label>
+                                    <button class="btn primary" type="submit">Create CSR Login</button>
+                                </form>
+                                <div style="margin-top:18px;">
+                                    <div class="item-head" style="margin-bottom:10px;">
+                                        <div style="font-size:14px;font-weight:800;">Available Right Now</div>
+                                        <span class="tiny-note" id="available-csr-count">0 assignable</span>
+                                    </div>
+                                    <div class="leaderboard-list" id="available-csr-list">
+                                        <div class="tiny-note">Loading available CSR list...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div class="panel-title">CSR Roster & Control</div>
+                                <span class="tiny-note" id="roster-count">0 CSRs</span>
+                            </div>
+                            <div class="panel-copy">Track each CSR’s open workload, online/offline presence, resolution output, and assignment availability. Save changes without leaving the dashboard.</div>
+                            <div class="panel-body csr-table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>CSR</th>
+                                            <th>Presence</th>
+                                            <th>Load</th>
+                                            <th>Resolved Today</th>
+                                            <th>Resolved Yesterday</th>
+                                            <th>Controls</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="csr-table-body">
+                                        <tr><td colspan="6" class="tiny-note" style="padding:24px;">Loading CSR roster...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+
+                <section class="section" id="chat-section">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-title">Chat Ledger</div>
+                            <div class="section-copy">A proper chat record view for storage, inspection, and deletion. Open any transcript, inspect ownership, and delete the full record when necessary.</div>
+                        </div>
+                    </div>
+
+                    <div class="chat-grid">
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div class="panel-title">All Stored Chats</div>
+                                <span class="tiny-note" id="chat-count">0 chats</span>
+                            </div>
+                            <div class="panel-copy">This table shows which chat is open, which CSR is handling it, and the latest customer message captured in the database.</div>
+                            <div class="panel-body chat-table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Customer</th>
+                                            <th>Status</th>
+                                            <th>Assigned CSR</th>
+                                            <th>Messages</th>
+                                            <th>Last Activity</th>
+                                            <th>Latest Customer Message</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="chat-table-body">
+                                        <tr><td colspan="7" class="tiny-note" style="padding:24px;">Loading chats...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div>
+                                    <div class="panel-title" id="detail-title">Select a chat</div>
+                                    <div class="tiny-note" id="detail-subtitle">Open a chat from the ledger to see the transcript and tracking events.</div>
+                                </div>
+                                <div class="action-row" id="detail-actions"></div>
+                            </div>
+                            <div class="panel-body">
+                                <div class="detail-grid" id="detail-grid">
+                                    <div class="chat-meta-card"><div class="meta-label">Status</div><div class="meta-value">No chat selected</div></div>
+                                    <div class="chat-meta-card"><div class="meta-label">Assigned CSR</div><div class="meta-value">Not available</div></div>
+                                    <div class="chat-meta-card"><div class="meta-label">Customer Email</div><div class="meta-value">Not available</div></div>
+                                    <div class="chat-meta-card"><div class="meta-label">Last Activity</div><div class="meta-value">Not available</div></div>
+                                </div>
+                                <div class="detail-columns">
+                                    <div class="messages" id="messages-panel">
+                                        <div class="empty-state">
+                                            <i class="fa-solid fa-comments"></i>
+                                            <div>No chat selected yet.</div>
+                                        </div>
+                                    </div>
+                                    <div class="event-timeline" id="event-panel">
+                                        <div class="empty-state">
+                                            <i class="fa-solid fa-timeline"></i>
+                                            <div>Tracking events will appear here.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+
+                <section class="section" id="activity-section">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-title">Activity Timeline</div>
+                            <div class="section-copy">A complete admin-side feed of recent queue, assignment, response, and resolution events so you can audit how each chat moved through the workflow.</div>
+                        </div>
+                    </div>
+
+                    <section class="panel">
+                        <div class="panel-head">
+                            <div class="panel-title">Recent Workflow Events</div>
+                            <span class="tiny-note" id="activity-count">0 events</span>
+                        </div>
+                        <div class="panel-body">
+                            <div class="activity-list" id="activity-list">
+                                <div class="tiny-note">Loading activity feed...</div>
+                            </div>
+                        </div>
+                    </section>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const state = {
+            dashboard: null,
+            selectedChatId: null,
+            selectedMessages: [],
+            selectedEvents: [],
+            integrationDraftDirty: false
+        };
+
+        const flashBanner = document.getElementById('flash-banner');
+        let flashTimer = null;
+        let refreshInterval = null;
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function formatDateTime(value) {
+            if (!value) return 'Not available';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return value;
+            return date.toLocaleString();
+        }
+
+        function formatRelative(value) {
+            if (!value) return 'Not available';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return value;
+            const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+            if (seconds < 60) return 'Just now';
+            if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`;
+            return `${Math.floor(seconds / 86400)} day ago`;
+        }
+
+        function formatPresence(csr) {
+            if (csr.is_online) return 'Online now';
+            const reference = csr.last_seen_at || csr.last_assigned_at;
+            return reference ? `Last seen ${formatRelative(reference)}` : 'No heartbeat yet';
+        }
+
+        function showBanner(message, tone = 'success') {
+            flashBanner.textContent = message;
+            flashBanner.className = `flash-banner show ${tone}`;
+            window.clearTimeout(flashTimer);
+            flashTimer = window.setTimeout(() => {
+                flashBanner.className = 'flash-banner';
+            }, 4500);
+        }
+
+        async function requestJson(url, options = {}) {
+            const response = await fetch(url, {
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                },
+                ...options
+            });
+
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.error || payload.message || 'Request failed');
+            }
+            return payload;
+        }
+
+        function getSelectedChat() {
+            if (!state.dashboard || !state.selectedChatId) return null;
+            return state.dashboard.chats.find((chat) => chat.id === state.selectedChatId) || null;
+        }
+
+        function normalizeBaseUrl(value) {
+            return String(value || '').trim().replace(/\/+$/, '');
+        }
+
+        function normalizeScriptSrc(value, baseUrl) {
+            const raw = String(value || '').trim();
+            const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+            if (!raw) return normalizedBaseUrl ? `${normalizedBaseUrl}/widget-assets/csr-dashboard-widget.js` : '/widget-assets/csr-dashboard-widget.js';
+            if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+            const normalizedPath = raw.startsWith('/') ? raw : `/${raw}`;
+            return normalizedBaseUrl ? `${normalizedBaseUrl}${normalizedPath}` : normalizedPath;
+        }
+
+        function normalizePositiveInt(value, fallback) {
+            const parsed = Number.parseInt(value, 10);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+        }
+
+        function buildIntegrationPreview(settings) {
+            const normalized = {
+                page_title: String(settings.page_title || '').trim() || 'Frontline Customer Care CSR Widget',
+                base_url: normalizeBaseUrl(settings.base_url),
+                container_id: String(settings.container_id || '').trim() || 'csr-console',
+                csr_key: String(settings.csr_key || '').trim(),
+                widget_title: String(settings.widget_title || '').trim() || 'FLT CSR',
+                primary_color: String(settings.primary_color || '').trim() || '#2563EB',
+                auto_activate: Boolean(settings.auto_activate),
+                chat_list_poll: normalizePositiveInt(settings.chat_list_poll, 5000),
+                message_poll: normalizePositiveInt(settings.message_poll, 3000),
+                relay_api_url: normalizeBaseUrl(settings.relay_api_url),
+                relay_api_key: String(settings.relay_api_key || '').trim()
+            };
+
+            normalized.script_src = normalizeScriptSrc(settings.script_src, normalized.base_url);
+
+            const configObject = {
+                autoActivate: normalized.auto_activate,
+                baseUrl: normalized.base_url,
+                chatListPoll: normalized.chat_list_poll,
+                containerId: normalized.container_id,
+                csrKey: normalized.csr_key,
+                messagePoll: normalized.message_poll,
+                primaryColor: normalized.primary_color,
+                widgetTitle: normalized.widget_title
+            };
+            const closingScript = '</' + 'script>';
+            const pageHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${normalized.page_title}</title>
+</head>
+<body>
+  <div id="${normalized.container_id}"></div>
+  <script>
+  window.CSRDashboardWidgetConfig = ${JSON.stringify(configObject, null, 2)};
+  ${closingScript}
+  <script src="${normalized.script_src}">${closingScript}
+</body>
+</html>`;
+
+            return {
+                ...normalized,
+                relay_enabled: Boolean(normalized.relay_api_url && (normalized.relay_api_key || normalized.csr_key)),
+                config_object: configObject,
+                page_html: pageHtml
+            };
+        }
+
+        function readIntegrationForm() {
+            const form = document.getElementById('integration-settings-form');
+            return {
+                page_title: form.elements.page_title.value,
+                base_url: form.elements.base_url.value,
+                container_id: form.elements.container_id.value,
+                csr_key: form.elements.csr_key.value,
+                widget_title: form.elements.widget_title.value,
+                primary_color: form.elements.primary_color.value,
+                auto_activate: form.elements.auto_activate.checked,
+                chat_list_poll: form.elements.chat_list_poll.value,
+                message_poll: form.elements.message_poll.value,
+                script_src: form.elements.script_src.value,
+                relay_api_url: form.elements.relay_api_url.value,
+                relay_api_key: form.elements.relay_api_key.value
+            };
+        }
+
+        function fillIntegrationForm(settings) {
+            const form = document.getElementById('integration-settings-form');
+            form.elements.page_title.value = settings.page_title || '';
+            form.elements.base_url.value = settings.base_url || '';
+            form.elements.container_id.value = settings.container_id || '';
+            form.elements.csr_key.value = settings.csr_key || '';
+            form.elements.widget_title.value = settings.widget_title || '';
+            form.elements.primary_color.value = settings.primary_color || '';
+            form.elements.auto_activate.checked = Boolean(settings.auto_activate);
+            form.elements.chat_list_poll.value = settings.chat_list_poll || 5000;
+            form.elements.message_poll.value = settings.message_poll || 3000;
+            form.elements.script_src.value = settings.script_src || '';
+            form.elements.relay_api_url.value = settings.relay_api_url || '';
+            form.elements.relay_api_key.value = settings.relay_api_key || '';
+        }
+
+        function renderIntegrationPreview(settings) {
+            const preview = buildIntegrationPreview(settings);
+            document.getElementById('integration-relay-status').textContent = preview.relay_enabled
+                ? `Ready using ${preview.relay_api_key ? 'relay API key override' : 'CSR key'}`
+                : 'Relay is inactive until relay URL and a key are configured';
+            document.getElementById('integration-script-src').textContent = preview.script_src || 'Not configured';
+            document.getElementById('integration-base-url').textContent = preview.base_url || 'Not configured';
+            document.getElementById('integration-script-preview').value = preview.page_html;
+
+            const previewLink = document.getElementById('integration-preview-link');
+            previewLink.href = state.dashboard?.integration?.preview_url || '/static/csr-dashboard-app.html';
+        }
+
+        function renderIntegrationSettings(forceSync = false) {
+            const savedSettings = state.dashboard.integration.settings || {};
+            if (!state.integrationDraftDirty || forceSync) {
+                fillIntegrationForm(savedSettings);
+                state.integrationDraftDirty = false;
+                renderIntegrationPreview(savedSettings);
+                return;
+            }
+
+            renderIntegrationPreview(readIntegrationForm());
+        }
+
+        function renderSummary() {
+            const summary = state.dashboard.summary;
+            document.getElementById('stat-registered').textContent = summary.registered_csrs;
+            document.getElementById('stat-online').textContent = summary.online_csrs;
+            document.getElementById('stat-active-csrs').textContent = summary.active_csrs;
+            document.getElementById('stat-active').textContent = summary.active_chats;
+            document.getElementById('stat-resolved-today').textContent = summary.resolved_today;
+            document.getElementById('stat-resolved-yesterday').textContent = summary.resolved_yesterday;
+        }
+
+        function renderAvailableCsrList() {
+            const container = document.getElementById('available-csr-list');
+            const rows = state.dashboard.available_csr_users || [];
+            document.getElementById('available-csr-count').textContent = `${rows.length} assignable`;
+
+            if (!rows.length) {
+                container.innerHTML = '<div class="tiny-note">No CSR is online and available for new assignments right now.</div>';
+                return;
+            }
+
+            container.innerHTML = rows.map((csr) => `
+                <article class="leaderboard-item">
+                    <div class="item-head">
+                        <div>
+                            <div style="font-size:14px;font-weight:800;">${escapeHtml(csr.display_name)}</div>
+                            <div class="tiny-note">${escapeHtml(csr.email)}</div>
+                        </div>
+                        <span class="badge online">Available</span>
+                    </div>
+                    <div class="row" style="margin-top:10px;">
+                        <div class="tiny-note">Open ${csr.active_chat_count}/${csr.max_concurrent_chats}</div>
+                        <div class="tiny-note">${escapeHtml(formatPresence(csr))}</div>
+                    </div>
+                    <div class="load-bar"><span style="width:${Math.max(8, Math.round((csr.active_chat_count / Math.max(1, csr.max_concurrent_chats)) * 100))}%"></span></div>
+                </article>
+            `).join('');
+        }
+
+        function prepareCanvas(canvas) {
+            const ratio = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            const width = Math.max(1, Math.round(rect.width || canvas.clientWidth || 300));
+            const fallbackHeight = Number(canvas.getAttribute('height')) || 220;
+            const height = Math.max(1, Math.round(rect.height || canvas.clientHeight || fallbackHeight));
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = width * ratio;
+            canvas.height = height * ratio;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.textBaseline = 'middle';
+
+            return { ctx, w: width, h: height };
+        }
+
+        function fillRoundedRect(ctx, x, y, width, height, radius, color) {
+            if (width <= 0 || height <= 0) {
+                return;
+            }
+
+            const safeRadius = Math.min(radius, width / 2, height / 2);
+            ctx.beginPath();
+            ctx.moveTo(x + safeRadius, y);
+            ctx.lineTo(x + width - safeRadius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+            ctx.lineTo(x + width, y + height - safeRadius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+            ctx.lineTo(x + safeRadius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+            ctx.lineTo(x, y + safeRadius);
+            ctx.quadraticCurveTo(x, y, x + safeRadius, y);
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+        }
+
+        function truncateLabel(ctx, text, maxWidth) {
+            if (ctx.measureText(text).width <= maxWidth) {
+                return text;
+            }
+
+            let trimmed = text;
+            while (trimmed.length > 1 && ctx.measureText(`${trimmed}…`).width > maxWidth) {
+                trimmed = trimmed.slice(0, -1);
+            }
+            return `${trimmed}…`;
+        }
+
+        function drawChartEmptyState(ctx, w, h, title, detail) {
+            fillRoundedRect(ctx, 18, 18, w - 36, h - 36, 16, 'rgba(15, 23, 42, 0.7)');
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = '700 15px Inter';
+            ctx.fillText(title, w / 2, h / 2 - 10);
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '12px Inter';
+            ctx.fillText(detail, w / 2, h / 2 + 14);
+            ctx.textAlign = 'left';
+        }
+
+        function getScaleMax(maxValue) {
+            if (maxValue <= 4) {
+                return maxValue;
+            }
+
+            const magnitude = 10 ** Math.floor(Math.log10(maxValue));
+            const normalized = maxValue / magnitude;
+            if (normalized <= 1) return magnitude;
+            if (normalized <= 2) return 2 * magnitude;
+            if (normalized <= 5) return 5 * magnitude;
+            return 10 * magnitude;
+        }
+
+        function drawBarChart(canvas, rows) {
+            const { ctx, w, h } = prepareCanvas(canvas);
+            const metrics = [
+                { key: 'resolved_today', label: 'Today', color: '#3b82f6' },
+                { key: 'resolved_yesterday', label: 'Yesterday', color: '#10b981' },
+                { key: 'open_chats', label: 'Open Chats', color: '#f59e0b' }
+            ];
+            if (!rows.length) {
+                drawChartEmptyState(ctx, w, h, 'No resolution data yet', 'CSR activity will appear here once chats are handled.');
+                return;
+            }
+
+            const maxValue = Math.max(...rows.flatMap((row) => metrics.map((metric) => Number(row[metric.key] || 0))));
+            if (!maxValue) {
+                drawChartEmptyState(ctx, w, h, 'No comparable workload yet', 'No CSR has resolved or opened chats in this reporting window.');
+                return;
+            }
+
+            const compact = w < 760;
+            const legendRowHeight = compact ? 22 : 0;
+            const padding = { top: compact ? 60 : 42, right: 18, bottom: 38, left: 44 };
+            const chartWidth = w - padding.left - padding.right;
+            const slotPx = 108;
+            const plotWidth = Math.min(chartWidth, Math.max(200, rows.length * slotPx));
+            const plotLeft = padding.left + (chartWidth - plotWidth) / 2;
+            const chartHeight = h - padding.top - padding.bottom;
+            const scaleMax = getScaleMax(maxValue);
+            const gridLines = Math.min(4, scaleMax) || 1;
+
+            ctx.font = '600 12px Inter';
+            ctx.textAlign = 'left';
+            metrics.forEach((metric, index) => {
+                const legendX = compact
+                    ? padding.left + (index % 2) * 126
+                    : padding.left + index * 116;
+                const legendY = compact
+                    ? 18 + Math.floor(index / 2) * legendRowHeight
+                    : 18;
+                fillRoundedRect(ctx, legendX, legendY - 6, 12, 12, 4, metric.color);
+                ctx.fillStyle = '#cbd5e1';
+                ctx.fillText(metric.label, legendX + 18, legendY);
+            });
+
+            for (let index = 0; index <= gridLines; index += 1) {
+                const y = padding.top + (chartHeight / gridLines) * index;
+                const value = scaleMax - (scaleMax / gridLines) * index;
+                ctx.beginPath();
+                ctx.strokeStyle = index === gridLines ? 'rgba(148, 163, 184, 0.3)' : 'rgba(148, 163, 184, 0.12)';
+                ctx.lineWidth = 1;
+                ctx.moveTo(plotLeft, y);
+                ctx.lineTo(plotLeft + plotWidth, y);
+                ctx.stroke();
+
+                ctx.fillStyle = '#64748b';
+                ctx.font = '11px Inter';
+                ctx.textAlign = 'right';
+                ctx.fillText(Number.isInteger(value) ? String(value) : value.toFixed(1), padding.left - 8, y);
+            }
+
+            const groupWidth = plotWidth / rows.length;
+            const groupGap = Math.max(12, groupWidth * 0.12);
+            const availableBarWidth = Math.max(30, groupWidth - groupGap);
+            const barGap = Math.max(6, Math.min(10, availableBarWidth * 0.08));
+            const barWidth = Math.max(10, Math.min(24, (availableBarWidth - barGap * (metrics.length - 1)) / metrics.length));
+
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
+            ctx.lineWidth = 1.2;
+            ctx.moveTo(plotLeft, padding.top + chartHeight);
+            ctx.lineTo(plotLeft + plotWidth, padding.top + chartHeight);
+            ctx.stroke();
+
+            rows.forEach((row, index) => {
+                const totalBarsWidth = metrics.length * barWidth + (metrics.length - 1) * barGap;
+                const groupStartX = plotLeft + index * groupWidth + (groupWidth - totalBarsWidth) / 2;
+                const laneX = plotLeft + index * groupWidth + 6;
+                const laneWidth = Math.max(groupWidth - 12, totalBarsWidth + 14);
+
+                fillRoundedRect(
+                    ctx,
+                    laneX,
+                    padding.top + 10,
+                    laneWidth,
+                    chartHeight - 10,
+                    12,
+                    'rgba(148, 163, 184, 0.04)'
+                );
+
+                metrics.forEach((metric, metricIndex) => {
+                    const rawValue = Number(row[metric.key] || 0);
+                    const barHeight = rawValue ? (rawValue / scaleMax) * chartHeight : 0;
+                    const x = groupStartX + metricIndex * (barWidth + barGap);
+                    const y = padding.top + chartHeight - barHeight;
+
+                    if (barHeight > 0) {
+                        fillRoundedRect(ctx, x, y, barWidth, barHeight, 8, metric.color);
+                        ctx.fillStyle = '#f8fafc';
+                        ctx.font = '600 11px Inter';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(String(rawValue), x + barWidth / 2, Math.max(padding.top - 10, y - 8));
+                    }
+                });
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '11px Inter';
+                ctx.textAlign = 'center';
+                const label = truncateLabel(ctx, row.display_name || 'CSR', groupWidth - 10);
+                ctx.fillText(label, plotLeft + index * groupWidth + groupWidth / 2, h - 18);
+            });
+
+            ctx.textAlign = 'left';
+        }
+
+        function drawDonutChart(canvas, statusBreakdown) {
+            const { ctx, w, h } = prepareCanvas(canvas);
+            const entries = [
+                { label: 'Queued', value: statusBreakdown.queued || 0, color: '#f59e0b' },
+                { label: 'Assigned', value: statusBreakdown.assigned || 0, color: '#3b82f6' },
+                { label: 'In Progress', value: statusBreakdown.in_progress || 0, color: '#06b6d4' },
+                { label: 'Resolved', value: statusBreakdown.resolved || 0, color: '#10b981' }
+            ];
+            const total = entries.reduce((sum, entry) => sum + entry.value, 0);
+
+            if (!total) {
+                drawChartEmptyState(ctx, w, h, 'No status data yet', 'Queued, active, and resolved chat totals will show here.');
+                return;
+            }
+
+            const compact = w < 430;
+            const centerX = compact ? w / 2 : Math.min(132, w * 0.31);
+            const centerY = compact ? 82 : h / 2;
+            const radius = compact ? 48 : Math.min(72, h * 0.29);
+            const ringWidth = Math.max(16, radius * 0.34);
+            const segmentRadius = radius - ringWidth / 2;
+            const legendX = compact ? 18 : Math.max(228, w * 0.58);
+            const legendStartY = compact ? centerY + radius + 22 : 40;
+            let startAngle = -Math.PI / 2;
+
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+            ctx.lineWidth = ringWidth;
+            ctx.arc(centerX, centerY, segmentRadius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            entries.filter((entry) => entry.value > 0).forEach((entry) => {
+                const sliceAngle = (entry.value / total) * Math.PI * 2;
+                const gap = Math.min(0.04, sliceAngle / 5);
+                ctx.beginPath();
+                ctx.strokeStyle = entry.color;
+                ctx.lineWidth = ringWidth;
+                ctx.arc(centerX, centerY, segmentRadius, startAngle + gap / 2, startAngle + sliceAngle - gap / 2);
+                ctx.stroke();
+                startAngle += sliceAngle;
+            });
+
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = '700 22px Inter';
+            ctx.fillText(String(total), centerX, centerY - 4);
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '12px Inter';
+            ctx.fillText('Tracked chats', centerX, centerY + 18);
+
+            entries.forEach((entry, index) => {
+                const legendY = legendStartY + index * 34;
+                const percent = total ? Math.round((entry.value / total) * 100) : 0;
+
+                fillRoundedRect(ctx, legendX, legendY - 10, compact ? w - 36 : Math.max(120, w - legendX - 18), 24, 10, 'rgba(15, 23, 42, 0.58)');
+                fillRoundedRect(ctx, legendX + 10, legendY - 3, 10, 10, 4, entry.color);
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#e2e8f0';
+                ctx.font = '600 12px Inter';
+                ctx.fillText(entry.label, legendX + 28, legendY + 1);
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '11px Inter';
+                ctx.fillText(`${entry.value} chats`, legendX + 28, legendY + 13);
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#cbd5e1';
+                ctx.font = '700 11px Inter';
+                ctx.fillText(`${percent}%`, compact ? w - 30 : w - 24, legendY + 1);
+            });
+
+            ctx.textAlign = 'left';
+        }
+
+        function renderLeaderboard() {
+            const container = document.getElementById('leaderboard-list');
+            const rows = state.dashboard.reports.resolution_leaderboard || [];
+
+            if (!rows.length) {
+                container.innerHTML = '<div class="tiny-note">No CSR resolution activity has been recorded yet.</div>';
+                return;
+            }
+
+            container.innerHTML = rows.map((row) => `
+                <article class="leaderboard-item">
+                    <div class="item-head">
+                        <div>
+                            <div style="font-size:14px;font-weight:800;">${escapeHtml(row.display_name)}</div>
+                            <div class="tiny-note">${escapeHtml(row.email)}</div>
+                        </div>
+                        <span class="badge ${row.is_online ? 'online' : 'offline'}">${row.is_online ? 'Online' : 'Offline'}</span>
+                    </div>
+                    <div class="row" style="margin-top:10px;">
+                        <div class="tiny-note">Today ${row.resolved_today}</div>
+                        <div class="tiny-note">Yesterday ${row.resolved_yesterday}</div>
+                        <div class="tiny-note">Open ${row.open_chats}/${row.max_concurrent_chats}</div>
+                    </div>
+                    <div class="load-bar"><span style="width:${Math.max(8, Math.round((row.open_chats / Math.max(1, row.max_concurrent_chats)) * 100))}%"></span></div>
+                </article>
+            `).join('');
+
+            drawBarChart(document.getElementById('resolution-chart'), rows);
+        }
+
+        function renderCharts() {
+            drawDonutChart(document.getElementById('status-chart'), state.dashboard.reports.status_breakdown || {});
+            renderLeaderboard();
+            renderCoverageList();
+        }
+
+        function renderCoverageList() {
+            const container = document.getElementById('coverage-list');
+            const rows = state.dashboard.csr_users || [];
+            const leaderboard = new Map((state.dashboard.reports.resolution_leaderboard || []).map((row) => [row.id, row]));
+
+            if (!rows.length) {
+                container.innerHTML = '<div class="tiny-note">No CSR accounts are available yet.</div>';
+                return;
+            }
+
+            container.innerHTML = rows.map((csr) => {
+                const report = leaderboard.get(csr.id) || { resolved_today: 0 };
+                const activeChats = Number(csr.active_chat_count || 0);
+                const maxChats = Math.max(1, Number(csr.max_concurrent_chats || 0));
+                const remainingCapacity = Math.max(0, maxChats - activeChats);
+                return `
+                    <article class="coverage-row">
+                        <div>
+                            <div class="item-head">
+                                <div class="coverage-name">${escapeHtml(csr.display_name)}</div>
+                                <span class="badge ${csr.is_online ? 'online' : 'offline'}">${csr.is_online ? 'Online' : 'Offline'}</span>
+                            </div>
+                            <div class="tiny-note" style="margin-top:6px;">${csr.is_available ? 'Available' : 'Paused'} · Resolved today ${report.resolved_today || 0}</div>
+                        </div>
+                        <div class="coverage-stat">Open ${activeChats}/${maxChats}</div>
+                        <div class="coverage-stat">Free ${remainingCapacity}</div>
+                    </article>
+                `;
+            }).join('');
+        }
+
+        function renderCsrTable() {
+            const tbody = document.getElementById('csr-table-body');
+            const rows = state.dashboard.csr_users || [];
+            const availableNow = state.dashboard.available_csr_users || [];
+            const leaderboard = new Map((state.dashboard.reports.resolution_leaderboard || []).map((row) => [row.id, row]));
+            document.getElementById('roster-count').textContent = `${rows.length} registered · ${availableNow.length} available now`;
+
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="tiny-note" style="padding:24px;">No CSR accounts have been registered yet.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = rows.map((csr) => {
+                const report = leaderboard.get(csr.id) || { resolved_today: 0, resolved_yesterday: 0 };
+                return `
+                    <tr>
+                        <td>
+                            <strong>${escapeHtml(csr.display_name)}</strong><br>
+                            <span class="cell-subtle">${escapeHtml(csr.email)}</span>
+                        </td>
+                        <td>
+                            <span class="badge ${csr.is_online ? 'online' : 'offline'}">${csr.is_online ? 'Online' : 'Offline'}</span><br>
+                            <span class="cell-subtle">${escapeHtml(formatPresence(csr))}</span>
+                        </td>
+                        <td>
+                            ${csr.active_chat_count}/${csr.max_concurrent_chats}<br>
+                            <span class="cell-subtle">${csr.is_available ? 'Available' : 'Paused'}</span>
+                        </td>
+                        <td>${report.resolved_today}</td>
+                        <td>${report.resolved_yesterday}</td>
+                        <td>
+                            <form class="settings-form" data-csr-id="${csr.id}">
+                                <label>
+                                    <span>Max chats</span>
+                                    <input class="input" type="number" min="1" name="max_concurrent_chats" value="${csr.max_concurrent_chats}">
+                                </label>
+                                <label class="checkbox-row">
+                                    <input type="checkbox" name="is_available" ${csr.is_available ? 'checked' : ''}>
+                                    <span>Available</span>
+                                </label>
+                                <button class="mini-btn primary" type="submit">Save</button>
+                            </form>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            tbody.querySelectorAll('.settings-form').forEach((form) => {
+                form.addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    const csrId = form.dataset.csrId;
+                    const maxConcurrentChats = form.querySelector('input[name="max_concurrent_chats"]').value;
+                    const isAvailable = form.querySelector('input[name="is_available"]').checked;
+                    try {
+                        const response = await requestJson(`/api/csrs/${csrId}/settings`, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                max_concurrent_chats: maxConcurrentChats,
+                                is_available: isAvailable
+                            })
+                        });
+                        state.dashboard = response.dashboard;
+                        renderDashboard();
+                        showBanner('CSR settings updated.', 'success');
+                    } catch (error) {
+                        showBanner(error.message, 'error');
+                    }
+                });
+            });
+        }
+
+        function renderChatTable() {
+            const tbody = document.getElementById('chat-table-body');
+            const chats = state.dashboard.chats || [];
+            document.getElementById('chat-count').textContent = `${chats.length} chats`;
+
+            if (!chats.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="tiny-note" style="padding:24px;">No chats have been stored yet.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = chats.map((chat) => `
+                <tr class="${state.selectedChatId === chat.id ? 'is-selected' : ''}">
+                    <td>
+                        <strong>${escapeHtml(chat.customer_name || chat.visitor_id)}</strong><br>
+                        <span class="cell-subtle">${escapeHtml(chat.visitor_id)}</span>
+                    </td>
+                    <td>${escapeHtml(chat.status.replace('_', ' '))}</td>
+                    <td>${escapeHtml(chat.assigned_label || 'Waiting queue')}</td>
+                    <td>${chat.message_count}</td>
+                    <td>
+                        ${escapeHtml(formatRelative(chat.last_activity_at))}<br>
+                        <span class="cell-subtle">${escapeHtml(formatDateTime(chat.last_activity_at))}</span>
+                    </td>
+                    <td>${escapeHtml(chat.last_customer_message || chat.preview || 'No customer message yet.')}</td>
+                    <td>
+                        <div class="action-row">
+                            <button class="mini-btn" type="button" data-view-chat="${chat.id}">View</button>
+                            <button class="mini-btn danger" type="button" data-delete-chat="${chat.id}">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+
+            tbody.querySelectorAll('[data-view-chat]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    selectChat(Number(button.dataset.viewChat)).catch((error) => showBanner(error.message, 'error'));
+                });
+            });
+
+            tbody.querySelectorAll('[data-delete-chat]').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const chatId = Number(button.dataset.deleteChat);
+                    const chat = state.dashboard.chats.find((item) => item.id === chatId);
+                    if (!chat) return;
+                    const confirmed = window.confirm(`Delete chat ${chat.visitor_id} and all related messages from the database?`);
+                    if (!confirmed) return;
+                    try {
+                        const response = await requestJson(`/api/chats/${chatId}/delete`, {
+                            method: 'POST',
+                            body: JSON.stringify({})
+                        });
+                        if (state.selectedChatId === chatId) {
+                            state.selectedChatId = null;
+                            state.selectedMessages = [];
+                            state.selectedEvents = [];
+                        }
+                        state.dashboard = response.dashboard;
+                        renderDashboard();
+                        showBanner(response.message || 'Chat deleted.', 'success');
+                    } catch (error) {
+                        showBanner(error.message, 'error');
+                    }
+                });
+            });
+        }
+
+        function renderMessages(messages) {
+            if (!messages.length) {
+                return `
+                    <div class="empty-state">
+                        <i class="fa-solid fa-comments"></i>
+                        <div>No transcript stored for this chat yet.</div>
+                    </div>
+                `;
+            }
+
+            return messages.map((message) => `
+                <div class="message ${escapeHtml(message.sender_type)}">
+                    <div class="message-label">${escapeHtml(message.sender_type.toUpperCase())}</div>
+                    <div class="message-bubble">${escapeHtml(message.content)}</div>
+                    <div class="message-time">${escapeHtml(formatDateTime(message.created_at))}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderEvents(events) {
+            if (!events.length) {
+                return `
+                    <div class="empty-state">
+                        <i class="fa-solid fa-timeline"></i>
+                        <div>No tracking events recorded for this chat yet.</div>
+                    </div>
+                `;
+            }
+
+            return events.map((event) => `
+                <article class="timeline-item">
+                    <div style="font-size:13px;font-weight:800; margin-bottom:4px;">${escapeHtml(event.event_type.replace('_', ' '))}</div>
+                    <div class="tiny-note">${escapeHtml(formatDateTime(event.created_at))}</div>
+                    <div style="font-size:13px; line-height:1.6; margin-top:8px;">${escapeHtml(event.notes || 'Workflow event recorded.')}</div>
+                    <div class="tiny-note" style="margin-top:8px;">
+                        ${escapeHtml(event.from_csr_name || 'Queue')} -> ${escapeHtml(event.to_csr_name || 'Queue')}
+                        ${event.acted_by_name ? ` | acted by ${escapeHtml(event.acted_by_name)}` : ''}
+                    </div>
+                </article>
+            `).join('');
+        }
+
+        function renderChatDetail() {
+            const chat = getSelectedChat();
+            const detailTitle = document.getElementById('detail-title');
+            const detailSubtitle = document.getElementById('detail-subtitle');
+            const detailGrid = document.getElementById('detail-grid');
+            const detailActions = document.getElementById('detail-actions');
+            const messagesPanel = document.getElementById('messages-panel');
+            const eventPanel = document.getElementById('event-panel');
+
+            if (!chat) {
+                detailTitle.textContent = 'Select a chat';
+                detailSubtitle.textContent = 'Open a chat from the ledger to see the transcript and tracking events.';
+                detailActions.innerHTML = '';
+                detailGrid.innerHTML = `
+                    <div class="chat-meta-card"><div class="meta-label">Status</div><div class="meta-value">No chat selected</div></div>
+                    <div class="chat-meta-card"><div class="meta-label">Assigned CSR</div><div class="meta-value">Not available</div></div>
+                    <div class="chat-meta-card"><div class="meta-label">Customer Email</div><div class="meta-value">Not available</div></div>
+                    <div class="chat-meta-card"><div class="meta-label">Last Activity</div><div class="meta-value">Not available</div></div>
+                `;
+                messagesPanel.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fa-solid fa-comments"></i>
+                        <div>No chat selected yet.</div>
+                    </div>
+                `;
+                eventPanel.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fa-solid fa-timeline"></i>
+                        <div>Tracking events will appear here.</div>
+                    </div>
+                `;
+                return;
+            }
+
+            detailTitle.textContent = chat.customer_name || chat.visitor_id;
+            detailSubtitle.textContent = `${chat.visitor_id} · ${chat.message_count} messages · ${chat.status.replace('_', ' ')}`;
+            detailActions.innerHTML = `
+                <button class="mini-btn danger" id="detail-delete-btn" type="button">Delete Chat</button>
+            `;
+            detailGrid.innerHTML = `
+                <div class="chat-meta-card">
+                    <div class="meta-label">Status</div>
+                    <div class="meta-value">${escapeHtml(chat.status.replace('_', ' '))}</div>
+                </div>
+                <div class="chat-meta-card">
+                    <div class="meta-label">Assigned CSR</div>
+                    <div class="meta-value">${escapeHtml(chat.assigned_label || 'Waiting queue')}</div>
+                </div>
+                <div class="chat-meta-card">
+                    <div class="meta-label">Customer Email</div>
+                    <div class="meta-value">${escapeHtml(chat.customer_email || 'Not available')}</div>
+                </div>
+                <div class="chat-meta-card">
+                    <div class="meta-label">Last Activity</div>
+                    <div class="meta-value">${escapeHtml(formatDateTime(chat.last_activity_at))}</div>
+                </div>
+            `;
+            messagesPanel.innerHTML = renderMessages(state.selectedMessages);
+            eventPanel.innerHTML = renderEvents(state.selectedEvents);
+
+            const deleteBtn = document.getElementById('detail-delete-btn');
+            deleteBtn.addEventListener('click', async () => {
+                const confirmed = window.confirm(`Delete chat ${chat.visitor_id} and all related messages from the database?`);
+                if (!confirmed) return;
+                try {
+                    const response = await requestJson(`/api/chats/${chat.id}/delete`, {
+                        method: 'POST',
+                        body: JSON.stringify({})
+                    });
+                    state.selectedChatId = null;
+                    state.selectedMessages = [];
+                    state.selectedEvents = [];
+                    state.dashboard = response.dashboard;
+                    renderDashboard();
+                    showBanner(response.message || 'Chat deleted.', 'success');
+                } catch (error) {
+                    showBanner(error.message, 'error');
+                }
+            });
+        }
+
+        function renderActivity() {
+            const container = document.getElementById('activity-list');
+            const events = state.dashboard.recent_activity || [];
+            document.getElementById('activity-count').textContent = `${events.length} events`;
+
+            if (!events.length) {
+                container.innerHTML = '<div class="tiny-note">No workflow activity recorded yet.</div>';
+                return;
+            }
+
+            container.innerHTML = events.slice(0, 40).map((event) => `
+                <article class="activity-item">
+                    <div class="item-head">
+                        <div style="font-size:14px;font-weight:800;">${escapeHtml(event.event_type.replace('_', ' '))}</div>
+                        <div class="tiny-note">${escapeHtml(formatRelative(event.created_at))}</div>
+                    </div>
+                    <div style="font-size:13px; line-height:1.6; margin-top:8px;">${escapeHtml(event.notes || 'Workflow event recorded.')}</div>
+                    <div class="tiny-note" style="margin-top:8px;">
+                        ${escapeHtml(event.from_csr_name || 'Queue')} -> ${escapeHtml(event.to_csr_name || 'Queue')}
+                        ${event.acted_by_name ? ` | acted by ${escapeHtml(event.acted_by_name)}` : ''}
+                        | ${escapeHtml(formatDateTime(event.created_at))}
+                    </div>
+                </article>
+            `).join('');
+        }
+
+        function renderDashboard(forceIntegrationSync = false) {
+            renderSummary();
+            renderIntegrationSettings(forceIntegrationSync);
+            renderCharts();
+            renderAvailableCsrList();
+            renderCsrTable();
+            renderChatTable();
+            renderChatDetail();
+            renderActivity();
+        }
+
+        async function selectChat(chatId) {
+            state.selectedChatId = chatId;
+            const payload = await requestJson(`/api/chats/${chatId}/messages`, { method: 'GET' });
+            state.selectedMessages = payload.messages || [];
+            state.selectedEvents = payload.events || [];
+            renderChatTable();
+            renderChatDetail();
+            document.getElementById('chat-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        async function refreshDashboard(reloadSelectedChat = true) {
+            const payload = await requestJson('/api/dashboard-data', { method: 'GET' });
+            state.dashboard = payload;
+            if (reloadSelectedChat && state.selectedChatId && state.dashboard.chats.some((chat) => chat.id === state.selectedChatId)) {
+                try {
+                    const detailPayload = await requestJson(`/api/chats/${state.selectedChatId}/messages`, { method: 'GET' });
+                    state.selectedMessages = detailPayload.messages || [];
+                    state.selectedEvents = detailPayload.events || [];
+                } catch (_error) {
+                    state.selectedChatId = null;
+                    state.selectedMessages = [];
+                    state.selectedEvents = [];
+                }
+            } else if (!state.selectedChatId || !state.dashboard.chats.some((chat) => chat.id === state.selectedChatId)) {
+                state.selectedChatId = null;
+                state.selectedMessages = [];
+                state.selectedEvents = [];
+            }
+            renderDashboard();
+        }
+
+        document.getElementById('create-csr-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const formData = new FormData(form);
+            try {
+                const response = await requestJson('/api/admin/csrs/create', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        display_name: formData.get('display_name'),
+                        email: formData.get('email'),
+                        password: formData.get('password'),
+                        max_concurrent_chats: formData.get('max_concurrent_chats'),
+                        is_available: formData.get('is_available') === 'on'
+                    })
+                });
+                form.reset();
+                form.querySelector('input[name="is_available"]').checked = true;
+                form.querySelector('input[name="max_concurrent_chats"]').value = 4;
+                state.dashboard = response.dashboard;
+                renderDashboard();
+                showBanner(response.message || 'CSR account created.', 'success');
+            } catch (error) {
+                showBanner(error.message, 'error');
+            }
+        });
+
+        document.getElementById('integration-settings-form').addEventListener('input', () => {
+            state.integrationDraftDirty = true;
+            renderIntegrationPreview(readIntegrationForm());
+        });
+
+        document.getElementById('integration-reset-btn').addEventListener('click', () => {
+            state.integrationDraftDirty = false;
+            renderIntegrationSettings(true);
+            showBanner('Reloaded saved integration settings.', 'success');
+        });
+
+        document.getElementById('integration-settings-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const settings = readIntegrationForm();
+            try {
+                const response = await requestJson('/api/admin/integration-settings', {
+                    method: 'POST',
+                    body: JSON.stringify(settings)
+                });
+                state.dashboard = response.dashboard;
+                state.integrationDraftDirty = false;
+                renderDashboard(true);
+                showBanner(response.message || 'Integration settings saved.', 'success');
+            } catch (error) {
+                showBanner(error.message, 'error');
+            }
+        });
+
+        document.getElementById('refresh-btn').addEventListener('click', async () => {
+            try {
+                await refreshDashboard(true);
+                showBanner('Dashboard refreshed.', 'success');
+            } catch (error) {
+                showBanner(error.message, 'error');
+            }
+        });
+
+        document.getElementById('rebalance-btn').addEventListener('click', async () => {
+            try {
+                const response = await requestJson('/api/chats/rebalance', {
+                    method: 'POST',
+                    body: JSON.stringify({})
+                });
+                state.dashboard = response.dashboard;
+                renderDashboard();
+                showBanner(`Rebalanced ${response.assigned_count || 0} queued chats.`, 'success');
+            } catch (error) {
+                showBanner(error.message, 'error');
+            }
+        });
+
+        function activateSection(targetId, smooth = true) {
+            const section = document.getElementById(targetId);
+            if (!section) return;
+            document.querySelectorAll('.nav-btn').forEach((item) => item.classList.toggle('active', item.dataset.target === targetId));
+            section.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+            if (window.location.hash !== `#${targetId}`) {
+                history.replaceState(null, '', `#${targetId}`);
+            }
+        }
+
+        document.querySelectorAll('.nav-btn[data-target]').forEach((button) => {
+            button.addEventListener('click', (event) => {
+                event.preventDefault();
+                activateSection(button.dataset.target, true);
+            });
+        });
+
+        const initialTarget = window.location.hash ? window.location.hash.slice(1) : 'overview-section';
+        window.setTimeout(() => activateSection(initialTarget, false), 0);
+
+        window.addEventListener('resize', () => {
+            if (state.dashboard) {
+                renderCharts();
+            }
+        });
+
+        refreshDashboard(true).catch((error) => {
+            showBanner(error.message, 'error');
+        });
+
+        refreshInterval = window.setInterval(() => {
+            refreshDashboard(Boolean(state.selectedChatId)).catch(() => {});
+        }, 8000);
+    </script>
+</body>
+</html>

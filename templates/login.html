@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login — CSR Admin Panel</title>
+    <title>Support Access Portal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -15,7 +15,6 @@
             background: #0a0f1e;
             overflow: hidden;
         }
-        /* Left branding panel */
         .brand-panel {
             flex: 1;
             display: flex;
@@ -32,7 +31,7 @@
             content: '';
             position: absolute; inset: 0;
             background: radial-gradient(ellipse at 20% 50%, rgba(59,130,246,0.12) 0%, transparent 60%),
-                        radial-gradient(ellipse at 80% 20%, rgba(139,92,246,0.1) 0%, transparent 50%);
+                        radial-gradient(ellipse at 80% 20%, rgba(6,182,212,0.12) 0%, transparent 50%);
         }
         .brand-grid {
             position: absolute; inset: 0; opacity: 0.03;
@@ -40,31 +39,30 @@
                               linear-gradient(90deg, rgba(255,255,255,.4) 1px, transparent 1px);
             background-size: 40px 40px;
         }
-        .brand-content { position: relative; z-index: 1; max-width: 440px; }
+        .brand-content { position: relative; z-index: 1; max-width: 520px; }
         .brand-logo {
             display: flex; align-items: center; gap: 14px;
-            margin-bottom: 48px;
+            margin-bottom: 42px;
         }
         .brand-icon {
-            width: 48px; height: 48px; border-radius: 14px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            width: 50px; height: 50px; border-radius: 14px;
+            background: linear-gradient(135deg, #3b82f6, #06b6d4);
             display: flex; align-items: center; justify-content: center;
             font-size: 20px; color: #fff;
-            box-shadow: 0 8px 24px rgba(59,130,246,0.35);
+            box-shadow: 0 10px 26px rgba(59,130,246,0.35);
         }
         .brand-name { font-size: 20px; font-weight: 700; color: #e2e8f0; }
         .brand-name span { color: #3b82f6; }
         .brand-headline {
-            font-size: 36px; font-weight: 800; line-height: 1.2;
+            font-size: 38px; font-weight: 800; line-height: 1.15;
             color: #f1f5f9; margin-bottom: 16px;
-            letter-spacing: -0.5px;
+            letter-spacing: -0.6px;
         }
         .brand-headline span {
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            background: linear-gradient(135deg, #3b82f6, #06b6d4);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
-        .brand-sub { color: #64748b; font-size: 15px; line-height: 1.7; margin-bottom: 40px; }
-
+        .brand-sub { color: #64748b; font-size: 15px; line-height: 1.8; margin-bottom: 34px; }
         .feature-list { display: flex; flex-direction: column; gap: 12px; }
         .feature-item {
             display: flex; align-items: center; gap: 12px;
@@ -77,18 +75,50 @@
             font-size: 12px; flex-shrink: 0;
         }
 
-        /* Right form panel */
         .form-panel {
-            width: 460px; flex-shrink: 0;
+            width: 500px; flex-shrink: 0;
             display: flex; flex-direction: column;
             justify-content: center; align-items: center;
-            padding: 48px 48px;
+            padding: 48px;
             background: #0f172a;
         }
-        .form-card { width: 100%; max-width: 360px; }
-        .form-header { margin-bottom: 32px; }
-        .form-header h2 { font-size: 22px; font-weight: 700; color: #f1f5f9; margin-bottom: 6px; }
-        .form-header p { font-size: 14px; color: #64748b; }
+        .form-card { width: 100%; max-width: 390px; }
+        .form-header { margin-bottom: 28px; }
+        .form-header h2 { font-size: 24px; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+        .form-header p { font-size: 14px; color: #64748b; line-height: 1.6; }
+
+        .role-picker {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 22px;
+        }
+        .role-card {
+            border: 1px solid rgba(148,163,184,0.12);
+            background: rgba(15,23,42,0.76);
+            border-radius: 14px;
+            padding: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .role-card.active {
+            border-color: rgba(59,130,246,0.55);
+            background: rgba(59,130,246,0.14);
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.12);
+        }
+        .role-card-head {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 8px;
+        }
+        .role-card-icon {
+            width: 34px; height: 34px; border-radius: 10px;
+            background: rgba(59,130,246,0.14);
+            color: #60a5fa;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px;
+        }
+        .role-card-title { font-size: 14px; font-weight: 700; color: #f1f5f9; }
+        .role-card-copy { font-size: 12px; color: #94a3b8; line-height: 1.55; }
 
         .flash-msg {
             padding: 11px 14px; border-radius: 10px;
@@ -97,6 +127,20 @@
         }
         .flash-error  { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5; }
         .flash-success{ background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); color: #86efac; }
+
+        .portal-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #93c5fd;
+            background: rgba(59,130,246,0.12);
+            border: 1px solid rgba(59,130,246,0.18);
+            margin-bottom: 18px;
+        }
 
         .form-group { margin-bottom: 18px; }
         .form-group label { display:block; color: #cbd5e1; font-size: 13px; font-weight: 500; margin-bottom: 7px; }
@@ -112,11 +156,12 @@
         .input-wrap input:focus ~ i { color: #3b82f6; }
         .input-wrap input::placeholder { color: #334155; }
 
-        .row-spaced { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; font-size: 13px; }
-        .remember { display: flex; align-items: center; gap: 7px; color: #94a3b8; cursor: pointer; }
-        .remember input[type=checkbox] { accent-color: #3b82f6; }
-        .forgot-link { color: #3b82f6; text-decoration: none; transition: color 0.2s; }
-        .forgot-link:hover { color: #60a5fa; }
+        .helper-copy {
+            margin-bottom: 18px;
+            font-size: 12px;
+            color: #94a3b8;
+            line-height: 1.6;
+        }
 
         .btn-submit {
             width: 100%; padding: 13px;
@@ -128,40 +173,58 @@
         .btn-submit:hover { background: linear-gradient(135deg, #2563eb, #1d4ed8); transform: translateY(-1px); box-shadow: 0 8px 20px rgba(37,99,235,0.3); }
         .btn-submit:active { transform: translateY(0); }
 
-        .footer-link { text-align:center; margin-top: 24px; color: #64748b; font-size: 13px; }
+        .footer-link { text-align:center; margin-top: 24px; color: #64748b; font-size: 13px; line-height: 1.7; }
         .footer-link a { color: #3b82f6; text-decoration: none; font-weight: 500; }
         .footer-link a:hover { color: #60a5fa; }
 
-        @media (max-width: 900px) { .brand-panel { display: none; } }
-        @media (max-width: 520px) { .form-panel { width: 100%; padding: 32px 24px; } }
+        @media (max-width: 960px) { .brand-panel { display: none; } }
+        @media (max-width: 540px) {
+            .form-panel { width: 100%; padding: 32px 24px; }
+            .role-picker { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
-    <!-- Brand Side -->
     <div class="brand-panel">
         <div class="brand-grid"></div>
         <div class="brand-content">
             <div class="brand-logo">
                 <div class="brand-icon"><i class="fa-solid fa-headset"></i></div>
-                <div class="brand-name">CSR <span>Admin Panel</span></div>
+                <div class="brand-name">Support <span>Access Portal</span></div>
             </div>
-            <h1 class="brand-headline">Manage Support <span>Operations</span> Intelligently</h1>
-            <p class="brand-sub">A unified platform to monitor live chats, track tickets, and oversee your AI-powered customer support agents — all in one place.</p>
+            <h1 class="brand-headline">One Login Screen, <span>Two Roles</span></h1>
+            <p class="brand-sub">Choose whether you are logging in as a CSR or as an Admin. CSR users go to the original CSR workspace. Admin users go to the operations dashboard with live charts, chat history, and CSR controls.</p>
             <div class="feature-list">
-                <div class="feature-item"><i class="fa-solid fa-bolt"></i> Real-time conversation monitoring</div>
-                <div class="feature-item"><i class="fa-solid fa-robot"></i> AI-assisted response management</div>
-                <div class="feature-item"><i class="fa-solid fa-chart-line"></i> Live analytics &amp; CSAT tracking</div>
-                <div class="feature-item"><i class="fa-solid fa-shield-halved"></i> Secure, session-based access</div>
+                <div class="feature-item"><i class="fa-solid fa-user-check"></i> CSR login goes directly to the original CSR page</div>
+                <div class="feature-item"><i class="fa-solid fa-user-shield"></i> Admin login opens the control dashboard</div>
+                <div class="feature-item"><i class="fa-solid fa-database"></i> Live stats come from the database and refresh automatically</div>
+                <div class="feature-item"><i class="fa-solid fa-users-gear"></i> CSR accounts are created only by admins inside the dashboard</div>
             </div>
         </div>
     </div>
 
-    <!-- Form Side -->
     <div class="form-panel">
         <div class="form-card">
             <div class="form-header">
-                <h2>Welcome back</h2>
-                <p>Sign in to your CSR Admin account</p>
+                <h2>Choose your login</h2>
+                <p>Pick your role below, then sign in from this same page.</p>
+            </div>
+
+            <div class="role-picker">
+                <button class="role-card {{ 'active' if auth_role == 'admin' else '' }}" type="button" data-role-card="admin">
+                    <div class="role-card-head">
+                        <div class="role-card-icon"><i class="fa-solid fa-user-shield"></i></div>
+                        <div class="role-card-title">Login as Admin</div>
+                    </div>
+                    <div class="role-card-copy">Access the admin dashboard, live charts, CSR management, and stored chat records.</div>
+                </button>
+                <button class="role-card {{ 'active' if auth_role == 'csr' else '' }}" type="button" data-role-card="csr">
+                    <div class="role-card-head">
+                        <div class="role-card-icon"><i class="fa-solid fa-user-headset"></i></div>
+                        <div class="role-card-title">Login as CSR</div>
+                    </div>
+                    <div class="role-card-copy">Open your assigned chats, reply to customers, and resolve support handoffs.</div>
+                </button>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -173,7 +236,21 @@
                 {% endfor %}
             {% endwith %}
 
+            <div class="portal-pill" id="portal-pill">
+                <i class="fa-solid {{ 'fa-user-shield' if auth_role == 'admin' else 'fa-user-headset' }}"></i>
+                <span>{{ 'Administrator Portal' if auth_role == 'admin' else 'CSR Portal' }}</span>
+            </div>
+
+            <div class="helper-copy" id="helper-copy">
+                {% if auth_role == 'admin' %}
+                Use an admin account stored in the separate admin database table. CSR logins will not work in the admin portal.
+                {% else %}
+                Use a CSR account created by an administrator. CSR self-registration is disabled.
+                {% endif %}
+            </div>
+
             <form method="POST" action="/login" id="login-form">
+                <input type="hidden" name="role" id="role-input" value="{{ auth_role }}">
                 <div class="form-group">
                     <label for="email">Email Address</label>
                     <div class="input-wrap">
@@ -188,19 +265,41 @@
                         <i class="fa-solid fa-lock"></i>
                     </div>
                 </div>
-                <div class="row-spaced">
-                    <label class="remember"><input type="checkbox"> Remember me</label>
-                    <a href="#" class="forgot-link">Forgot password?</a>
-                </div>
                 <button type="submit" class="btn-submit" id="btn-login">
                     <i class="fa-solid fa-arrow-right-to-bracket" style="margin-right:7px"></i>Sign In
                 </button>
             </form>
 
             <div class="footer-link">
-                Don't have an account? <a href="/signup">Create one</a>
+                Need an admin account? <a href="{{ url_for('admin_signup') }}">Register admin</a><br>
+                CSR accounts are created by admins from the admin dashboard. There is no public CSR registration page.
             </div>
         </div>
     </div>
+
+    <script>
+        const roleInput = document.getElementById('role-input');
+        const portalPill = document.getElementById('portal-pill');
+        const helperCopy = document.getElementById('helper-copy');
+        const roleCards = document.querySelectorAll('[data-role-card]');
+
+        function applyRole(role) {
+            roleInput.value = role;
+            roleCards.forEach((card) => {
+                card.classList.toggle('active', card.dataset.roleCard === role);
+            });
+            if (role === 'admin') {
+                portalPill.innerHTML = '<i class="fa-solid fa-user-shield"></i><span>Administrator Portal</span>';
+                helperCopy.textContent = 'Use an admin account stored in the separate admin database table. CSR logins will not work in the admin portal.';
+            } else {
+                portalPill.innerHTML = '<i class="fa-solid fa-user-headset"></i><span>CSR Portal</span>';
+                helperCopy.textContent = 'Use a CSR account created by an administrator. CSR self-registration is disabled.';
+            }
+        }
+
+        roleCards.forEach((card) => {
+            card.addEventListener('click', () => applyRole(card.dataset.roleCard));
+        });
+    </script>
 </body>
 </html>
