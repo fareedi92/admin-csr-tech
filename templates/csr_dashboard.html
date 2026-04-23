@@ -687,7 +687,7 @@
         <header class="topbar">
             <div class="title-wrap">
                 <h1>CSR Workspace</h1>
-                <p>All chats are visible. Only chats assigned to you can be opened and replied to.</p>
+                <p>All chats are visible to every CSR. Click any waiting chat to claim it &mdash; claimed chats become read-only for the rest of the team.</p>
             </div>
             <div class="top-actions">
                 <div class="pill" id="relay-pill">
@@ -734,7 +734,7 @@
                     </button>
                 </div>
                 <div class="panel-copy">
-                    QSTP widget handoffs come in automatically through the backend. Actionable chats land under <strong>My Chats</strong>, <strong>Other CSR Chats</strong>, or <strong>Waiting Queue</strong>. Resolved chats move to <strong>Resolved History</strong> so they do not block the active response flow.
+                    Incoming QSTP handoffs arrive in the <strong>Waiting Queue</strong>. Click any queued chat to <strong>claim it for yourself</strong> &mdash; it will move to <strong>My Chats</strong>. Chats claimed by another CSR appear under <strong>Other CSR Chats</strong> and open as a read-only transcript.
                 </div>
                 <div class="chat-list" id="chat-list">
                     <div class="tiny-note">Loading chats...</div>
@@ -752,7 +752,7 @@
                 <div class="workspace-top">
                     <div>
                         <div class="detail-title" id="detail-title">Select a chat</div>
-                        <div class="detail-subtitle" id="detail-subtitle">Assigned chats will open on the right. Locked chats stay visible in the list for awareness only.</div>
+                        <div class="detail-subtitle" id="detail-subtitle">Click a waiting chat to claim it, or open an in-progress chat to review the live transcript.</div>
                     </div>
                     <div class="detail-actions" id="detail-actions"></div>
                 </div>
@@ -760,7 +760,7 @@
                     <div class="empty-state">
                         <i class="fa-solid fa-comments"></i>
                         <h2>No chat selected</h2>
-                        <p>Pick one of your assigned chats from the left side. If a chat is assigned to another CSR, it will stay locked here so ownership remains clear.</p>
+                        <p>Pick any chat from the left. Queued chats get claimed for you automatically when opened. Chats already claimed by another CSR open as a read-only transcript so you can stay in the loop.</p>
                     </div>
                 </div>
             </main>
@@ -909,18 +909,32 @@
 
             const renderChatCard = (chat) => {
                 const owner = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : 'Waiting queue';
-                const accessText = !chat.can_open ? 'Locked' : (chat.can_reply ? 'Open' : 'Read only');
                 const bucket = chat.ownership_bucket || (chat.is_mine ? 'mine' : (chat.assigned_csr_id ? 'other' : 'queued'));
                 const assignmentLabel = bucket === 'mine'
-                    ? 'Assigned to you'
-                    : (bucket === 'other' ? `Assigned to ${owner}` : (bucket === 'queued' ? 'Waiting for assignment' : 'Resolved'));
+                    ? 'Claimed by you'
+                    : (bucket === 'other' ? `Claimed by ${owner}` : (bucket === 'queued' ? 'Unclaimed \u2014 click to take' : 'Resolved'));
                 const ownerNote = bucket === 'mine'
-                    ? 'Only you can open and reply to this chat.'
-                    : (bucket === 'other' ? `${owner} owns this chat right now.` : (bucket === 'queued' ? 'No CSR has been assigned yet.' : `Resolved chat${chat.assigned_csr ? ` handled by ${owner}` : ''}.`));
-                const accessClass = !chat.can_open ? 'locked' : (chat.can_reply ? 'mine' : 'resolved');
+                    ? 'You own this chat \u2014 you are the only one who can reply or resolve it.'
+                    : (bucket === 'other' ? `${owner} is handling this chat. You can open it in read-only mode.` : (bucket === 'queued' ? 'No CSR has picked this up yet. Click to claim and start replying.' : `Resolved chat${chat.assigned_csr ? ` handled by ${owner}` : ''}.`));
+
+                let accessText = 'View';
+                let accessClass = 'resolved';
+                if (bucket === 'mine') {
+                    accessText = 'Open';
+                    accessClass = 'mine';
+                } else if (bucket === 'queued') {
+                    accessText = 'Claim \u00B7 Open';
+                    accessClass = 'mine';
+                } else if (bucket === 'other') {
+                    accessText = 'Read only';
+                    accessClass = 'locked';
+                } else {
+                    accessText = 'Read only';
+                    accessClass = 'resolved';
+                }
 
                 return `
-                    <article class="chat-card ${state.selectedChatId === chat.id ? 'active' : ''}" data-chat-id="${chat.id}">
+                    <article class="chat-card ${state.selectedChatId === chat.id ? 'active' : ''}" data-chat-id="${chat.id}" data-chat-bucket="${bucket}">
                         <div class="chat-card-top">
                             <div class="chat-name">${escapeHtml(chat.customer_name || chat.visitor_id)}</div>
                             <div class="chat-time">${escapeHtml(formatRelative(chat.last_activity_at))}</div>
@@ -957,13 +971,41 @@
 
             container.querySelectorAll('.chat-card').forEach((card) => {
                 card.addEventListener('click', () => {
-                    state.selectedChatId = Number(card.dataset.chatId);
-                    state.selectedMessages = [];
-                    renderChatList();
-                    renderWorkspace();
-                    loadSelectedMessages().catch((error) => showBanner(error.message, 'error'));
+                    const chatId = Number(card.dataset.chatId);
+                    const bucket = card.dataset.chatBucket || '';
+                    selectChat(chatId, bucket).catch((error) => showBanner(error.message, 'error'));
                 });
             });
+        }
+
+        async function selectChat(chatId, bucket) {
+            state.selectedChatId = chatId;
+            state.selectedMessages = [];
+            renderChatList();
+            renderWorkspace();
+
+            // Queued chats are auto-claimed on click so the clicking CSR
+            // becomes the owner and everyone else sees them read-only.
+            if (bucket === 'queued') {
+                try {
+                    const payload = await requestJson(`/api/chats/${chatId}/claim`, {
+                        method: 'POST',
+                        body: JSON.stringify({})
+                    });
+                    state.selectedMessages = payload.messages || [];
+                    await refreshDashboard(false);
+                    renderWorkspace();
+                    showBanner('Chat claimed. You are now the assigned CSR.', 'success');
+                    return;
+                } catch (error) {
+                    // Someone else beat us to the claim. Fall through and
+                    // open the transcript in read-only mode.
+                    showBanner(error.message || 'Chat was just claimed by another CSR.', 'error');
+                    await refreshDashboard(false);
+                }
+            }
+
+            await loadSelectedMessages();
         }
 
         function renderLoadList() {
@@ -992,88 +1034,15 @@
 
         function renderEmptyWorkspace() {
             document.getElementById('detail-title').textContent = 'Select a chat';
-            document.getElementById('detail-subtitle').textContent = 'Assigned chats will open on the right. Locked chats stay visible in the list for awareness only.';
+            document.getElementById('detail-subtitle').textContent = 'Click a waiting chat to claim it, or open an in-progress chat to review the live transcript.';
             document.getElementById('detail-actions').innerHTML = '';
             document.getElementById('workspace-body').innerHTML = `
                 <div class="empty-state">
                     <i class="fa-solid fa-comments"></i>
                     <h2>No chat selected</h2>
-                    <p>Pick one of your assigned chats from the left side. If a chat is assigned to another CSR, it will stay locked here so ownership remains clear.</p>
+                    <p>Pick any chat from the left. Queued chats get claimed for you automatically when opened. Chats already claimed by another CSR open as a read-only transcript so you can stay in the loop.</p>
                 </div>
             `;
-        }
-
-        function renderLockedWorkspace(chat) {
-            const owner = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : 'Waiting queue';
-            document.getElementById('detail-title').textContent = chat.customer_name || chat.visitor_id;
-            document.getElementById('detail-subtitle').textContent = 'This chat is visible for traffic awareness, but only the assigned CSR can open it.';
-            document.getElementById('detail-actions').innerHTML = '';
-
-            const adminAssign = currentUser.role === 'admin'
-                ? `
-                    <form id="admin-assign-form" class="reply-form" style="margin-top:18px;">
-                        <label class="tiny-note" for="assign-csr">Admin reassignment</label>
-                        <select class="select" id="assign-csr" name="csr_id">
-                            <option value="auto">Auto-balance</option>
-                            ${state.dashboard.csrs.map((csr) => `
-                                <option value="${csr.id}" ${chat.assigned_csr_id === csr.id ? 'selected' : ''}>
-                                    ${escapeHtml(csr.display_name || csr.email)} (${csr.active_chat_count}/${csr.max_concurrent_chats})
-                                </option>
-                            `).join('')}
-                        </select>
-                        <button class="btn" type="submit">Update Assignment</button>
-                    </form>
-                `
-                : '';
-
-            document.getElementById('workspace-body').innerHTML = `
-                <div class="locked-state">
-                    <i class="fa-solid fa-lock"></i>
-                    <h2>Chat locked for you</h2>
-                    <p>${escapeHtml(chat.lock_reason || 'This chat is assigned to another CSR.')}</p>
-                    <div class="locked-meta">
-                        <div class="meta-card">
-                            <div class="meta-label">Assigned CSR</div>
-                            <div class="meta-value">${escapeHtml(owner)}</div>
-                        </div>
-                        <div class="meta-card">
-                            <div class="meta-label">Last Activity</div>
-                            <div class="meta-value">${escapeHtml(formatDateTime(chat.last_activity_at))}</div>
-                        </div>
-                        <div class="meta-card">
-                            <div class="meta-label">Latest Customer Message</div>
-                            <div class="meta-value">${escapeHtml(chat.last_customer_message || 'No customer message captured yet.')}</div>
-                        </div>
-                        <div class="meta-card">
-                            <div class="meta-label">Reason</div>
-                            <div class="meta-value">${escapeHtml(chat.reverted_reason || 'AI escalated this chat to human support.')}</div>
-                        </div>
-                    </div>
-                    ${adminAssign}
-                </div>
-            `;
-
-            const assignForm = document.getElementById('admin-assign-form');
-            if (assignForm) {
-                assignForm.addEventListener('submit', async (event) => {
-                    event.preventDefault();
-                    const csrId = assignForm.querySelector('select[name="csr_id"]').value;
-                    try {
-                        const response = await requestJson(`/api/chats/${chat.id}/assign`, {
-                            method: 'POST',
-                            body: JSON.stringify({ csr_id: csrId })
-                        });
-                        state.dashboard = response.dashboard;
-                        renderSummary();
-                        renderChatList();
-                        renderLoadList();
-                        renderWorkspace();
-                        showBanner('Chat assignment updated.', 'success');
-                    } catch (error) {
-                        showBanner(error.message, 'error');
-                    }
-                });
-            }
         }
 
         function renderMessages(messages) {
@@ -1091,8 +1060,14 @@
         }
 
         function renderOpenWorkspace(chat) {
+            const ownerLabel = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : null;
+            let ownershipNote = 'unclaimed';
+            if (chat.is_mine) ownershipNote = 'claimed by you';
+            else if (chat.is_resolved) ownershipNote = 'resolved';
+            else if (ownerLabel) ownershipNote = `read-only · handled by ${ownerLabel}`;
+
             document.getElementById('detail-title').textContent = chat.customer_name || chat.visitor_id;
-            document.getElementById('detail-subtitle').textContent = `${chat.visitor_id} · ${chat.can_reply ? 'assigned to you' : 'read-only transcript'} · ${chat.message_count} messages`;
+            document.getElementById('detail-subtitle').textContent = `${chat.visitor_id} · ${ownershipNote} · ${chat.message_count} messages`;
 
             const adminControls = currentUser.role === 'admin'
                 ? `
@@ -1115,6 +1090,17 @@
                 ${chat.can_resolve ? '<button class="btn danger" id="resolve-btn" type="button">Resolve Chat</button>' : ''}
             `;
 
+            let readOnlyNote = '';
+            if (!chat.can_reply) {
+                if (chat.is_resolved) {
+                    readOnlyNote = `This chat is already resolved. The transcript is read-only${ownerLabel ? ` and was handled by ${escapeHtml(ownerLabel)}` : ''}.`;
+                } else if (ownerLabel) {
+                    readOnlyNote = `This chat has been claimed by <strong>${escapeHtml(ownerLabel)}</strong>. You can read the live transcript here, but only ${escapeHtml(ownerLabel)} can reply or resolve it.`;
+                } else {
+                    readOnlyNote = 'This chat is unclaimed. Click the card in the list to claim it and start replying.';
+                }
+            }
+
             document.getElementById('workspace-body').innerHTML = `
                 <div class="chat-window">
                     <div class="messages" id="messages-panel">${renderMessages(state.selectedMessages)}</div>
@@ -1131,7 +1117,7 @@
                     </div>
                     ` : `
                     <div class="workspace-note">
-                        This chat is already ${escapeHtml(chat.status.replace('_', ' '))}. You can review the transcript here, but only active chats assigned to you can be replied to or resolved.
+                        ${readOnlyNote}
                     </div>
                     `}
                 </div>
@@ -1238,17 +1224,12 @@
                 return;
             }
 
-            if (!chat.can_open) {
-                renderLockedWorkspace(chat);
-                return;
-            }
-
             renderOpenWorkspace(chat);
         }
 
         async function loadSelectedMessages() {
             const chat = getSelectedChat();
-            if (!chat || !chat.can_open) {
+            if (!chat) {
                 state.selectedMessages = [];
                 renderWorkspace();
                 return;
@@ -1265,9 +1246,11 @@
             const payload = await requestJson('/api/dashboard-data', { method: 'GET' });
             state.dashboard = payload;
 
+            // Only auto-select chats already owned by this CSR so a refresh
+            // never silently lands on someone else's transcript.
             if (!state.selectedChatId) {
-                const firstActionable = payload.chats.find((chat) => chat.can_reply) || payload.chats.find((chat) => chat.can_open);
-                if (firstActionable) state.selectedChatId = firstActionable.id;
+                const firstMine = payload.chats.find((chat) => chat.can_reply);
+                if (firstMine) state.selectedChatId = firstMine.id;
             }
 
             if (state.selectedChatId && !payload.chats.some((chat) => chat.id === state.selectedChatId)) {
@@ -1283,7 +1266,7 @@
                 captureActiveDraft();
             }
 
-            if (!preserveComposer && loadMessagesAfter && getSelectedChat() && getSelectedChat().can_open) {
+            if (!preserveComposer && loadMessagesAfter && getSelectedChat()) {
                 await loadSelectedMessages();
             }
         }

@@ -863,7 +863,11 @@
         }
     </style>
 </head>
-<body data-admin-name="{{ (user.display_name or user.email) if user else 'Admin' }}">
+<body
+    data-admin-name="{{ (user.display_name or user.email) if user else 'Admin' }}"
+    data-admin-page="{{ admin_page or 'overview' }}"
+    data-dashboard-enabled="{{ 'true' if dashboard_enabled else 'false' }}"
+>
     <div class="app-shell">
         <aside class="sidebar">
             <div class="brand">
@@ -876,12 +880,12 @@
 
             <div class="nav-group">
                 <div class="nav-label">Sections</div>
-                <a class="nav-btn active" href="#overview-section" data-target="overview-section"><i class="fa-solid fa-chart-pie"></i><span>Overview</span></a>
-                <a class="nav-btn" href="#credentials-section" data-target="credentials-section"><i class="fa-solid fa-key"></i><span>Credentials</span></a>
-                <a class="nav-btn" href="#knowledge-base-section" data-target="knowledge-base-section"><i class="fa-solid fa-book-open-reader"></i><span>Knowledge Base</span></a>
-                <a class="nav-btn" href="#team-section" data-target="team-section"><i class="fa-solid fa-users-gear"></i><span>CSR Management</span></a>
-                <a class="nav-btn" href="#chat-section" data-target="chat-section"><i class="fa-solid fa-comments"></i><span>Chat Ledger</span></a>
-                <a class="nav-btn" href="#activity-section" data-target="activity-section"><i class="fa-solid fa-clock-rotate-left"></i><span>Activity Timeline</span></a>
+                <a class="nav-btn {% if admin_page == 'overview' %}active{% endif %}" href="{{ url_for('admin_overview') }}"><i class="fa-solid fa-chart-pie"></i><span>Overview</span></a>
+                <a class="nav-btn {% if admin_page == 'credentials' %}active{% endif %}" href="{{ url_for('admin_credentials') }}"><i class="fa-solid fa-key"></i><span>Credentials</span></a>
+                <a class="nav-btn {% if admin_page == 'knowledge-base' %}active{% endif %}" href="{{ url_for('admin_knowledge_base') }}"><i class="fa-solid fa-book-open-reader"></i><span>Knowledge Base</span></a>
+                <a class="nav-btn {% if admin_page == 'team' %}active{% endif %}" href="{{ url_for('admin_team') }}"><i class="fa-solid fa-users-gear"></i><span>CSR Management</span></a>
+                <a class="nav-btn {% if admin_page == 'chats' %}active{% endif %}" href="{{ url_for('admin_chats') }}"><i class="fa-solid fa-comments"></i><span>Chat Ledger</span></a>
+                <a class="nav-btn {% if admin_page == 'activity' %}active{% endif %}" href="{{ url_for('admin_activity') }}"><i class="fa-solid fa-clock-rotate-left"></i><span>Activity Timeline</span></a>
             </div>
 
             <div class="nav-group">
@@ -902,8 +906,8 @@
         <main class="content">
             <header class="topbar">
                 <div>
-                    <h1>Admin Operations Dashboard</h1>
-                    <p>Complete control of CSR registration, online presence, chat ownership, resolution tracking, and transcript history.</p>
+                    <h1>{{ admin_page_title or 'Admin Operations Dashboard' }}</h1>
+                    <p>{{ admin_page_copy or 'Complete control of CSR registration, online presence, chat ownership, resolution tracking, and transcript history.' }}</p>
                 </div>
                 <div class="top-actions">
                     <a class="btn danger topbar-link" href="/logout"><i class="fa-solid fa-right-from-bracket"></i><span>Admin Logout</span></a>
@@ -913,6 +917,7 @@
             <div class="workspace">
                 <div class="flash-banner" id="flash-banner"></div>
 
+                {% if admin_page == 'overview' %}
                 <section class="section" id="overview-section">
                     <div class="section-head">
                         <div>
@@ -1008,7 +1013,7 @@
                         </div>
                     </div>
                 </section>
-
+                {% elif admin_page == 'credentials' %}
                 <section class="section" id="credentials-section">
                     <div class="section-head">
                         <div>
@@ -1123,7 +1128,7 @@
                         </section>
                     </div>
                 </section>
-
+                {% elif admin_page == 'knowledge-base' %}
                 <section class="section" id="knowledge-base-section">
                     <div class="section-head">
                         <div>
@@ -1152,7 +1157,7 @@
                         </div>
                     </section>
                 </section>
-
+                {% elif admin_page == 'team' %}
                 <section class="section" id="team-section">
                     <div class="section-head">
                         <div>
@@ -1229,7 +1234,7 @@
                         </section>
                     </div>
                 </section>
-
+                {% elif admin_page == 'chats' %}
                 <section class="section" id="chat-section">
                     <div class="section-head">
                         <div>
@@ -1298,7 +1303,7 @@
                         </section>
                     </div>
                 </section>
-
+                {% elif admin_page == 'activity' %}
                 <section class="section" id="activity-section">
                     <div class="section-head">
                         <div>
@@ -1319,6 +1324,7 @@
                         </div>
                     </section>
                 </section>
+                {% endif %}
             </div>
         </main>
     </div>
@@ -1335,6 +1341,11 @@
         const flashBanner = document.getElementById('flash-banner');
         let flashTimer = null;
         let refreshInterval = null;
+        const currentPage = document.body.dataset.adminPage || 'overview';
+        const dashboardEnabled = document.body.dataset.dashboardEnabled === 'true';
+        const dashboardApiUrl = dashboardEnabled
+            ? `/api/dashboard-data?page=${encodeURIComponent(currentPage)}`
+            : null;
 
         function escapeHtml(value) {
             return String(value || '')
@@ -1959,7 +1970,7 @@
                             })
                         });
                         state.dashboard = response.dashboard;
-                        renderDashboard();
+                        renderCurrentPage();
                         showBanner('CSR settings updated.', 'success');
                     } catch (error) {
                         showBanner(error.message, 'error');
@@ -2025,7 +2036,7 @@
                             state.selectedEvents = [];
                         }
                         state.dashboard = response.dashboard;
-                        renderDashboard();
+                        renderCurrentPage();
                         showBanner(response.message || 'Chat deleted.', 'success');
                     } catch (error) {
                         showBanner(error.message, 'error');
@@ -2149,7 +2160,7 @@
                     state.selectedMessages = [];
                     state.selectedEvents = [];
                     state.dashboard = response.dashboard;
-                    renderDashboard();
+                    renderCurrentPage();
                     showBanner(response.message || 'Chat deleted.', 'success');
                 } catch (error) {
                     showBanner(error.message, 'error');
@@ -2183,15 +2194,32 @@
             `).join('');
         }
 
-        function renderDashboard(forceIntegrationSync = false) {
-            renderSummary();
-            renderIntegrationSettings(forceIntegrationSync);
-            renderCharts();
-            renderAvailableCsrList();
-            renderCsrTable();
-            renderChatTable();
-            renderChatDetail();
-            renderActivity();
+        function renderCurrentPage(forceIntegrationSync = false) {
+            if (!state.dashboard) {
+                return;
+            }
+            if (currentPage === 'overview') {
+                renderSummary();
+                renderCharts();
+                return;
+            }
+            if (currentPage === 'credentials') {
+                renderIntegrationSettings(forceIntegrationSync);
+                return;
+            }
+            if (currentPage === 'team') {
+                renderAvailableCsrList();
+                renderCsrTable();
+                return;
+            }
+            if (currentPage === 'chats') {
+                renderChatTable();
+                renderChatDetail();
+                return;
+            }
+            if (currentPage === 'activity') {
+                renderActivity();
+            }
         }
 
         async function selectChat(chatId) {
@@ -2205,9 +2233,13 @@
         }
 
         async function refreshDashboard(reloadSelectedChat = true) {
-            const payload = await requestJson('/api/dashboard-data', { method: 'GET' });
+            if (!dashboardEnabled) {
+                return;
+            }
+            const payload = await requestJson(dashboardApiUrl, { method: 'GET' });
             state.dashboard = payload;
-            if (reloadSelectedChat && state.selectedChatId && state.dashboard.chats.some((chat) => chat.id === state.selectedChatId)) {
+            const chats = state.dashboard.chats || [];
+            if (currentPage === 'chats' && reloadSelectedChat && state.selectedChatId && chats.some((chat) => chat.id === state.selectedChatId)) {
                 try {
                     const detailPayload = await requestJson(`/api/chats/${state.selectedChatId}/messages`, { method: 'GET' });
                     state.selectedMessages = detailPayload.messages || [];
@@ -2217,70 +2249,83 @@
                     state.selectedMessages = [];
                     state.selectedEvents = [];
                 }
-            } else if (!state.selectedChatId || !state.dashboard.chats.some((chat) => chat.id === state.selectedChatId)) {
+            } else if (currentPage === 'chats' && (!state.selectedChatId || !chats.some((chat) => chat.id === state.selectedChatId))) {
                 state.selectedChatId = null;
                 state.selectedMessages = [];
                 state.selectedEvents = [];
             }
-            renderDashboard();
+            renderCurrentPage();
         }
 
-        document.getElementById('create-csr-form').addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const form = event.currentTarget;
-            const formData = new FormData(form);
-            try {
-                const response = await requestJson('/api/admin/csrs/create', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        display_name: formData.get('display_name'),
-                        email: formData.get('email'),
-                        password: formData.get('password'),
-                        max_concurrent_chats: formData.get('max_concurrent_chats'),
-                        is_available: formData.get('is_available') === 'on'
-                    })
-                });
-                form.reset();
-                form.querySelector('input[name="is_available"]').checked = true;
-                form.querySelector('input[name="max_concurrent_chats"]').value = 4;
-                state.dashboard = response.dashboard;
-                renderDashboard();
-                showBanner(response.message || 'CSR account created.', 'success');
-            } catch (error) {
-                showBanner(error.message, 'error');
-            }
-        });
+        const createCsrForm = document.getElementById('create-csr-form');
+        if (createCsrForm) {
+            createCsrForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const form = event.currentTarget;
+                const formData = new FormData(form);
+                try {
+                    const response = await requestJson('/api/admin/csrs/create', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            display_name: formData.get('display_name'),
+                            email: formData.get('email'),
+                            password: formData.get('password'),
+                            max_concurrent_chats: formData.get('max_concurrent_chats'),
+                            is_available: formData.get('is_available') === 'on'
+                        })
+                    });
+                    form.reset();
+                    form.querySelector('input[name="is_available"]').checked = true;
+                    form.querySelector('input[name="max_concurrent_chats"]').value = 4;
+                    state.dashboard = response.dashboard;
+                    renderCurrentPage();
+                    showBanner(response.message || 'CSR account created.', 'success');
+                } catch (error) {
+                    showBanner(error.message, 'error');
+                }
+            });
+        }
 
-        document.getElementById('integration-settings-form').addEventListener('input', () => {
-            state.integrationDraftDirty = true;
-            renderIntegrationPreview(readIntegrationForm());
-        });
+        const integrationSettingsForm = document.getElementById('integration-settings-form');
+        if (integrationSettingsForm) {
+            integrationSettingsForm.addEventListener('input', () => {
+                state.integrationDraftDirty = true;
+                renderIntegrationPreview(readIntegrationForm());
+            });
 
-        document.getElementById('integration-reset-btn').addEventListener('click', () => {
-            state.integrationDraftDirty = false;
-            renderIntegrationSettings(true);
-            showBanner('Reloaded saved integration settings.', 'success');
-        });
+            integrationSettingsForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const settings = readIntegrationForm();
+                try {
+                    const response = await requestJson('/api/admin/integration-settings', {
+                        method: 'POST',
+                        body: JSON.stringify(settings)
+                    });
+                    state.dashboard = response.dashboard;
+                    state.integrationDraftDirty = false;
+                    renderCurrentPage(true);
+                    showBanner(response.message || 'Integration settings saved.', 'success');
+                } catch (error) {
+                    showBanner(error.message, 'error');
+                }
+            });
+        }
 
-        document.getElementById('integration-settings-form').addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const settings = readIntegrationForm();
-            try {
-                const response = await requestJson('/api/admin/integration-settings', {
-                    method: 'POST',
-                    body: JSON.stringify(settings)
-                });
-                state.dashboard = response.dashboard;
+        const integrationResetBtn = document.getElementById('integration-reset-btn');
+        if (integrationResetBtn) {
+            integrationResetBtn.addEventListener('click', () => {
                 state.integrationDraftDirty = false;
-                renderDashboard(true);
-                showBanner(response.message || 'Integration settings saved.', 'success');
-            } catch (error) {
-                showBanner(error.message, 'error');
-            }
-        });
+                renderIntegrationSettings(true);
+                showBanner('Reloaded saved integration settings.', 'success');
+            });
+        }
 
         document.getElementById('refresh-btn').addEventListener('click', async () => {
             try {
+                if (!dashboardEnabled) {
+                    window.location.reload();
+                    return;
+                }
                 await refreshDashboard(true);
                 showBanner('Dashboard refreshed.', 'success');
             } catch (error) {
@@ -2294,47 +2339,31 @@
                     method: 'POST',
                     body: JSON.stringify({})
                 });
-                state.dashboard = response.dashboard;
-                renderDashboard();
+                if (response.dashboard && dashboardEnabled) {
+                    state.dashboard = response.dashboard;
+                    renderCurrentPage();
+                }
                 showBanner(`Rebalanced ${response.assigned_count || 0} queued chats.`, 'success');
             } catch (error) {
                 showBanner(error.message, 'error');
             }
         });
 
-        function activateSection(targetId, smooth = true) {
-            const section = document.getElementById(targetId);
-            if (!section) return;
-            document.querySelectorAll('.nav-btn').forEach((item) => item.classList.toggle('active', item.dataset.target === targetId));
-            section.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
-            if (window.location.hash !== `#${targetId}`) {
-                history.replaceState(null, '', `#${targetId}`);
-            }
-        }
-
-        document.querySelectorAll('.nav-btn[data-target]').forEach((button) => {
-            button.addEventListener('click', (event) => {
-                event.preventDefault();
-                activateSection(button.dataset.target, true);
-            });
-        });
-
-        const initialTarget = window.location.hash ? window.location.hash.slice(1) : 'overview-section';
-        window.setTimeout(() => activateSection(initialTarget, false), 0);
-
         window.addEventListener('resize', () => {
-            if (state.dashboard) {
+            if (state.dashboard && currentPage === 'overview') {
                 renderCharts();
             }
         });
 
-        refreshDashboard(true).catch((error) => {
-            showBanner(error.message, 'error');
-        });
+        if (dashboardEnabled) {
+            refreshDashboard(true).catch((error) => {
+                showBanner(error.message, 'error');
+            });
 
-        refreshInterval = window.setInterval(() => {
-            refreshDashboard(Boolean(state.selectedChatId)).catch(() => {});
-        }, 8000);
+            refreshInterval = window.setInterval(() => {
+                refreshDashboard(currentPage === 'chats' && Boolean(state.selectedChatId)).catch(() => {});
+            }, 8000);
+        }
     </script>
 </body>
 </html>

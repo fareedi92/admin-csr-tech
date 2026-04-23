@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import and_, func, inspect, text
+from sqlalchemy import and_, func, inspect, text, update
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
@@ -785,8 +785,14 @@ def rebalance_queued_chats(actor=None):
 
 
 # ─── Chat Helpers ────────────────────────────────────────────
+# Super-CSR model: every authenticated CSR/admin can *view* every chat's
+# transcript. A chat becomes "owned" only when a CSR claims it (by clicking);
+# at that point other CSRs see it in read-only mode while the owning CSR (or
+# an admin) can reply and resolve.
+
+
 def can_user_open_chat(user, chat):
-    return bool(user and chat and (user.role == "admin" or chat.assigned_csr_id == user.id))
+    return bool(user and chat)
 
 
 def can_user_reply_to_chat(user, chat):
@@ -801,6 +807,71 @@ def can_user_reply_to_chat(user, chat):
 
 def can_user_resolve_chat(user, chat):
     return bool(user and chat and (chat.assigned_csr_id == user.id or user.role == "admin"))
+
+
+def can_user_claim_chat(user, chat):
+    if not (user and isinstance(user, User) and chat):
+        return False
+    if user.role not in ASSIGNABLE_ROLES:
+        return False
+    if chat.status in RESOLVED_CHAT_STATUSES:
+        return False
+    return chat.assigned_csr_id in (None, user.id)
+
+
+def claim_chat(chat, user):
+    """Atomically claim a queued/unassigned chat for the given CSR.
+
+    Returns (ok, error_message). The claim succeeds if the chat is not
+    resolved and is either currently unassigned or already owned by
+    the same user (idempotent click).
+    """
+    if not user or not isinstance(user, User) or user.role not in ASSIGNABLE_ROLES:
+        return False, "Only CSR users can claim chats."
+
+    if chat.status in RESOLVED_CHAT_STATUSES:
+        return False, "This chat is already resolved."
+
+    if chat.assigned_csr_id == user.id:
+        return True, None
+
+    now = utcnow()
+    new_status = "in_progress" if chat.status == "in_progress" else "assigned"
+
+    # Atomic claim: only succeeds when the row is still unassigned. This
+    # protects against two CSRs racing to click the same queued card.
+    result = db.session.execute(
+        update(ChatConversation)
+        .where(
+            ChatConversation.id == chat.id,
+            ChatConversation.assigned_csr_id.is_(None),
+        )
+        .values(
+            assigned_csr_id=user.id,
+            assigned_at=now,
+            status=new_status,
+            last_activity_at=now,
+        )
+    )
+
+    if result.rowcount == 0:
+        db.session.refresh(chat)
+        owner = chat.assigned_csr
+        owner_label = (owner.display_name or owner.email) if owner else "another CSR"
+        return False, f"This chat has already been claimed by {owner_label}."
+
+    db.session.refresh(chat)
+    user.last_assigned_at = now
+    log_assignment_event(
+        chat,
+        "claimed",
+        notes=f"Chat claimed by {user.display_name or user.email}.",
+        to_csr_id=user.id,
+        acted_by_user_id=user.id,
+        acted_by_name_value=user.display_name or user.email,
+        acted_by_role_value=user.role,
+    )
+    return True, None
 
 
 def append_chat_message(chat, sender_type, content, created_at=None):
@@ -910,14 +981,27 @@ def serialize_message(message):
 
 def serialize_chat(chat, current_user):
     assigned_name = chat.assigned_csr.display_name or chat.assigned_csr.email if chat.assigned_csr else None
-    if chat.status in RESOLVED_CHAT_STATUSES:
+    is_csr_actor = isinstance(current_user, User) and getattr(current_user, "role", None) in ASSIGNABLE_ROLES
+    is_mine = bool(is_csr_actor and chat.assigned_csr_id == current_user.id)
+    is_resolved = chat.status in RESOLVED_CHAT_STATUSES
+
+    if is_resolved:
         ownership_bucket = "resolved"
-    elif isinstance(current_user, User) and chat.assigned_csr_id == current_user.id:
+    elif is_mine:
         ownership_bucket = "mine"
     elif chat.assigned_csr_id:
         ownership_bucket = "other"
     else:
         ownership_bucket = "queued"
+
+    # Read-only if the chat is owned by a different CSR, or if it is already
+    # resolved. Admins never get the read-only badge because they can always
+    # reassign; CSRs who don't own it see it as read-only transcript.
+    is_read_only_for_user = bool(
+        is_csr_actor
+        and not is_mine
+        and (chat.assigned_csr_id is not None or is_resolved)
+    )
 
     return {
         "id": chat.id,
@@ -942,12 +1026,14 @@ def serialize_chat(chat, current_user):
         "message_count": len(chat.messages),
         "ownership_bucket": ownership_bucket,
         "is_active": chat.status in ACTIVE_CHAT_STATUSES,
-        "is_resolved": chat.status in RESOLVED_CHAT_STATUSES,
+        "is_resolved": is_resolved,
         "can_open": can_user_open_chat(current_user, chat),
         "can_reply": can_user_reply_to_chat(current_user, chat),
         "can_resolve": bool(current_user and can_user_resolve_chat(current_user, chat) and chat.status in ACTIVE_CHAT_STATUSES),
-        "is_mine": bool(isinstance(current_user, User) and chat.assigned_csr_id == current_user.id),
-        "lock_reason": None if can_user_open_chat(current_user, chat) else build_lock_reason(chat),
+        "can_claim": bool(is_csr_actor and can_user_claim_chat(current_user, chat) and chat.assigned_csr_id is None),
+        "is_mine": is_mine,
+        "is_read_only": is_read_only_for_user,
+        "lock_reason": build_lock_reason(chat) if is_read_only_for_user else None,
     }
 
 
@@ -1031,74 +1117,75 @@ def build_resolution_report(csr_users):
     }
 
 
-def build_admin_dashboard_payload(current_admin):
-    integration = serialize_integration_settings()
-    chats = (
-        ChatConversation.query.order_by(
-            ChatConversation.last_activity_at.desc(),
-            ChatConversation.reverted_at.desc(),
-        )
-        .limit(150)
-        .all()
-    )
-    online_cutoff = get_online_cutoff()
-    support_user_rows = sorted(
-        get_support_user_rows(available_only=False, include_inactive=True),
-        key=lambda row: (
-            (row[0].display_name or row[0].email).lower(),
-            row[0].id,
-        ),
-    )
-    csr_users = [serialize_support_user(user, active_chat_count) for user, active_chat_count in support_user_rows]
-    registered_csrs = User.query.filter(User.role.in_(ASSIGNABLE_ROLES)).count()
-    online_csrs = User.query.filter(
-        User.role.in_(ASSIGNABLE_ROLES),
-        User.is_active.is_(True),
-        User.last_seen_at.is_not(None),
-        User.last_seen_at >= online_cutoff,
-    ).count()
-    available_csrs = User.query.filter(
-        User.role.in_(ASSIGNABLE_ROLES),
-        User.is_active.is_(True),
-        User.is_available.is_(True),
-        User.last_seen_at.is_not(None),
-        User.last_seen_at >= online_cutoff,
-    ).count()
-    active_csrs = (
-        db.session.query(func.count(func.distinct(ChatConversation.assigned_csr_id)))
-        .filter(
-            ChatConversation.assigned_csr_id.is_not(None),
-            ChatConversation.status.in_(ACTIVE_CHAT_STATUSES),
-        )
-        .scalar()
-        or 0
-    )
-    available_csr_users = [
-        csr
-        for csr in csr_users
-        if csr["is_active"] and csr["is_available"] and csr["is_online"]
-    ]
-    recent_events = (
-        ChatAssignmentEvent.query.order_by(
-            ChatAssignmentEvent.created_at.desc(),
-            ChatAssignmentEvent.id.desc(),
-        )
-        .limit(120)
-        .all()
-    )
-    resolution_report = build_resolution_report(csr_users)
-    status_breakdown = {
-        "queued": ChatConversation.query.filter_by(status="queued").count(),
-        "assigned": ChatConversation.query.filter_by(status="assigned").count(),
-        "in_progress": ChatConversation.query.filter_by(status="in_progress").count(),
-        "resolved": ChatConversation.query.filter(ChatConversation.status.in_(RESOLVED_CHAT_STATUSES)).count(),
-    }
+ADMIN_DASHBOARD_PAGE_SCOPES = {
+    "overview": {"summary", "csr_users", "available_csr_users", "reports"},
+    "credentials": {"integration"},
+    "knowledge-base": set(),
+    "team": {"csr_users", "available_csr_users", "reports"},
+    "chats": {"chats"},
+    "activity": {"recent_activity"},
+}
 
-    return {
+
+def build_admin_dashboard_payload(current_admin, page=None):
+    scope = ADMIN_DASHBOARD_PAGE_SCOPES.get(page)
+    integration = serialize_integration_settings()
+    online_cutoff = get_online_cutoff()
+    payload = {
         "mode": "admin",
         "current_user": serialize_admin(current_admin),
-        "integration": integration,
-        "summary": {
+    }
+    include_all = scope is None
+    needs_csr_data = include_all or bool(scope & {"summary", "csr_users", "available_csr_users", "reports"})
+
+    csr_users = []
+    available_csr_users = []
+    resolution_report = {"today_total": 0, "yesterday_total": 0, "leaderboard": []}
+
+    if include_all or "integration" in scope:
+        payload["integration"] = integration
+
+    if needs_csr_data:
+        support_user_rows = sorted(
+            get_support_user_rows(available_only=False, include_inactive=True),
+            key=lambda row: (
+                (row[0].display_name or row[0].email).lower(),
+                row[0].id,
+            ),
+        )
+        csr_users = [serialize_support_user(user, active_chat_count) for user, active_chat_count in support_user_rows]
+        available_csr_users = [
+            csr
+            for csr in csr_users
+            if csr["is_active"] and csr["is_available"] and csr["is_online"]
+        ]
+        resolution_report = build_resolution_report(csr_users)
+
+    if include_all or "summary" in scope:
+        registered_csrs = User.query.filter(User.role.in_(ASSIGNABLE_ROLES)).count()
+        online_csrs = User.query.filter(
+            User.role.in_(ASSIGNABLE_ROLES),
+            User.is_active.is_(True),
+            User.last_seen_at.is_not(None),
+            User.last_seen_at >= online_cutoff,
+        ).count()
+        available_csrs = User.query.filter(
+            User.role.in_(ASSIGNABLE_ROLES),
+            User.is_active.is_(True),
+            User.is_available.is_(True),
+            User.last_seen_at.is_not(None),
+            User.last_seen_at >= online_cutoff,
+        ).count()
+        active_csrs = (
+            db.session.query(func.count(func.distinct(ChatConversation.assigned_csr_id)))
+            .filter(
+                ChatConversation.assigned_csr_id.is_not(None),
+                ChatConversation.status.in_(ACTIVE_CHAT_STATUSES),
+            )
+            .scalar()
+            or 0
+        )
+        payload["summary"] = {
             "registered_csrs": registered_csrs,
             "online_csrs": online_csrs,
             "available_csrs": available_csrs,
@@ -1111,16 +1198,49 @@ def build_admin_dashboard_payload(current_admin):
             "used_capacity": sum(csr["active_chat_count"] for csr in csr_users if csr["is_active"]),
             "resolved_today": resolution_report["today_total"],
             "resolved_yesterday": resolution_report["yesterday_total"],
-        },
-        "csr_users": csr_users,
-        "available_csr_users": available_csr_users,
-        "chats": [serialize_chat(chat, current_admin) for chat in chats],
-        "recent_activity": [serialize_assignment_event(event) for event in recent_events],
-        "reports": {
+        }
+
+    if include_all or "csr_users" in scope:
+        payload["csr_users"] = csr_users
+
+    if include_all or "available_csr_users" in scope:
+        payload["available_csr_users"] = available_csr_users
+
+    if include_all or "reports" in scope:
+        status_breakdown = {
+            "queued": ChatConversation.query.filter_by(status="queued").count(),
+            "assigned": ChatConversation.query.filter_by(status="assigned").count(),
+            "in_progress": ChatConversation.query.filter_by(status="in_progress").count(),
+            "resolved": ChatConversation.query.filter(ChatConversation.status.in_(RESOLVED_CHAT_STATUSES)).count(),
+        }
+        payload["reports"] = {
             "status_breakdown": status_breakdown,
             "resolution_leaderboard": resolution_report["leaderboard"],
-        },
-    }
+        }
+
+    if include_all or "chats" in scope:
+        chats = (
+            ChatConversation.query.order_by(
+                ChatConversation.last_activity_at.desc(),
+                ChatConversation.reverted_at.desc(),
+            )
+            .limit(150)
+            .all()
+        )
+        payload["chats"] = [serialize_chat(chat, current_admin) for chat in chats]
+
+    if include_all or "recent_activity" in scope:
+        recent_events = (
+            ChatAssignmentEvent.query.order_by(
+                ChatAssignmentEvent.created_at.desc(),
+                ChatAssignmentEvent.id.desc(),
+            )
+            .limit(120)
+            .all()
+        )
+        payload["recent_activity"] = [serialize_assignment_event(event) for event in recent_events]
+
+    return payload
 
 
 def build_csr_dashboard_payload(current_user):
@@ -1351,8 +1471,6 @@ def migrate_legacy_admins():
         legacy_admin.is_available = False
 
     db.session.commit()
-    rebalance_queued_chats()
-    db.session.commit()
 
 
 def bootstrap_users():
@@ -1396,13 +1514,81 @@ def csr_dashboard():
     return render_template("csr_dashboard.html", user=get_current_csr_user())
 
 
-@app.route("/admin/dashboard")
-@admin_required
-def admin_dashboard():
+def render_admin_dashboard_page(page, title, copy):
     return render_template(
         "admin_dashboard.html",
         user=get_current_admin(),
+        admin_page=page,
+        admin_page_title=title,
+        admin_page_copy=copy,
+        dashboard_enabled=page != "knowledge-base",
         knowledge_base_updater_url=KNOWLEDGE_BASE_UPDATER_URL,
+    )
+
+
+@app.route("/admin/dashboard")
+@admin_required
+def admin_dashboard():
+    return redirect(url_for("admin_overview"))
+
+
+@app.route("/admin/dashboard/overview")
+@admin_required
+def admin_overview():
+    return render_admin_dashboard_page(
+        "overview",
+        "Admin Operations Overview",
+        "Live metrics, CSR coverage, and resolution trends for the support team.",
+    )
+
+
+@app.route("/admin/dashboard/credentials")
+@admin_required
+def admin_credentials():
+    return render_admin_dashboard_page(
+        "credentials",
+        "Integration Credentials",
+        "Manage widget settings, embed configuration, and generated CSR preview output.",
+    )
+
+
+@app.route("/admin/dashboard/knowledge-base")
+@admin_required
+def admin_knowledge_base():
+    return render_admin_dashboard_page(
+        "knowledge-base",
+        "Knowledge Base Updater",
+        "Open and use the hosted uploader for buyer, organizer, and event policy knowledge files.",
+    )
+
+
+@app.route("/admin/dashboard/team")
+@admin_required
+def admin_team():
+    return render_admin_dashboard_page(
+        "team",
+        "CSR Management",
+        "Create CSR accounts, review live availability, and adjust each agent's workload controls.",
+    )
+
+
+@app.route("/admin/dashboard/chats")
+@admin_required
+def admin_chats():
+    return render_admin_dashboard_page(
+        "chats",
+        "Chat Ledger",
+        "Inspect stored conversations, review transcripts, and remove chat records when necessary.",
+    )
+
+
+@app.route("/admin/dashboard/activity")
+@admin_required
+def admin_activity():
+    return render_admin_dashboard_page(
+        "activity",
+        "Activity Timeline",
+        "Audit recent queue, assignment, response, and resolution events across the support workflow.",
     )
 
 
@@ -1459,8 +1645,6 @@ def handle_signup(role=None):
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
-
-        rebalance_queued_chats(actor=user)
 
         flash("CSR account created successfully! Please log in.", "success")
         return redirect(url_for("csr_login"))
@@ -1631,10 +1815,12 @@ def external_init():
     if latest_user_messages:
         chat.last_customer_message = latest_user_messages[-1]
 
-    if not chat.assigned_csr_id or chat.status in RESOLVED_CHAT_STATUSES or chat.status == "queued":
+    # Super-CSR model: no auto-assignment. The chat stays in the shared queue
+    # and is claimed by the first CSR who clicks it from their dashboard.
+    if chat.status in RESOLVED_CHAT_STATUSES:
         chat.assigned_csr_id = None
         chat.assigned_at = None
-        assign_chat(chat, note="Assigned automatically from an incoming QSTP widget handoff.")
+        chat.status = "queued"
 
     db.session.commit()
 
@@ -1714,7 +1900,10 @@ def external_cleanup():
 @app.route("/api/dashboard-data")
 @login_required
 def dashboard_data():
-    return jsonify(build_dashboard_payload(get_current_user()))
+    current_user = get_current_user()
+    if isinstance(current_user, AdminAccount):
+        return jsonify(build_admin_dashboard_payload(current_user, request.args.get("page")))
+    return jsonify(build_csr_dashboard_payload(current_user))
 
 
 @app.route("/api/chats/<int:chat_id>/messages")
@@ -1725,16 +1914,52 @@ def chat_messages(chat_id):
     if not chat:
         return jsonify({"error": "Chat not found."}), 404
 
-    if not can_user_open_chat(current_user, chat):
-        return jsonify(
-            {
-                "error": "You can only open chats assigned to you.",
-                "assigned_csr": serialize_user(chat.assigned_csr) if chat.assigned_csr else None,
-            }
-        ), 403
-
+    # Super-CSR viewing: any authenticated CSR or admin can read the transcript.
+    # Ownership still gates replying and resolving on the write endpoints.
     return jsonify(
         {
+            "chat": serialize_chat(chat, current_user),
+            "messages": [serialize_message(message) for message in chat.messages],
+            "events": [serialize_assignment_event(event) for event in chat.assignment_events],
+        }
+    )
+
+
+@app.route("/api/chats/<int:chat_id>/claim", methods=["POST"])
+@csr_required
+def claim_chat_endpoint(chat_id):
+    """Click-to-claim: the first CSR to open a queued chat becomes its owner.
+
+    If the chat is already owned by another CSR, the claim is rejected with
+    409 so the client can fall back to the read-only view.
+    """
+    current_user = get_current_csr_user()
+    chat = db.session.get(ChatConversation, chat_id)
+    if not chat:
+        return jsonify({"error": "Chat not found."}), 404
+
+    if chat.status in RESOLVED_CHAT_STATUSES:
+        return jsonify({"error": "This chat is already resolved and cannot be claimed."}), 400
+
+    if chat.assigned_csr_id and chat.assigned_csr_id != current_user.id:
+        owner = chat.assigned_csr
+        return jsonify(
+            {
+                "error": "This chat is already claimed by another CSR.",
+                "assigned_csr": serialize_user(owner) if owner else None,
+                "chat": serialize_chat(chat, current_user),
+            }
+        ), 409
+
+    ok, error = claim_chat(chat, current_user)
+    if not ok:
+        db.session.rollback()
+        return jsonify({"error": error, "chat": serialize_chat(chat, current_user)}), 409
+
+    db.session.commit()
+    return jsonify(
+        {
+            "success": True,
             "chat": serialize_chat(chat, current_user),
             "messages": [serialize_message(message) for message in chat.messages],
             "events": [serialize_assignment_event(event) for event in chat.assignment_events],
@@ -1818,7 +2043,6 @@ def resolve_chat(chat_id):
         acted_by_role_value=current_user.role,
     )
     db.session.commit()
-    rebalance_queued_chats(actor=current_user)
 
     return jsonify({"success": True, "relay": relay_result, "dashboard": build_dashboard_payload(current_user)})
 
@@ -1895,7 +2119,6 @@ def update_csr_settings(user_id):
         csr_user.max_concurrent_chats or DEFAULT_MAX_CONCURRENT_CHATS,
     )
     db.session.commit()
-    rebalance_queued_chats(actor=current_user)
 
     return jsonify({"success": True, "dashboard": build_dashboard_payload(current_user)})
 
@@ -1931,7 +2154,6 @@ def create_csr_account():
     csr_user.set_password(password)
     db.session.add(csr_user)
     db.session.commit()
-    rebalance_queued_chats(actor=current_admin)
 
     return jsonify(
         {
