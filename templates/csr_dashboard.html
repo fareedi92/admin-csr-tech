@@ -32,33 +32,40 @@
             background: linear-gradient(180deg, #09111f 0%, #0b1220 100%);
             color: var(--text);
             min-height: 100vh;
-            overflow: hidden;
+            /* Narrow / mobile: allow natural vertical scroll so nothing clips.
+               Wider viewports re-enable the locked dashboard feel below. */
+            overflow-x: hidden;
+            overflow-y: auto;
         }
 
         .app-shell {
-            height: 100vh;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
         }
 
         .topbar {
-            padding: 18px 24px;
+            padding: clamp(12px, 2.2vw, 18px) clamp(14px, 2.4vw, 24px);
             border-bottom: 1px solid var(--border);
             background: rgba(9, 17, 31, 0.8);
             backdrop-filter: blur(12px);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 16px;
+            gap: 12px;
+            flex-wrap: wrap;
             position: sticky;
             top: 0;
             z-index: 5;
         }
 
+        .title-wrap {
+            min-width: 0;
+            flex: 1 1 260px;
+        }
+
         .title-wrap h1 {
-            font-size: 22px;
+            font-size: clamp(18px, 2.2vw, 22px);
             font-weight: 800;
             margin-bottom: 4px;
         }
@@ -66,6 +73,7 @@
         .title-wrap p {
             font-size: 13px;
             color: var(--muted);
+            line-height: 1.5;
         }
 
         .top-actions {
@@ -115,9 +123,11 @@
 
         .summary-bar {
             flex: 0 0 auto;
-            padding: 18px 24px 0;
+            padding: clamp(14px, 2vw, 18px) clamp(14px, 2.4vw, 24px) 0;
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            /* Auto-fit so 4 cards fit on desktop, 2 on tablets, 1 on phones
+               without ever overflowing the viewport. */
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 12px;
         }
 
@@ -125,7 +135,8 @@
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: var(--radius);
-            padding: 16px;
+            padding: clamp(12px, 1.6vw, 16px);
+            min-width: 0;
         }
 
         .summary-label {
@@ -135,7 +146,7 @@
         }
 
         .summary-value {
-            font-size: 28px;
+            font-size: clamp(22px, 3vw, 28px);
             font-weight: 800;
         }
 
@@ -143,10 +154,12 @@
             flex: 1;
             min-height: 0;
             display: grid;
-            grid-template-columns: 380px minmax(0, 1fr);
-            gap: 18px;
-            padding: 18px 24px 24px;
-            overflow: hidden;
+            /* Mobile-first: single column, panels flow naturally and the
+               whole document scrolls. Tablet/desktop media queries below
+               re-introduce the side-by-side workspace. */
+            grid-template-columns: minmax(0, 1fr);
+            gap: 16px;
+            padding: clamp(14px, 2vw, 18px) clamp(14px, 2.4vw, 24px) clamp(16px, 2.4vw, 24px);
             align-items: stretch;
         }
 
@@ -155,29 +168,37 @@
             border: 1px solid var(--border);
             border-radius: var(--radius);
             overflow: hidden;
+            /* min-width:0 is essential when a panel is a grid/flex child
+               with potentially long content (chat previews, textareas,
+               selects) so it shrinks instead of pushing out the row. */
+            min-width: 0;
             min-height: 0;
         }
 
         .panel-head {
-            padding: 18px 18px 14px;
+            padding: clamp(14px, 1.8vw, 18px) clamp(14px, 1.8vw, 18px) 14px;
             border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-shrink: 0;
             gap: 12px;
+            flex-wrap: wrap;
         }
 
         .panel-title {
             font-size: 16px;
             font-weight: 700;
+            min-width: 0;
         }
 
         .panel-copy {
             font-size: 12px;
             line-height: 1.6;
             color: var(--muted);
-            padding: 0 18px 16px;
+            padding: 0 clamp(14px, 1.8vw, 18px) 16px;
             border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
         }
 
         .list-panel {
@@ -188,6 +209,11 @@
 
         .chat-list {
             flex: 1;
+            /* On mobile the panel flows in document height (no inner scroll),
+               so cap the internal scroll region at viewport-ish height. On
+               desktop the parent grid provides a bounded height and this
+               cap becomes a no-op. */
+            max-height: min(60vh, 640px);
             min-height: 0;
             overflow-y: auto;
             padding: 14px;
@@ -250,6 +276,20 @@
             display: flex;
             justify-content: space-between;
             gap: 12px;
+        }
+
+        .chat-card-top,
+        .chat-card-meta,
+        .message-row {
+            flex-wrap: wrap;
+            align-items: center;
+            row-gap: 6px;
+        }
+
+        .chat-name {
+            min-width: 0;
+            flex: 1 1 auto;
+            overflow-wrap: anywhere;
         }
 
         .chat-name {
@@ -361,6 +401,9 @@
             border-top: 1px solid var(--border);
             padding: 14px;
             background: var(--surface-3);
+            flex-shrink: 0;
+            max-height: 40vh;
+            overflow-y: auto;
         }
 
         .load-list {
@@ -399,14 +442,26 @@
         .workspace-panel {
             display: flex;
             flex-direction: column;
-            min-height: 0;
-            height: 100%;
+            min-height: 420px;
         }
 
         .workspace-top {
-            padding: 18px;
+            padding: clamp(12px, 1.8vw, 18px);
             border-bottom: 1px solid var(--border);
             align-items: center;
+            flex-wrap: wrap;
+            row-gap: 10px;
+        }
+
+        .workspace-top > div:first-child {
+            min-width: 0;
+            flex: 1 1 240px;
+        }
+
+        .detail-actions {
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 8px;
         }
 
         .detail-title {
@@ -524,22 +579,25 @@
             min-height: 0;
             display: flex;
             flex-direction: column;
-            height: 100%;
             overflow: hidden;
         }
 
         .messages {
             flex: 1;
-            min-height: 0;
+            /* Keep the transcript bounded so it scrolls internally, even
+               when the workspace panel itself is flowing in document
+               height on mobile. */
+            min-height: 240px;
+            max-height: min(60vh, 640px);
             overflow-y: auto;
-            padding: 20px;
+            padding: clamp(14px, 2vw, 20px);
             display: flex;
             flex-direction: column;
             gap: 12px;
         }
 
         .message {
-            max-width: 72%;
+            max-width: min(72%, 520px);
             display: flex;
             flex-direction: column;
             gap: 4px;
@@ -588,13 +646,14 @@
 
         .reply-box {
             border-top: 1px solid var(--border);
-            padding: 16px 18px 18px;
+            padding: clamp(12px, 1.8vw, 18px);
             background: var(--surface);
             flex-shrink: 0;
+            min-width: 0;
         }
 
         .workspace-note {
-            padding: 14px 18px;
+            padding: clamp(12px, 1.8vw, 18px);
             background: rgba(59, 130, 246, 0.08);
             border-top: 1px solid rgba(59, 130, 246, 0.15);
             color: var(--muted);
@@ -625,6 +684,7 @@
         .textarea,
         .select {
             width: 100%;
+            max-width: 100%;
             border: 1px solid var(--border);
             background: var(--surface-3);
             color: var(--text);
@@ -632,8 +692,13 @@
             outline: none;
         }
 
+        .textarea {
+            min-height: 88px;
+            resize: vertical;
+        }
+
         .flash-banner {
-            margin: 18px 24px 0;
+            margin: clamp(12px, 2vw, 18px) clamp(14px, 2.4vw, 24px) 0;
             padding: 12px 14px;
             border-radius: 14px;
             display: none;
@@ -653,31 +718,108 @@
             color: #fca5a5;
         }
 
-        @media (max-width: 1100px) {
-            .workspace-grid {
-                grid-template-columns: 1fr;
-            }
+        /* ─── Responsive tiers ──────────────────────────────────────────
+           The dashboard is built mobile-first above; these media queries
+           progressively restore the denser side-by-side desktop layout.
+           Widths chosen to match common device breakpoints so the UI
+           reads cleanly at every pixel from ~320px up to ultra-wide. */
+
+        /* ≥ 720px: two-column summary header (wider phones / small tablets) */
+        @media (min-width: 720px) {
             .summary-bar {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             }
         }
 
-        @media (max-width: 640px) {
-            .topbar,
-            .summary-bar,
-            .workspace-grid,
-            .flash-banner {
-                padding-left: 14px;
-                padding-right: 14px;
+        /* ≥ 960px: side-by-side workspace with a fluid sidebar. The whole
+           dashboard locks to the viewport here so each panel scrolls on
+           its own — the body never scrolls, which keeps the topbar and
+           summary stats pinned no matter how long the chat list grows. */
+        @media (min-width: 960px) {
+            html, body { height: 100%; }
+            body {
+                overflow: hidden;
             }
-            .summary-bar {
-                grid-template-columns: 1fr;
+            .app-shell {
+                height: 100vh;
+                min-height: 100vh;
+                overflow: hidden;
+            }
+            .workspace-grid {
+                grid-template-columns: clamp(300px, 32vw, 400px) minmax(0, 1fr);
+                gap: 18px;
+                overflow: hidden;
+            }
+            .chat-list {
+                max-height: none;
+            }
+            .messages {
+                max-height: none;
+                min-height: 0;
+            }
+            .workspace-panel {
+                min-height: 0;
+                height: 100%;
+            }
+            .workload-section {
+                flex-shrink: 0;
+            }
+        }
+
+        /* ≥ 1280px: slightly roomier sidebar now that we have pixels to
+           spare — otherwise behaviour is unchanged from the 960px tier. */
+        @media (min-width: 1280px) {
+            .workspace-grid {
+                grid-template-columns: 380px minmax(0, 1fr);
+            }
+        }
+
+        /* ≤ 900px but still above the mobile tier: stop the topbar from
+           dominating the screen when it wraps (hide the long subtitle and
+           let the relay pill shrink to an icon). */
+        @media (max-width: 900px) {
+            .topbar {
+                position: static;
+            }
+            .title-wrap p {
+                display: none;
+            }
+            #relay-pill span {
+                display: none;
+            }
+            #relay-pill {
+                width: 40px;
+                height: 40px;
+                padding: 0;
+                justify-content: center;
+            }
+        }
+
+        /* ≤ 520px: tighten spacing and let messages take the full width */
+        @media (max-width: 520px) {
+            .topbar {
+                gap: 8px;
+            }
+            .top-actions .pill span {
+                display: none;
+            }
+            .top-actions .pill {
+                padding: 9px 10px;
+                width: 40px;
+                height: 40px;
+                justify-content: center;
             }
             .locked-meta {
                 grid-template-columns: 1fr;
             }
             .message {
                 max-width: 100%;
+            }
+            .detail-title {
+                font-size: 16px;
+            }
+            .panel-copy {
+                font-size: 11.5px;
             }
         }
     </style>
