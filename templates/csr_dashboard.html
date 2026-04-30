@@ -6,1429 +6,725 @@
     <title>CSR Workspace</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                fontFamily: { sans: ['Inter', 'sans-serif'] },
+                colors: {
+                    sf: '#121a2b',
+                    'sf-2': '#182235',
+                    'sf-3': '#0f1728',
+                    bd: 'rgba(148,163,184,0.14)',
+                },
+            },
+        },
+    }
+    </script>
     <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-            --bg: #0b1220;
-            --surface: #121a2b;
-            --surface-2: #182235;
-            --surface-3: #0f1728;
-            --border: rgba(148, 163, 184, 0.14);
-            --text: #e2e8f0;
-            --muted: #94a3b8;
-            --subtle: #64748b;
-            --blue: #3b82f6;
-            --green: #10b981;
-            --amber: #f59e0b;
-            --red: #ef4444;
-            --radius: 16px;
-        }
-
-        html, body { height: 100%; }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(180deg, #09111f 0%, #0b1220 100%);
-            color: var(--text);
-            min-height: 100vh;
-            /* Narrow / mobile: allow natural vertical scroll so nothing clips.
-               Wider viewports re-enable the locked dashboard feel below. */
-            overflow-x: hidden;
-            overflow-y: auto;
-        }
-
-        .app-shell {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .topbar {
-            padding: clamp(12px, 2.2vw, 18px) clamp(14px, 2.4vw, 24px);
-            border-bottom: 1px solid var(--border);
-            background: rgba(9, 17, 31, 0.8);
-            backdrop-filter: blur(12px);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            flex-wrap: wrap;
-            position: sticky;
-            top: 0;
-            z-index: 5;
-        }
-
-        .title-wrap {
-            min-width: 0;
-            flex: 1 1 260px;
-        }
-
-        .title-wrap h1 {
-            font-size: clamp(18px, 2.2vw, 22px);
-            font-weight: 800;
-            margin-bottom: 4px;
-        }
-
-        .title-wrap p {
-            font-size: 13px;
-            color: var(--muted);
-            line-height: 1.5;
-        }
-
-        .top-actions {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .pill,
-        .icon-link {
-            border: 1px solid var(--border);
-            background: var(--surface);
-            color: var(--text);
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .pill {
-            padding: 9px 12px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .pill.good {
-            color: #86efac;
-            border-color: rgba(16, 185, 129, 0.25);
-            background: rgba(16, 185, 129, 0.08);
-        }
-
-        .pill.warn {
-            color: #fbbf24;
-            border-color: rgba(245, 158, 11, 0.25);
-            background: rgba(245, 158, 11, 0.08);
-        }
-
-        .icon-link {
-            width: 40px;
-            height: 40px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            text-decoration: none;
-        }
-
-        .summary-bar {
-            flex: 0 0 auto;
-            padding: clamp(14px, 2vw, 18px) clamp(14px, 2.4vw, 24px) 0;
-            display: grid;
-            /* Auto-fit so 4 cards fit on desktop, 2 on tablets, 1 on phones
-               without ever overflowing the viewport. */
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 12px;
-        }
-
-        .summary-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: clamp(12px, 1.6vw, 16px);
-            min-width: 0;
-        }
-
-        .summary-label {
-            font-size: 12px;
-            color: var(--muted);
-            margin-bottom: 8px;
-        }
-
-        .summary-value {
-            font-size: clamp(22px, 3vw, 28px);
-            font-weight: 800;
-        }
-
-        .workspace-grid {
-            flex: 1;
-            min-height: 0;
-            display: grid;
-            /* Mobile-first: single column, panels flow naturally and the
-               whole document scrolls. Tablet/desktop media queries below
-               re-introduce the side-by-side workspace. */
-            grid-template-columns: minmax(0, 1fr);
-            gap: 16px;
-            padding: clamp(14px, 2vw, 18px) clamp(14px, 2.4vw, 24px) clamp(16px, 2.4vw, 24px);
-            align-items: stretch;
-        }
-
-        .panel {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            overflow: hidden;
-            /* min-width:0 is essential when a panel is a grid/flex child
-               with potentially long content (chat previews, textareas,
-               selects) so it shrinks instead of pushing out the row. */
-            min-width: 0;
-            min-height: 0;
-        }
-
-        .panel-head {
-            padding: clamp(14px, 1.8vw, 18px) clamp(14px, 1.8vw, 18px) 14px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-shrink: 0;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .panel-title {
-            font-size: 16px;
-            font-weight: 700;
-            min-width: 0;
-        }
-
-        .panel-copy {
-            font-size: 12px;
-            line-height: 1.6;
-            color: var(--muted);
-            padding: 0 clamp(14px, 1.8vw, 18px) 16px;
-            border-bottom: 1px solid var(--border);
-            flex-shrink: 0;
-        }
-
-        .list-panel {
-            display: flex;
-            flex-direction: column;
-            min-height: 0;
-        }
-
-        .chat-list {
-            flex: 1;
-            /* On mobile the panel flows in document height (no inner scroll),
-               so cap the internal scroll region at viewport-ish height. On
-               desktop the parent grid provides a bounded height and this
-               cap becomes a no-op. */
-            max-height: min(60vh, 640px);
-            min-height: 0;
-            overflow-y: auto;
-            padding: 14px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .chat-group {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .chat-group-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            padding: 4px 2px 0;
-        }
-
-        .chat-group-title {
-            font-size: 11px;
-            font-weight: 800;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: .08em;
-        }
-
-        .chat-group-count {
-            font-size: 11px;
-            color: var(--subtle);
-        }
-
-        .chat-card {
-            border: 1px solid var(--border);
-            background: var(--surface-2);
-            border-radius: 14px;
-            padding: 14px;
-            cursor: pointer;
-            transition: border-color 0.2s, transform 0.2s, background 0.2s;
-        }
-
-        .chat-card:hover {
-            border-color: rgba(59, 130, 246, 0.4);
-            transform: translateY(-1px);
-        }
-
-        .chat-card.active {
-            border-color: rgba(59, 130, 246, 0.75);
-            background: rgba(59, 130, 246, 0.12);
-        }
-
-        .chat-card-top,
-        .chat-card-meta,
-        .workspace-top,
-        .detail-actions,
-        .message-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-        }
-
-        .chat-card-top,
-        .chat-card-meta,
-        .message-row {
-            flex-wrap: wrap;
-            align-items: center;
-            row-gap: 6px;
-        }
-
-        .chat-name {
-            min-width: 0;
-            flex: 1 1 auto;
-            overflow-wrap: anywhere;
-        }
-
-        .chat-name {
-            font-size: 14px;
-            font-weight: 700;
-        }
-
-        .chat-time,
-        .tiny-note,
-        .message-time {
-            font-size: 11px;
-            color: var(--subtle);
-        }
-
-        .chat-preview {
-            font-size: 13px;
-            line-height: 1.6;
-            color: var(--muted);
-            margin: 10px 0;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .chat-card-meta {
-            align-items: center;
-        }
-
-        .owner-label {
-            font-size: 12px;
-            color: var(--muted);
-        }
-
-        .assignment-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 5px 10px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .05em;
-        }
-
-        .assignment-pill.mine {
-            color: #86efac;
-            background: rgba(16, 185, 129, 0.14);
-        }
-
-        .assignment-pill.other {
-            color: #bfdbfe;
-            background: rgba(59, 130, 246, 0.14);
-        }
-
-        .assignment-pill.queued {
-            color: #fcd34d;
-            background: rgba(245, 158, 11, 0.14);
-        }
-
-        .assignment-pill.resolved {
-            color: #cbd5e1;
-            background: rgba(148, 163, 184, 0.14);
-        }
-
-        .status-chip {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 4px 9px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-        }
-
-        .status-chip.assigned,
-        .status-chip.in_progress {
-            color: #93c5fd;
-            background: rgba(59, 130, 246, 0.15);
-        }
-
-        .status-chip.queued {
-            color: #fbbf24;
-            background: rgba(245, 158, 11, 0.15);
-        }
-
-        .status-chip.resolved,
-        .status-chip.closed {
-            color: #86efac;
-            background: rgba(16, 185, 129, 0.15);
-        }
-
-        .access-chip {
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-            color: #cbd5e1;
-        }
-
-        .access-chip.mine { color: #86efac; }
-        .access-chip.resolved { color: #cbd5e1; }
-        .access-chip.locked { color: #fca5a5; }
-
-        .workload-section {
-            border-top: 1px solid var(--border);
-            padding: 14px;
-            background: var(--surface-3);
-            flex-shrink: 0;
-            max-height: 40vh;
-            overflow-y: auto;
-        }
-
-        .load-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .load-item {
-            padding: 12px;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            background: rgba(255, 255, 255, 0.02);
-        }
-
-        .load-name {
-            font-size: 13px;
-            font-weight: 700;
-            margin-bottom: 6px;
-        }
-
-        .load-bar {
-            height: 8px;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.06);
-            overflow: hidden;
-            margin: 8px 0 6px;
-        }
-
-        .load-bar span {
-            display: block;
-            height: 100%;
-            background: linear-gradient(90deg, var(--blue), #7c3aed);
-        }
-
-        .workspace-panel {
-            display: flex;
-            flex-direction: column;
-            min-height: 420px;
-        }
-
-        .workspace-top {
-            padding: clamp(12px, 1.8vw, 18px);
-            border-bottom: 1px solid var(--border);
-            align-items: center;
-            flex-wrap: wrap;
-            row-gap: 10px;
-        }
-
-        .workspace-top > div:first-child {
-            min-width: 0;
-            flex: 1 1 240px;
-        }
-
-        .detail-actions {
-            flex-wrap: wrap;
-            justify-content: flex-end;
-            gap: 8px;
-        }
-
-        .detail-title {
-            font-size: 18px;
-            font-weight: 800;
-            margin-bottom: 6px;
-        }
-
-        .detail-subtitle {
-            font-size: 13px;
-            color: var(--muted);
-            line-height: 1.6;
-        }
-
-        .btn,
-        .select,
-        .input,
-        .textarea {
-            font-family: inherit;
-            font-size: 13px;
-            border-radius: 12px;
-        }
-
-        .btn {
-            border: 1px solid var(--border);
-            background: var(--surface-2);
-            color: var(--text);
-            padding: 10px 14px;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        .btn.primary {
-            background: linear-gradient(135deg, var(--blue), #2563eb);
-            border-color: transparent;
-        }
-
-        .btn.danger {
-            background: rgba(239, 68, 68, 0.12);
-            color: #fca5a5;
-            border-color: rgba(239, 68, 68, 0.2);
-        }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .workspace-body {
-            flex: 1;
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-            background: var(--surface-3);
-        }
-
-        .empty-state,
-        .locked-state {
-            margin: auto;
-            max-width: 620px;
-            text-align: center;
-            padding: 32px;
-        }
-
-        .empty-state i,
-        .locked-state i {
-            font-size: 42px;
-            margin-bottom: 14px;
-            color: var(--subtle);
-        }
-
-        .empty-state h2,
-        .locked-state h2 {
-            font-size: 22px;
-            margin-bottom: 10px;
-        }
-
-        .empty-state p,
-        .locked-state p {
-            font-size: 14px;
-            line-height: 1.7;
-            color: var(--muted);
-        }
-
-        .locked-meta {
-            margin-top: 18px;
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-            text-align: left;
-        }
-
-        .meta-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 14px;
-        }
-
-        .meta-label {
-            font-size: 10px;
-            color: var(--subtle);
-            text-transform: uppercase;
-            letter-spacing: .08em;
-            margin-bottom: 6px;
-        }
-
-        .meta-value {
-            font-size: 13px;
-            line-height: 1.6;
-        }
-
-        .chat-window {
-            flex: 1;
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .messages {
-            flex: 1;
-            /* Keep the transcript bounded so it scrolls internally, even
-               when the workspace panel itself is flowing in document
-               height on mobile. */
-            min-height: 240px;
-            max-height: min(60vh, 640px);
-            overflow-y: auto;
-            padding: clamp(14px, 2vw, 20px);
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .message {
-            max-width: min(72%, 520px);
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .message.user,
-        .message.ai,
-        .message.system {
-            align-self: flex-start;
-        }
-
-        .message.csr {
-            align-self: flex-end;
-        }
-
-        .message-label {
-            font-size: 11px;
-            color: var(--subtle);
-        }
-
-        .message-bubble {
-            padding: 12px 14px;
-            border-radius: 16px;
-            line-height: 1.6;
-            font-size: 13px;
-            word-break: break-word;
-            white-space: pre-wrap;
-        }
-
-        .message.user .message-bubble {
-            background: var(--surface);
-            border: 1px solid var(--border);
-        }
-
-        .message.ai .message-bubble,
-        .message.system .message-bubble {
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px dashed rgba(148, 163, 184, 0.16);
-            color: var(--muted);
-        }
-
-        .message.csr .message-bubble {
-            background: linear-gradient(135deg, var(--blue), #2563eb);
-            color: white;
-        }
-
-        .reply-box {
-            border-top: 1px solid var(--border);
-            padding: clamp(12px, 1.8vw, 18px);
-            background: var(--surface);
-            flex-shrink: 0;
-            min-width: 0;
-        }
-
-        .workspace-note {
-            padding: clamp(12px, 1.8vw, 18px);
-            background: rgba(59, 130, 246, 0.08);
-            border-top: 1px solid rgba(59, 130, 246, 0.15);
-            color: var(--muted);
-            font-size: 13px;
-            line-height: 1.6;
-            flex-shrink: 0;
-        }
-
-        .reply-box-top {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .reply-title {
-            font-size: 13px;
-            font-weight: 700;
-        }
-
-        .reply-form {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .textarea,
-        .select {
-            width: 100%;
-            max-width: 100%;
-            border: 1px solid var(--border);
-            background: var(--surface-3);
-            color: var(--text);
-            padding: 12px 14px;
-            outline: none;
-        }
-
-        .textarea {
-            min-height: 88px;
-            resize: vertical;
-        }
-
-        .flash-banner {
-            margin: clamp(12px, 2vw, 18px) clamp(14px, 2.4vw, 24px) 0;
-            padding: 12px 14px;
-            border-radius: 14px;
-            display: none;
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        .flash-banner.show { display: block; }
-        .flash-banner.success {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.2);
-            color: #86efac;
-        }
-        .flash-banner.error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-            color: #fca5a5;
-        }
-
-        /* ─── Responsive tiers ──────────────────────────────────────────
-           The dashboard is built mobile-first above; these media queries
-           progressively restore the denser side-by-side desktop layout.
-           Widths chosen to match common device breakpoints so the UI
-           reads cleanly at every pixel from ~320px up to ultra-wide. */
-
-        /* ≥ 720px: two-column summary header (wider phones / small tablets) */
-        @media (min-width: 720px) {
-            .summary-bar {
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            }
-        }
-
-        /* ≥ 960px: side-by-side workspace with a fluid sidebar. The whole
-           dashboard locks to the viewport here so each panel scrolls on
-           its own — the body never scrolls, which keeps the topbar and
-           summary stats pinned no matter how long the chat list grows. */
-        @media (min-width: 960px) {
-            html, body { height: 100%; }
-            body {
-                overflow: hidden;
-            }
-            .app-shell {
-                height: 100vh;
-                min-height: 100vh;
-                overflow: hidden;
-            }
-            .workspace-grid {
-                grid-template-columns: clamp(300px, 32vw, 400px) minmax(0, 1fr);
-                gap: 18px;
-                overflow: hidden;
-            }
-            .chat-list {
-                max-height: none;
-            }
-            .messages {
-                max-height: none;
-                min-height: 0;
-            }
-            .workspace-panel {
-                min-height: 0;
-                height: 100%;
-            }
-            .workload-section {
-                flex-shrink: 0;
-            }
-        }
-
-        /* ≥ 1280px: slightly roomier sidebar now that we have pixels to
-           spare — otherwise behaviour is unchanged from the 960px tier. */
-        @media (min-width: 1280px) {
-            .workspace-grid {
-                grid-template-columns: 380px minmax(0, 1fr);
-            }
-        }
-
-        /* ≤ 900px but still above the mobile tier: stop the topbar from
-           dominating the screen when it wraps (hide the long subtitle and
-           let the relay pill shrink to an icon). */
-        @media (max-width: 900px) {
-            .topbar {
-                position: static;
-            }
-            .title-wrap p {
-                display: none;
-            }
-            #relay-pill span {
-                display: none;
-            }
-            #relay-pill {
-                width: 40px;
-                height: 40px;
-                padding: 0;
-                justify-content: center;
-            }
-        }
-
-        /* ≤ 520px: tighten spacing and let messages take the full width */
-        @media (max-width: 520px) {
-            .topbar {
-                gap: 8px;
-            }
-            .top-actions .pill span {
-                display: none;
-            }
-            .top-actions .pill {
-                padding: 9px 10px;
-                width: 40px;
-                height: 40px;
-                justify-content: center;
-            }
-            .locked-meta {
-                grid-template-columns: 1fr;
-            }
-            .message {
-                max-width: 100%;
-            }
-            .detail-title {
-                font-size: 16px;
-            }
-            .panel-copy {
-                font-size: 11.5px;
-            }
+        .scrollbar-thin { scrollbar-width:thin; scrollbar-color:rgba(148,163,184,.22) transparent; }
+        .scrollbar-thin::-webkit-scrollbar { width:6px; height:6px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background:rgba(148,163,184,.22); border-radius:10px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover { background:rgba(148,163,184,.4); }
+        .scrollbar-thin::-webkit-scrollbar-track { background:transparent; }
+
+        /* Left-accent stripe on chat cards */
+        .chat-card{position:relative}
+        .chat-card::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:4px;border-radius:4px;background:#64748b;opacity:.55}
+        .chat-card[data-chat-bucket="mine"]::before{background:#10b981;opacity:1}
+        .chat-card[data-chat-bucket="other"]::before{background:#3b82f6;opacity:.9}
+        .chat-card[data-chat-bucket="queued"]::before{background:#f59e0b;opacity:1}
+        .chat-card[data-chat-bucket="resolved"]::before{background:#64748b;opacity:.7}
+
+        /* Message bubbles */
+        .msg-user{background:#121a2b;border:1px solid rgba(148,163,184,.14)}
+        .msg-ai,.msg-system{background:rgba(255,255,255,.04);border:1px dashed rgba(148,163,184,.16);color:#94a3b8}
+        .msg-csr{background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff}
+
+        /* Pill colours */
+        .pill-mine{color:#86efac;background:rgba(16,185,129,.14)}
+        .pill-other{color:#bfdbfe;background:rgba(59,130,246,.14)}
+        .pill-queued{color:#fcd34d;background:rgba(245,158,11,.14)}
+        .pill-resolved{color:#cbd5e1;background:rgba(148,163,184,.14)}
+        .chip-assigned,.chip-in_progress{color:#93c5fd;background:rgba(59,130,246,.15)}
+        .chip-queued{color:#fbbf24;background:rgba(245,158,11,.15)}
+        .chip-resolved,.chip-closed{color:#86efac;background:rgba(16,185,129,.15)}
+        .access-mine{color:#86efac} .access-locked{color:#fca5a5} .access-resolved{color:#cbd5e1}
+
+        .unlimited-pill{display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:999px;background:rgba(124,58,237,.2);color:#c4b5fd;border:1px solid rgba(124,58,237,.4);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+
+        .load-bar-fill{display:block;height:100%;background:linear-gradient(90deg,#3b82f6,#7c3aed)}
+        .load-bar-fill.ulimit{background:linear-gradient(90deg,#8b5cf6,#c084fc)}
+
+        .flash-success{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);color:#86efac}
+        .flash-error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:#fca5a5}
+
+        .tab-btn[aria-selected="true"]{background:rgba(59,130,246,.15);color:#bfdbfe;border-color:rgba(59,130,246,.35)}
+        .tab-btn[aria-selected="false"]{color:#94a3b8}
+        .tab-btn[aria-selected="false"]:hover{color:#e2e8f0;background:rgba(255,255,255,.04)}
+
+        /* Bucket sections accent the group header colour */
+        .group-mine .group-dot{background:#10b981}
+        .group-other .group-dot{background:#3b82f6}
+        .group-queued .group-dot{background:#f59e0b}
+        .group-resolved .group-dot{background:#64748b}
+
+        @media(min-width:1024px){
+            html,body{height:100%}
+            body{overflow:hidden}
         }
     </style>
 </head>
-<body data-user-id="{{ user.id if user else '' }}" data-user-role="{{ user.role if user else '' }}">
-    <div class="app-shell">
-        <header class="topbar">
-            <div class="title-wrap">
-                <h1>CSR Workspace</h1>
-                <p>All chats are visible to every CSR. Click any waiting chat to claim it &mdash; claimed chats become read-only for the rest of the team.</p>
-            </div>
-            <div class="top-actions">
-                <div class="pill" id="relay-pill">
-                    <i class="fa-solid fa-plug"></i>
-                    <span>Checking relay</span>
-                </div>
-                <div class="pill good">
-                    <i class="fa-solid fa-user"></i>
-                    <span>{{ (user.display_name or user.email) if user else 'CSR User' }}</span>
-                </div>
-                <a class="icon-link" href="/logout" title="Logout">
-                    <i class="fa-solid fa-right-from-bracket"></i>
-                </a>
-            </div>
-        </header>
+<body class="min-h-screen bg-gradient-to-b from-[#09111f] to-[#0b1220] text-gray-200 font-sans overflow-x-hidden"
+      data-user-id="{{ user.id if user else '' }}" data-user-role="{{ user.role if user else '' }}">
 
-        <div class="flash-banner" id="flash-banner"></div>
+<div class="flex flex-col min-h-screen lg:h-screen">
 
-        <section class="summary-bar">
-            <div class="summary-card">
-                <div class="summary-label">All Visible Chats</div>
-                <div class="summary-value" id="stat-total">0</div>
+    <!-- ═══ Topbar ═══ -->
+    <header class="sticky top-0 z-10 backdrop-blur-md bg-[#09111f]/80 border-b border-bd flex items-center justify-between gap-3 px-4 py-3 flex-wrap">
+        <div class="min-w-0 flex-1 basis-[260px]">
+            <h1 class="text-lg lg:text-xl font-extrabold mb-0.5">CSR Workspace</h1>
+            <p class="text-[12px] text-gray-400 leading-relaxed hidden sm:block">All chats are visible. Click any queued chat to claim it.</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+            <div id="relay-pill" class="flex items-center gap-2 px-3 py-2 rounded-full border border-bd bg-sf text-xs font-semibold">
+                <i class="fa-solid fa-plug"></i><span class="hidden sm:inline">Checking relay</span>
             </div>
-            <div class="summary-card">
-                <div class="summary-label">My Assigned Chats</div>
-                <div class="summary-value" id="stat-mine">0</div>
+            <div class="flex items-center gap-2 px-3 py-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 text-emerald-300 text-xs font-semibold">
+                <i class="fa-solid fa-user"></i><span>{{ (user.display_name or user.email) if user else 'CSR User' }}</span>
             </div>
-            <div class="summary-card">
-                <div class="summary-label">Waiting Queue</div>
-                <div class="summary-value" id="stat-queued">0</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-label">Available CSRs</div>
-                <div class="summary-value" id="stat-csrs">0</div>
-            </div>
-        </section>
+            <a href="/logout" title="Logout" class="w-10 h-10 flex items-center justify-center rounded-full border border-bd bg-sf text-gray-200 hover:text-white transition-colors">
+                <i class="fa-solid fa-right-from-bracket"></i>
+            </a>
+        </div>
+    </header>
 
-        <section class="workspace-grid">
-            <aside class="panel list-panel">
-                <div class="panel-head">
-                    <div class="panel-title">Incoming Chats</div>
-                    <button class="btn" id="refresh-btn" type="button">
-                        <i class="fa-solid fa-rotate-right"></i>
+    <!-- ═══ Flash Banner ═══ -->
+    <div id="flash-banner" class="hidden mx-4 mt-3 px-4 py-3 rounded-2xl text-[13px] font-semibold"></div>
+
+    <!-- ═══ Summary Cards ═══ -->
+    <section class="flex-shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-2.5 px-4 pt-3">
+        <div class="bg-sf border border-bd rounded-xl px-3.5 py-2.5 min-w-0">
+            <div class="text-[11px] text-gray-400 uppercase tracking-wider">All Visible</div>
+            <div id="stat-total" class="text-xl lg:text-2xl font-extrabold">0</div>
+        </div>
+        <div class="bg-sf border border-bd rounded-xl px-3.5 py-2.5 min-w-0">
+            <div class="text-[11px] text-gray-400 uppercase tracking-wider">My Chats</div>
+            <div id="stat-mine" class="text-xl lg:text-2xl font-extrabold">0</div>
+        </div>
+        <div class="bg-sf border border-bd rounded-xl px-3.5 py-2.5 min-w-0">
+            <div class="text-[11px] text-gray-400 uppercase tracking-wider">Waiting</div>
+            <div id="stat-queued" class="text-xl lg:text-2xl font-extrabold text-amber-300">0</div>
+        </div>
+        <div class="bg-sf border border-bd rounded-xl px-3.5 py-2.5 min-w-0">
+            <div class="text-[11px] text-gray-400 uppercase tracking-wider">Online CSRs</div>
+            <div id="stat-csrs" class="text-xl lg:text-2xl font-extrabold text-emerald-300">0</div>
+        </div>
+    </section>
+
+    <!-- ═══ Main Workspace Grid ═══ -->
+    <section class="flex-1 grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-3 p-3 min-h-0 overflow-hidden" style="grid-template-rows: minmax(0,1fr);">
+
+        <!-- ═══ LEFT: Chat List with tabs ═══ -->
+        <aside class="flex flex-col rounded-2xl bg-sf border border-bd overflow-hidden min-w-0 min-h-0 lg:h-full">
+            <!-- Header w/ tabs -->
+            <div class="px-3 pt-3 pb-2 border-b border-bd flex-shrink-0">
+                <div class="flex items-center justify-between gap-2 mb-2.5">
+                    <div class="font-bold text-base">Chats</div>
+                    <button id="refresh-btn" type="button" class="w-8 h-8 flex items-center justify-center rounded-lg border border-bd bg-sf-2 text-gray-300 hover:border-blue-500/40 hover:text-white transition-colors cursor-pointer">
+                        <i class="fa-solid fa-rotate-right text-xs"></i>
                     </button>
                 </div>
-                <div class="panel-copy">
-                    Incoming QSTP handoffs arrive in the <strong>Waiting Queue</strong>. Click any queued chat to <strong>claim it for yourself</strong> &mdash; it will move to <strong>My Chats</strong>. Chats claimed by another CSR appear under <strong>Other CSR Chats</strong> and open as a read-only transcript.
+                <!-- Tabs -->
+                <div class="grid grid-cols-2 gap-2 p-1 bg-sf-3 rounded-xl border border-bd">
+                    <button type="button" class="tab-btn text-xs font-bold py-2 px-3 rounded-lg border border-transparent transition-all cursor-pointer" data-tab="open" aria-selected="true">
+                        <i class="fa-solid fa-inbox mr-1.5"></i>Open <span id="tab-open-count" class="ml-1 text-[10px] opacity-70">0</span>
+                    </button>
+                    <button type="button" class="tab-btn text-xs font-bold py-2 px-3 rounded-lg border border-transparent transition-all cursor-pointer" data-tab="closed" aria-selected="false">
+                        <i class="fa-solid fa-check-double mr-1.5"></i>Closed <span id="tab-closed-count" class="ml-1 text-[10px] opacity-70">0</span>
+                    </button>
                 </div>
-                <div class="chat-list" id="chat-list">
-                    <div class="tiny-note">Loading chats...</div>
-                </div>
+            </div>
 
-                <div class="workload-section">
-                    <div class="panel-title" style="font-size:14px; margin-bottom: 12px;">CSR Workload</div>
-                    <div class="load-list" id="load-list">
-                        <div class="tiny-note">Loading CSR workload...</div>
+            <!-- Chat list (scroll) -->
+            <div id="chat-list" class="flex-1 overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-2.5 scrollbar-thin min-h-0 max-h-[60vh] lg:max-h-none">
+                <div class="text-xs text-gray-500">Loading chats...</div>
+            </div>
+
+            <!-- Pagination for closed tab -->
+            <div id="closed-pagination" class="hidden flex-shrink-0 border-t border-bd px-3 py-2.5 flex items-center justify-between gap-2 text-xs">
+                <span id="closed-page-info" class="text-gray-400"></span>
+                <div class="flex items-center gap-1.5">
+                    <button type="button" id="closed-prev" class="px-2.5 py-1.5 rounded-md border border-bd bg-sf-2 text-gray-300 hover:border-blue-500/40 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-chevron-left text-[10px]"></i>
+                    </button>
+                    <button type="button" id="closed-next" class="px-2.5 py-1.5 rounded-md border border-bd bg-sf-2 text-gray-300 hover:border-blue-500/40 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ═══ RIGHT: Workspace (top) + CSR Workload strip (bottom) ═══ -->
+        <main class="flex flex-col gap-3 min-w-0 min-h-0 overflow-hidden lg:h-full">
+
+            <!-- Chat area -->
+            <div class="flex-1 flex flex-col rounded-2xl bg-sf border border-bd overflow-hidden min-w-0 min-h-[300px]">
+                <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-bd flex-wrap flex-shrink-0">
+                    <div class="min-w-0 flex-1 basis-[240px]">
+                        <div id="detail-title" class="text-lg font-extrabold mb-1">Select a chat</div>
+                        <div id="detail-subtitle" class="text-[13px] text-gray-400 leading-relaxed">Click a waiting chat on the left to claim it.</div>
+                    </div>
+                    <div id="detail-actions" class="flex flex-wrap justify-end gap-2"></div>
+                </div>
+                <div id="workspace-body" class="flex-1 flex flex-col bg-sf-3 min-h-0">
+                    <div class="m-auto max-w-lg text-center p-6">
+                        <i class="fa-solid fa-comments text-4xl text-gray-600 mb-3"></i>
+                        <h2 class="text-lg font-extrabold mb-1.5">No chat selected</h2>
+                        <p class="text-sm text-gray-400 leading-relaxed">Pick any chat from the left. Queued chats get claimed automatically.</p>
                     </div>
                 </div>
-            </aside>
+            </div>
 
-            <main class="panel workspace-panel">
-                <div class="workspace-top">
-                    <div>
-                        <div class="detail-title" id="detail-title">Select a chat</div>
-                        <div class="detail-subtitle" id="detail-subtitle">Click a waiting chat to claim it, or open an in-progress chat to review the live transcript.</div>
+            <!-- CSR Workload strip (always visible, horizontal scroll on mobile) -->
+            <div class="flex-shrink-0 rounded-2xl bg-sf border border-bd overflow-hidden">
+                <div class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-bd">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <i class="fa-solid fa-users text-gray-400 text-sm"></i>
+                        <span class="font-bold text-sm">Team Workload</span>
+                        <span id="workload-summary" class="text-[11px] text-gray-500"></span>
                     </div>
-                    <div class="detail-actions" id="detail-actions"></div>
+                    <button id="workload-toggle" type="button" class="text-gray-400 hover:text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+                        <span id="workload-toggle-text">Hide</span>
+                        <i id="workload-chevron" class="fa-solid fa-chevron-down text-[10px] transition-transform duration-200 rotate-180"></i>
+                    </button>
                 </div>
-                <div class="workspace-body" id="workspace-body">
-                    <div class="empty-state">
-                        <i class="fa-solid fa-comments"></i>
-                        <h2>No chat selected</h2>
-                        <p>Pick any chat from the left. Queued chats get claimed for you automatically when opened. Chats already claimed by another CSR open as a read-only transcript so you can stay in the loop.</p>
+                <div id="workload-panel" class="overflow-hidden transition-all duration-200" style="max-height: 220px;">
+                    <div id="load-list" class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2 p-3 overflow-y-auto scrollbar-thin" style="max-height:200px;">
+                        <div class="text-xs text-gray-500">Loading CSR workload...</div>
                     </div>
                 </div>
-            </main>
-        </section>
-    </div>
+            </div>
+        </main>
+    </section>
+</div>
 
-    <script>
-        const currentUser = {
-            id: Number(document.body.dataset.userId || 0),
-            role: document.body.dataset.userRole || 'csr'
-        };
+<script>
+    const currentUser = {
+        id: Number(document.body.dataset.userId || 0),
+        role: document.body.dataset.userRole || 'csr'
+    };
 
-        const state = {
-            dashboard: null,
-            selectedChatId: null,
-            selectedMessages: [],
-            drafts: {},
-            composingChatId: null
-        };
+    const state = {
+        dashboard: null,
+        selectedChatId: null,
+        selectedMessages: [],
+        drafts: {},
+        composingChatId: null,
+        workloadOpen: true,
+        tab: 'open',           // 'open' | 'closed'
+        closedChats: [],
+        closedPagination: { page: 1, per_page: 20, total: 0, total_pages: 1, has_prev: false, has_next: false },
+        closedLoading: false,
+    };
 
-        const flashBanner = document.getElementById('flash-banner');
-        let flashTimer = null;
-        let refreshInterval = null;
+    const flashBanner = document.getElementById('flash-banner');
+    let flashTimer = null;
+    let refreshInterval = null;
 
-        function escapeHtml(value) {
-            return String(value || '')
-                .replaceAll('&', '&amp;')
-                .replaceAll('<', '&lt;')
-                .replaceAll('>', '&gt;')
-                .replaceAll('"', '&quot;')
-                .replaceAll("'", '&#39;');
+    // ── Workload toggle ──
+    const workloadToggle = document.getElementById('workload-toggle');
+    const workloadPanel = document.getElementById('workload-panel');
+    const workloadChevron = document.getElementById('workload-chevron');
+    const workloadToggleText = document.getElementById('workload-toggle-text');
+    workloadToggle.addEventListener('click', () => {
+        state.workloadOpen = !state.workloadOpen;
+        if (state.workloadOpen) {
+            workloadPanel.style.maxHeight = '220px';
+            workloadChevron.style.transform = 'rotate(180deg)';
+            workloadToggleText.textContent = 'Hide';
+        } else {
+            workloadPanel.style.maxHeight = '0';
+            workloadChevron.style.transform = '';
+            workloadToggleText.textContent = 'Show';
         }
+    });
 
-        function formatDateTime(value) {
-            if (!value) return 'Not available';
-            const date = new Date(value);
-            if (Number.isNaN(date.getTime())) return value;
-            return date.toLocaleString();
-        }
-
-        function formatRelative(value) {
-            if (!value) return 'Just now';
-            const date = new Date(value);
-            if (Number.isNaN(date.getTime())) return value;
-            const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-            if (seconds < 60) return 'Just now';
-            if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-            if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`;
-            return `${Math.floor(seconds / 86400)} day ago`;
-        }
-
-        function formatPresenceRelative(csr) {
-            const reference = csr.last_seen_at || csr.last_assigned_at;
-            if (csr.is_online) return 'Active now';
-            if (!reference) return 'No heartbeat yet';
-            return `Last seen ${formatRelative(reference)}`;
-        }
-
-        function showBanner(message, tone = 'success') {
-            flashBanner.textContent = message;
-            flashBanner.className = `flash-banner show ${tone}`;
-            window.clearTimeout(flashTimer);
-            flashTimer = window.setTimeout(() => {
-                flashBanner.className = 'flash-banner';
-            }, 4500);
-        }
-
-        async function requestJson(url, options = {}) {
-            const response = await fetch(url, {
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(options.headers || {})
-                },
-                ...options
+    // ── Tabs ──
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            if (tab === state.tab) return;
+            state.tab = tab;
+            document.querySelectorAll('.tab-btn').forEach((b) => {
+                b.setAttribute('aria-selected', b.dataset.tab === tab ? 'true' : 'false');
             });
-
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok) {
-                throw new Error(payload.error || payload.message || 'Request failed');
+            document.getElementById('closed-pagination').classList.toggle('hidden', tab !== 'closed');
+            if (tab === 'closed' && !state.closedChats.length && !state.closedLoading) {
+                loadClosedChats(1);
+            } else {
+                renderChatList();
             }
-            return payload;
-        }
+        });
+    });
 
-        function getSelectedChat() {
-            if (!state.dashboard) return null;
-            return state.dashboard.chats.find((chat) => chat.id === state.selectedChatId) || null;
-        }
+    function escapeHtml(value) {
+        return String(value || '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    }
 
-        function getDraftMessage(chatId) {
-            return state.drafts[String(chatId)] || '';
-        }
+    function formatDateTime(value) {
+        if (!value) return 'Not available';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleString();
+    }
 
-        function setDraftMessage(chatId, value) {
-            state.drafts[String(chatId)] = value;
-        }
+    function formatRelative(value) {
+        if (!value) return 'Just now';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+        if (seconds < 60) return 'Just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`;
+        return `${Math.floor(seconds / 86400)} day ago`;
+    }
 
-        function captureActiveDraft() {
-            const chat = getSelectedChat();
-            if (!chat) return;
+    function formatPresenceRelative(csr) {
+        const reference = csr.last_seen_at || csr.last_assigned_at;
+        if (csr.is_online) return 'Active now';
+        if (!reference) return 'No heartbeat';
+        return `Seen ${formatRelative(reference)}`;
+    }
 
-            const activeTextarea = document.querySelector('#reply-form textarea[name="message"]');
-            if (!activeTextarea) return;
+    function showBanner(message, tone = 'success') {
+        flashBanner.textContent = message;
+        flashBanner.className = `block mx-4 mt-3 px-4 py-3 rounded-2xl text-[13px] font-semibold flash-${tone}`;
+        window.clearTimeout(flashTimer);
+        flashTimer = window.setTimeout(() => { flashBanner.className = 'hidden'; }, 4500);
+    }
 
-            setDraftMessage(chat.id, activeTextarea.value || '');
-        }
+    async function requestJson(url, options = {}) {
+        const response = await fetch(url, {
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+            ...options
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || payload.message || 'Request failed');
+        return payload;
+    }
 
-        function isComposingSelectedChat() {
-            const chat = getSelectedChat();
-            if (!chat) return false;
+    function getSelectedChat() {
+        if (!state.dashboard) return null;
+        const active = state.dashboard.chats.find((c) => c.id === state.selectedChatId);
+        if (active) return active;
+        return state.closedChats.find((c) => c.id === state.selectedChatId) || null;
+    }
+    function getDraftMessage(id) { return state.drafts[String(id)] || ''; }
+    function setDraftMessage(id, v) { state.drafts[String(id)] = v; }
 
-            const activeElement = document.activeElement;
-            const isReplyTextarea = activeElement && activeElement.matches && activeElement.matches('#reply-form textarea[name="message"]');
-            return isReplyTextarea && state.composingChatId === String(chat.id);
-        }
+    function captureActiveDraft() {
+        const chat = getSelectedChat(); if (!chat) return;
+        const ta = document.querySelector('#reply-form textarea[name="message"]');
+        if (ta) setDraftMessage(chat.id, ta.value || '');
+    }
+    function isComposingSelectedChat() {
+        const chat = getSelectedChat(); if (!chat) return false;
+        const ae = document.activeElement;
+        return ae && ae.matches && ae.matches('#reply-form textarea[name="message"]') && state.composingChatId === String(chat.id);
+    }
 
-        function renderSummary() {
-            const summary = state.dashboard.summary;
-            document.getElementById('stat-total').textContent = summary.total_chats;
-            document.getElementById('stat-mine').textContent = summary.my_chats;
-            document.getElementById('stat-queued').textContent = summary.queued_chats;
-            document.getElementById('stat-csrs').textContent = summary.available_csrs;
+    function renderSummary() {
+        const s = state.dashboard.summary;
+        document.getElementById('stat-total').textContent = s.total_chats;
+        document.getElementById('stat-mine').textContent = s.my_chats;
+        document.getElementById('stat-queued').textContent = s.queued_chats;
+        document.getElementById('stat-csrs').textContent = s.available_csrs;
 
-            const relayPill = document.getElementById('relay-pill');
-            relayPill.className = `pill ${state.dashboard.integration.relay_enabled ? 'good' : 'warn'}`;
-            relayPill.innerHTML = state.dashboard.integration.relay_enabled
-                ? '<i class="fa-solid fa-plug-circle-check"></i><span>Relay key configured</span>'
-                : '<i class="fa-solid fa-plug-circle-xmark"></i><span>Relay key missing</span>';
-        }
+        const openCount = state.dashboard.chats.length;
+        const closedCount = s.resolved_chats || 0;
+        document.getElementById('tab-open-count').textContent = openCount;
+        document.getElementById('tab-closed-count').textContent = closedCount;
 
-        function renderChatList() {
-            const container = document.getElementById('chat-list');
+        const rp = document.getElementById('relay-pill');
+        const on = state.dashboard.integration.relay_enabled;
+        rp.className = `flex items-center gap-2 px-3 py-2 rounded-full border text-xs font-semibold ${on ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/25 bg-amber-500/10 text-amber-300'}`;
+        rp.innerHTML = on
+            ? '<i class="fa-solid fa-plug-circle-check"></i><span class="hidden sm:inline">Relay configured</span>'
+            : '<i class="fa-solid fa-plug-circle-xmark"></i><span class="hidden sm:inline">Relay missing</span>';
+    }
+
+    function chatCardHtml(chat) {
+        const owner = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : 'Waiting queue';
+        const bucket = chat.ownership_bucket || (chat.is_mine ? 'mine' : (chat.assigned_csr_id ? 'other' : 'queued'));
+        const aLabel = bucket === 'mine' ? 'Yours'
+            : bucket === 'other' ? `${owner}`
+            : bucket === 'queued' ? 'CLAIM' : 'Resolved';
+        const [aText, aCls, aBtnCls] = bucket === 'mine' ? ['Open', 'access-mine', 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25']
+            : bucket === 'queued' ? ['Claim & Open', 'access-mine', 'bg-amber-500/15 border-amber-500/40 text-amber-200 hover:bg-amber-500/25']
+            : bucket === 'other' ? ['Read only', 'access-locked', 'bg-sf-2 border-bd text-gray-400 hover:border-blue-500/30']
+            : ['View transcript', 'access-resolved', 'bg-sf-2 border-bd text-gray-400 hover:border-blue-500/30'];
+        const active = state.selectedChatId === chat.id;
+        const pillCls = bucket === 'mine' ? 'pill-mine' : bucket === 'other' ? 'pill-other' : bucket === 'queued' ? 'pill-queued' : 'pill-resolved';
+        const chipCls = ['assigned','in_progress'].includes(chat.status) ? 'chip-assigned'
+            : chat.status === 'queued' ? 'chip-queued'
+            : ['resolved','closed'].includes(chat.status) ? 'chip-resolved' : '';
+
+        return `
+        <article class="chat-card border ${active ? 'border-blue-500/75 bg-blue-500/10 ring-1 ring-blue-500/20' : 'border-bd bg-sf-2 hover:border-blue-500/40'} rounded-xl pl-4 pr-3 py-3 cursor-pointer transition-all hover:-translate-y-px hover:shadow-lg hover:shadow-black/30 flex flex-col gap-2" data-chat-id="${chat.id}" data-chat-bucket="${bucket}">
+            <div class="flex items-start justify-between gap-2 min-w-0">
+                <div class="min-w-0 flex-1">
+                    <div class="font-bold text-sm text-white truncate">${escapeHtml(chat.customer_name || chat.visitor_id)}</div>
+                    <div class="text-[11px] text-gray-500 truncate mt-0.5">${escapeHtml(chat.visitor_id)}</div>
+                </div>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${pillCls} flex-shrink-0">${escapeHtml(aLabel)}</span>
+            </div>
+            <div class="text-[13px] text-gray-300 leading-snug line-clamp-2">${escapeHtml(chat.preview) || '<span class="text-gray-500 italic">No preview yet</span>'}</div>
+            <div class="flex items-center justify-between gap-2 text-[11px] text-gray-500">
+                <span><i class="fa-regular fa-clock mr-1"></i>${escapeHtml(formatRelative(chat.last_activity_at))}</span>
+                <span><i class="fa-regular fa-comment mr-1"></i>${chat.message_count} msg</span>
+                <span class="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${chipCls}">${escapeHtml(chat.status.replace('_',' '))}</span>
+            </div>
+            <button type="button" class="chat-open-btn w-full mt-1 border ${aBtnCls} text-[12px] font-extrabold tracking-wide uppercase py-2 rounded-lg transition-colors">
+                <i class="fa-solid ${bucket === 'queued' ? 'fa-hand-point-up' : bucket === 'mine' ? 'fa-arrow-right' : 'fa-eye'} mr-1.5"></i>${escapeHtml(aText)}
+            </button>
+        </article>`;
+    }
+
+    function renderChatList() {
+        const container = document.getElementById('chat-list');
+        if (!state.dashboard) { container.innerHTML = '<div class="text-xs text-gray-500">Loading...</div>'; return; }
+
+        if (state.tab === 'closed') {
+            if (state.closedLoading) {
+                container.innerHTML = '<div class="text-xs text-gray-500 p-4 text-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading closed chats...</div>';
+                return;
+            }
+            if (!state.closedChats.length) {
+                container.innerHTML = '<div class="text-xs text-gray-500 p-6 text-center"><i class="fa-solid fa-check-double text-2xl block mb-2 text-gray-600"></i>No closed chats on this page.</div>';
+                return;
+            }
+            container.innerHTML = `<section class="group-resolved flex flex-col gap-2.5">
+                <div class="flex items-center justify-between gap-3 px-1 sticky top-0 bg-sf pt-1 pb-1.5 z-[1]">
+                    <div class="flex items-center gap-2">
+                        <span class="group-dot w-2 h-2 rounded-full"></span>
+                        <span class="text-[11px] font-extrabold text-gray-400 uppercase tracking-widest">Closed Chats</span>
+                    </div>
+                    <span class="text-[11px] text-gray-500">${state.closedPagination.total} total</span>
+                </div>
+                ${state.closedChats.map(chatCardHtml).join('')}
+            </section>`;
+        } else {
             const chats = state.dashboard.chats;
-
             if (!chats.length) {
-                container.innerHTML = '<div class="tiny-note">No incoming CSR chats yet.</div>';
+                container.innerHTML = '<div class="text-xs text-gray-500 p-6 text-center"><i class="fa-solid fa-inbox text-2xl block mb-2 text-gray-600"></i>No open chats. Great work!</div>';
                 return;
             }
-
             const groups = [
-                { key: 'mine', title: 'My Chats' },
-                { key: 'other', title: 'Other CSR Chats' },
-                { key: 'queued', title: 'Waiting Queue' },
-                { key: 'resolved', title: 'Resolved History' }
+                { key: 'mine', title: 'My Chats', icon: 'fa-star' },
+                { key: 'queued', title: 'Waiting Queue · Click to Claim', icon: 'fa-hand-point-up' },
+                { key: 'other', title: 'Other CSR Chats', icon: 'fa-users' }
             ];
-
-            const renderChatCard = (chat) => {
-                const owner = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : 'Waiting queue';
-                const bucket = chat.ownership_bucket || (chat.is_mine ? 'mine' : (chat.assigned_csr_id ? 'other' : 'queued'));
-                const assignmentLabel = bucket === 'mine'
-                    ? 'Claimed by you'
-                    : (bucket === 'other' ? `Claimed by ${owner}` : (bucket === 'queued' ? 'Unclaimed \u2014 click to take' : 'Resolved'));
-                const ownerNote = bucket === 'mine'
-                    ? 'You own this chat \u2014 you are the only one who can reply or resolve it.'
-                    : (bucket === 'other' ? `${owner} is handling this chat. You can open it in read-only mode.` : (bucket === 'queued' ? 'No CSR has picked this up yet. Click to claim and start replying.' : `Resolved chat${chat.assigned_csr ? ` handled by ${owner}` : ''}.`));
-
-                let accessText = 'View';
-                let accessClass = 'resolved';
-                if (bucket === 'mine') {
-                    accessText = 'Open';
-                    accessClass = 'mine';
-                } else if (bucket === 'queued') {
-                    accessText = 'Claim \u00B7 Open';
-                    accessClass = 'mine';
-                } else if (bucket === 'other') {
-                    accessText = 'Read only';
-                    accessClass = 'locked';
-                } else {
-                    accessText = 'Read only';
-                    accessClass = 'resolved';
-                }
-
-                return `
-                    <article class="chat-card ${state.selectedChatId === chat.id ? 'active' : ''}" data-chat-id="${chat.id}" data-chat-bucket="${bucket}">
-                        <div class="chat-card-top">
-                            <div class="chat-name">${escapeHtml(chat.customer_name || chat.visitor_id)}</div>
-                            <div class="chat-time">${escapeHtml(formatRelative(chat.last_activity_at))}</div>
+            container.innerHTML = groups.map((g) => {
+                const gc = chats.filter((c) => (c.ownership_bucket || (c.is_mine ? 'mine' : (c.assigned_csr_id ? 'other' : 'queued'))) === g.key);
+                if (!gc.length) return '';
+                return `<section class="group-${g.key} flex flex-col gap-2.5">
+                    <div class="flex items-center justify-between gap-3 px-1 sticky top-0 bg-sf pt-1 pb-1.5 z-[1]">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="group-dot w-2 h-2 rounded-full flex-shrink-0"></span>
+                            <span class="text-[11px] font-extrabold text-gray-300 uppercase tracking-wider truncate"><i class="fa-solid ${g.icon} mr-1.5 opacity-60"></i>${escapeHtml(g.title)}</span>
                         </div>
-                        <div class="tiny-note">${escapeHtml(chat.visitor_id)}</div>
-                        <div class="chat-preview">${escapeHtml(chat.preview)}</div>
-                        <div class="chat-card-meta">
-                            <span class="assignment-pill ${bucket}">${escapeHtml(assignmentLabel)}</span>
-                            <span class="status-chip ${escapeHtml(chat.status)}">${escapeHtml(chat.status.replace('_', ' '))}</span>
-                        </div>
-                        <div class="owner-label" style="margin-top:8px;">${escapeHtml(ownerNote)}</div>
-                        <div class="chat-card-meta" style="margin-top:8px;">
-                            <span class="access-chip ${accessClass}">${escapeHtml(accessText)}</span>
-                            <span class="tiny-note">${chat.message_count} messages</span>
-                        </div>
-                    </article>
-                `;
-            };
-
-            container.innerHTML = groups.map((group) => {
-                const groupChats = chats.filter((chat) => (chat.ownership_bucket || (chat.is_mine ? 'mine' : (chat.assigned_csr_id ? 'other' : 'queued'))) === group.key);
-                if (!groupChats.length) return '';
-
-                return `
-                    <section class="chat-group">
-                        <div class="chat-group-head">
-                            <div class="chat-group-title">${escapeHtml(group.title)}</div>
-                            <div class="chat-group-count">${groupChats.length}</div>
-                        </div>
-                        ${groupChats.map(renderChatCard).join('')}
-                    </section>
-                `;
+                        <span class="text-[11px] text-gray-500 flex-shrink-0">${gc.length}</span>
+                    </div>
+                    ${gc.map(chatCardHtml).join('')}
+                </section>`;
             }).join('');
+        }
 
-            container.querySelectorAll('.chat-card').forEach((card) => {
-                card.addEventListener('click', () => {
-                    const chatId = Number(card.dataset.chatId);
-                    const bucket = card.dataset.chatBucket || '';
-                    selectChat(chatId, bucket).catch((error) => showBanner(error.message, 'error'));
-                });
+        container.querySelectorAll('.chat-card').forEach((el) => {
+            el.addEventListener('click', () => {
+                selectChat(Number(el.dataset.chatId), el.dataset.chatBucket || '').catch((e) => showBanner(e.message, 'error'));
+            });
+        });
+    }
+
+    async function loadClosedChats(page) {
+        state.closedLoading = true;
+        renderChatList();
+        try {
+            const payload = await requestJson(`/api/csr/chats/resolved?page=${page}&per_page=20`, { method: 'GET' });
+            state.closedChats = payload.chats || [];
+            state.closedPagination = payload.pagination || state.closedPagination;
+            updateClosedPagination();
+        } catch (e) {
+            showBanner(e.message, 'error');
+        } finally {
+            state.closedLoading = false;
+            renderChatList();
+        }
+    }
+
+    function updateClosedPagination() {
+        const p = state.closedPagination;
+        document.getElementById('closed-page-info').textContent = p.total
+            ? `Page ${p.page} of ${p.total_pages} · ${p.total} chats`
+            : 'No closed chats';
+        document.getElementById('closed-prev').disabled = !p.has_prev;
+        document.getElementById('closed-next').disabled = !p.has_next;
+    }
+
+    document.getElementById('closed-prev').addEventListener('click', () => {
+        if (state.closedPagination.has_prev) loadClosedChats(state.closedPagination.page - 1);
+    });
+    document.getElementById('closed-next').addEventListener('click', () => {
+        if (state.closedPagination.has_next) loadClosedChats(state.closedPagination.page + 1);
+    });
+
+    async function selectChat(chatId, bucket) {
+        state.selectedChatId = chatId;
+        state.selectedMessages = [];
+        renderChatList();
+        renderWorkspace();
+        if (bucket === 'queued') {
+            try {
+                const payload = await requestJson(`/api/chats/${chatId}/claim`, { method: 'POST', body: JSON.stringify({}) });
+                state.selectedMessages = payload.messages || [];
+                await refreshDashboard(false);
+                renderWorkspace();
+                showBanner('Chat claimed. You are now the assigned CSR.', 'success');
+                return;
+            } catch (error) {
+                showBanner(error.message || 'Chat was just claimed by another CSR.', 'error');
+                await refreshDashboard(false);
+            }
+        }
+        await loadSelectedMessages();
+    }
+
+    function renderLoadList() {
+        const container = document.getElementById('load-list');
+        const csrs = state.dashboard.csrs;
+        const online = csrs.filter(c => c.is_online).length;
+        const avail = csrs.filter(c => c.is_available && c.is_active).length;
+        document.getElementById('workload-summary').textContent = `· ${online} online · ${avail} available`;
+
+        if (!csrs.length) {
+            container.innerHTML = '<div class="text-xs text-gray-500">No CSR users found.</div>';
+            return;
+        }
+        const initials = (csr) => {
+            const n = (csr.display_name || csr.email || '?').trim();
+            const p = n.split(/[\s._@-]+/).filter(Boolean);
+            if (!p.length) return '?';
+            return p.length === 1 ? p[0].slice(0, 2) : (p[0][0] + p[p.length - 1][0]);
+        };
+
+        container.innerHTML = csrs.map((csr) => {
+            const ul = Boolean(csr.unlimited_chats);
+            const loadTxt = ul ? `${csr.active_chat_count} <span class="unlimited-pill">∞</span>` : `${csr.active_chat_count}/${csr.max_concurrent_chats}`;
+            const bw = ul ? Math.max(4, Math.min(60, csr.active_chat_count * 6)) : Math.max(4, csr.load_pct);
+            const avBg = csr.is_online ? 'bg-gradient-to-br from-indigo-500 to-blue-600' : 'bg-gradient-to-br from-gray-600 to-gray-700';
+            const dotBg = csr.is_online ? 'bg-emerald-500' : 'bg-gray-500';
+            const isMe = csr.id === currentUser.id;
+            return `
+            <div class="grid grid-cols-[32px_1fr] gap-2 items-center p-2 rounded-lg border ${isMe ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-bd bg-white/[0.02]'} min-w-0">
+                <div class="relative w-8 h-8 rounded-full ${avBg} text-white font-extrabold text-[11px] flex items-center justify-center uppercase" title="${escapeHtml(csr.display_name || csr.email)}">
+                    ${escapeHtml(initials(csr))}
+                    <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-sf ${dotBg}"></span>
+                </div>
+                <div class="min-w-0">
+                    <div class="flex items-center justify-between gap-1.5 min-w-0">
+                        <div class="text-[12px] font-bold truncate min-w-0">${escapeHtml(csr.display_name || csr.email)}${isMe ? ' <span class="text-[9px] text-emerald-400">(YOU)</span>' : ''}</div>
+                        <div class="text-[10px] text-gray-400 flex-shrink-0 whitespace-nowrap">${loadTxt}</div>
+                    </div>
+                    <div class="h-1.5 rounded-full bg-white/[0.08] overflow-hidden my-1"><span class="load-bar-fill ${ul ? 'ulimit' : ''}" style="width:${bw}%"></span></div>
+                    <div class="text-[10px] text-gray-500 truncate">${csr.is_online ? 'Online' : 'Offline'} · ${escapeHtml(formatPresenceRelative(csr))}</div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function renderEmptyWorkspace() {
+        document.getElementById('detail-title').textContent = 'Select a chat';
+        document.getElementById('detail-subtitle').textContent = 'Click a waiting chat on the left to claim it.';
+        document.getElementById('detail-actions').innerHTML = '';
+        document.getElementById('workspace-body').innerHTML = `
+            <div class="m-auto max-w-lg text-center p-6">
+                <i class="fa-solid fa-comments text-4xl text-gray-600 mb-3"></i>
+                <h2 class="text-lg font-extrabold mb-1.5">No chat selected</h2>
+                <p class="text-sm text-gray-400 leading-relaxed">Pick any chat from the left. Queued chats get claimed automatically.</p>
+            </div>`;
+    }
+
+    function renderMessages(messages) {
+        if (!messages.length) return '<div class="text-xs text-gray-500 p-4">No messages yet.</div>';
+        return messages.map((m) => {
+            const side = m.sender_type === 'csr' ? 'self-end' : 'self-start';
+            const bubCls = m.sender_type === 'csr' ? 'msg-csr' : m.sender_type === 'user' ? 'msg-user' : 'msg-ai';
+            return `<div class="max-w-[78%] lg:max-w-[560px] flex flex-col gap-1 ${side}">
+                <div class="text-[10px] text-gray-500 uppercase tracking-wider">${escapeHtml(m.sender_type)}</div>
+                <div class="px-3.5 py-2.5 rounded-2xl leading-relaxed text-[13px] break-words whitespace-pre-wrap ${bubCls}">${escapeHtml(m.content)}</div>
+                <div class="text-[10px] text-gray-600">${escapeHtml(formatDateTime(m.created_at))}</div>
+            </div>`;
+        }).join('');
+    }
+
+    function renderOpenWorkspace(chat) {
+        const ownerLabel = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : null;
+        let ownershipNote = 'unclaimed';
+        if (chat.is_mine) ownershipNote = 'claimed by you';
+        else if (chat.is_resolved) ownershipNote = 'resolved';
+        else if (ownerLabel) ownershipNote = `read-only · ${ownerLabel}`;
+
+        document.getElementById('detail-title').textContent = chat.customer_name || chat.visitor_id;
+        document.getElementById('detail-subtitle').textContent = `${chat.visitor_id} · ${ownershipNote} · ${chat.message_count} messages`;
+
+        const adminControls = currentUser.role === 'admin' ? `
+            <form id="open-assign-form" class="flex gap-2 items-center">
+                <select name="csr_id" class="min-w-[180px] border border-bd bg-sf-3 text-gray-200 px-3 py-2 rounded-lg text-[12px] outline-none">
+                    <option value="auto">Auto-balance</option>
+                    ${state.dashboard.csrs.map((csr) => `<option value="${csr.id}" ${chat.assigned_csr_id === csr.id ? 'selected' : ''}>${escapeHtml(csr.display_name || csr.email)}</option>`).join('')}
+                </select>
+                <button class="px-3 py-2 rounded-lg border border-bd bg-sf-2 text-gray-200 font-bold text-[12px] cursor-pointer hover:border-blue-500/40 transition-colors" type="submit">Reassign</button>
+            </form>` : '';
+
+        document.getElementById('detail-actions').innerHTML = `
+            ${adminControls}
+            ${chat.can_resolve ? '<button class="px-4 py-2 rounded-lg border border-red-500/30 bg-red-500/15 text-red-300 font-bold text-[12px] cursor-pointer hover:bg-red-500/25 transition-colors" id="resolve-btn" type="button"><i class="fa-solid fa-check mr-1.5"></i>Resolve Chat</button>' : ''}`;
+
+        let readOnlyNote = '';
+        if (!chat.can_reply) {
+            if (chat.is_resolved) readOnlyNote = `This chat is resolved. Read-only transcript${ownerLabel ? ` handled by <strong>${escapeHtml(ownerLabel)}</strong>` : ''}.`;
+            else if (ownerLabel) readOnlyNote = `Claimed by <strong>${escapeHtml(ownerLabel)}</strong>. Read-only for you.`;
+            else readOnlyNote = 'Unclaimed. Click the card to claim and start replying.';
+        }
+
+        document.getElementById('workspace-body').innerHTML = `
+            <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div id="messages-panel" class="flex-1 min-h-[200px] overflow-y-auto overflow-x-hidden p-4 flex flex-col gap-2.5 scrollbar-thin">${renderMessages(state.selectedMessages)}</div>
+                ${chat.can_reply ? `
+                <div class="border-t border-bd p-3 bg-sf flex-shrink-0 min-w-0">
+                    <div class="flex justify-between gap-3 items-center mb-2">
+                        <div class="text-[12px] font-bold">Reply as ${escapeHtml(state.dashboard.current_user.display_name || state.dashboard.current_user.email)}</div>
+                        <div class="text-[10px] text-gray-500 uppercase tracking-wider">${escapeHtml(chat.status.replace('_',' '))}</div>
+                    </div>
+                    <form id="reply-form" class="flex flex-col gap-2">
+                        <textarea name="message" placeholder="Type your response to the customer" class="w-full max-w-full border border-bd bg-sf-3 text-gray-200 px-3.5 py-3 rounded-xl text-[13px] outline-none min-h-[72px] resize-y font-sans focus:border-blue-500/60"></textarea>
+                        <button type="submit" class="px-4 py-2.5 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white font-bold text-[13px] border-0 cursor-pointer hover:brightness-110 transition-all"><i class="fa-solid fa-paper-plane mr-1.5"></i>Send Reply</button>
+                    </form>
+                </div>` : `
+                <div class="border-t border-blue-500/15 p-3 bg-blue-500/8 text-gray-400 text-[12px] leading-relaxed flex-shrink-0">
+                    ${readOnlyNote}
+                </div>`}
+            </div>`;
+
+        const mp = document.getElementById('messages-panel');
+        if (mp) mp.scrollTop = mp.scrollHeight;
+
+        const rf = document.getElementById('reply-form');
+        if (rf) {
+            const ta = rf.querySelector('textarea[name="message"]');
+            if (ta) {
+                ta.value = getDraftMessage(chat.id);
+                ta.addEventListener('input', (e) => setDraftMessage(chat.id, e.currentTarget.value));
+                ta.addEventListener('focus', () => { state.composingChatId = String(chat.id); });
+                ta.addEventListener('blur', () => { captureActiveDraft(); if (state.composingChatId === String(chat.id)) state.composingChatId = null; });
+            }
+            rf.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const msg = ta.value.trim();
+                if (!msg) { showBanner('Reply message cannot be empty.', 'error'); return; }
+                try {
+                    const resp = await requestJson(`/api/chats/${chat.id}/reply`, { method: 'POST', body: JSON.stringify({ message: msg }) });
+                    setDraftMessage(chat.id, '');
+                    ta.value = '';
+                    state.selectedMessages = resp.messages;
+                    await refreshDashboard(false);
+                    showBanner(resp.relay && resp.relay.skipped ? 'Reply saved locally. Relay not configured.' : 'Reply sent.', resp.relay && resp.relay.skipped ? 'error' : 'success');
+                } catch (err) { showBanner(err.message, 'error'); }
             });
         }
 
-        async function selectChat(chatId, bucket) {
-            state.selectedChatId = chatId;
-            state.selectedMessages = [];
-            renderChatList();
-            renderWorkspace();
-
-            // Queued chats are auto-claimed on click so the clicking CSR
-            // becomes the owner and everyone else sees them read-only.
-            if (bucket === 'queued') {
+        const rb = document.getElementById('resolve-btn');
+        if (rb) {
+            rb.addEventListener('click', async () => {
                 try {
-                    const payload = await requestJson(`/api/chats/${chatId}/claim`, {
-                        method: 'POST',
-                        body: JSON.stringify({})
-                    });
-                    state.selectedMessages = payload.messages || [];
-                    await refreshDashboard(false);
-                    renderWorkspace();
-                    showBanner('Chat claimed. You are now the assigned CSR.', 'success');
-                    return;
-                } catch (error) {
-                    // Someone else beat us to the claim. Fall through and
-                    // open the transcript in read-only mode.
-                    showBanner(error.message || 'Chat was just claimed by another CSR.', 'error');
-                    await refreshDashboard(false);
-                }
-            }
-
-            await loadSelectedMessages();
+                    const resp = await requestJson(`/api/chats/${chat.id}/resolve`, { method: 'POST', body: JSON.stringify({}) });
+                    state.selectedChatId = null;
+                    state.selectedMessages = [];
+                    state.dashboard = resp.dashboard;
+                    renderSummary(); renderChatList(); renderLoadList(); renderWorkspace();
+                    showBanner(resp.relay && resp.relay.skipped ? 'Chat resolved locally.' : 'Chat resolved and returned to AI.', resp.relay && resp.relay.skipped ? 'error' : 'success');
+                } catch (err) { showBanner(err.message, 'error'); }
+            });
         }
 
-        function renderLoadList() {
-            const container = document.getElementById('load-list');
-            const csrs = state.dashboard.csrs;
-
-            if (!csrs.length) {
-                container.innerHTML = '<div class="tiny-note">No CSR users found.</div>';
-                return;
-            }
-
-            container.innerHTML = csrs.map((csr) => `
-                <div class="load-item">
-                    <div class="message-row">
-                        <div class="load-name">${escapeHtml(csr.display_name || csr.email)}</div>
-                        <div class="tiny-note">${csr.active_chat_count}/${csr.max_concurrent_chats}</div>
-                    </div>
-                    <div class="load-bar"><span style="width:${Math.max(4, csr.load_pct)}%"></span></div>
-                    <div class="message-row">
-                        <div class="tiny-note">${csr.is_online ? 'Online' : 'Offline'} · ${csr.is_available ? 'Available' : 'Paused'}</div>
-                        <div class="tiny-note">${escapeHtml(formatPresenceRelative(csr))}</div>
-                    </div>
-                </div>
-            `).join('');
+        const af = document.getElementById('open-assign-form');
+        if (af) {
+            af.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const csrId = af.querySelector('select[name="csr_id"]').value;
+                try {
+                    const resp = await requestJson(`/api/chats/${chat.id}/assign`, { method: 'POST', body: JSON.stringify({ csr_id: csrId }) });
+                    state.dashboard = resp.dashboard;
+                    renderSummary(); renderChatList(); renderLoadList(); renderWorkspace();
+                    showBanner('Chat reassigned.', 'success');
+                } catch (err) { showBanner(err.message, 'error'); }
+            });
         }
+    }
 
-        function renderEmptyWorkspace() {
-            document.getElementById('detail-title').textContent = 'Select a chat';
-            document.getElementById('detail-subtitle').textContent = 'Click a waiting chat to claim it, or open an in-progress chat to review the live transcript.';
-            document.getElementById('detail-actions').innerHTML = '';
-            document.getElementById('workspace-body').innerHTML = `
-                <div class="empty-state">
-                    <i class="fa-solid fa-comments"></i>
-                    <h2>No chat selected</h2>
-                    <p>Pick any chat from the left. Queued chats get claimed for you automatically when opened. Chats already claimed by another CSR open as a read-only transcript so you can stay in the loop.</p>
-                </div>
-            `;
+    function renderWorkspace() {
+        const chat = getSelectedChat();
+        if (!chat) { renderEmptyWorkspace(); return; }
+        renderOpenWorkspace(chat);
+    }
+
+    async function loadSelectedMessages() {
+        const chat = getSelectedChat();
+        if (!chat) { state.selectedMessages = []; renderWorkspace(); return; }
+        const payload = await requestJson(`/api/chats/${chat.id}/messages`, { method: 'GET' });
+        state.selectedMessages = payload.messages || [];
+        renderWorkspace();
+    }
+
+    async function refreshDashboard(loadMessagesAfter = true) {
+        captureActiveDraft();
+        const preserveComposer = isComposingSelectedChat();
+        const payload = await requestJson('/api/dashboard-data', { method: 'GET' });
+        state.dashboard = payload;
+        if (!state.selectedChatId) {
+            const firstMine = payload.chats.find((c) => c.can_reply);
+            if (firstMine) state.selectedChatId = firstMine.id;
         }
-
-        function renderMessages(messages) {
-            if (!messages.length) {
-                return '<div class="tiny-note">No messages available for this chat yet.</div>';
-            }
-
-            return messages.map((message) => `
-                <div class="message ${escapeHtml(message.sender_type)}">
-                    <div class="message-label">${escapeHtml(message.sender_type.toUpperCase())}</div>
-                    <div class="message-bubble">${escapeHtml(message.content)}</div>
-                    <div class="message-time">${escapeHtml(formatDateTime(message.created_at))}</div>
-                </div>
-            `).join('');
+        const inActive = payload.chats.some((c) => c.id === state.selectedChatId);
+        const inClosed = state.closedChats.some((c) => c.id === state.selectedChatId);
+        if (state.selectedChatId && !inActive && !inClosed) {
+            state.selectedChatId = null;
+            state.selectedMessages = [];
         }
+        renderSummary(); renderChatList(); renderLoadList();
+        if (!preserveComposer) { renderWorkspace(); captureActiveDraft(); }
+        if (!preserveComposer && loadMessagesAfter && getSelectedChat()) await loadSelectedMessages();
+    }
 
-        function renderOpenWorkspace(chat) {
-            const ownerLabel = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : null;
-            let ownershipNote = 'unclaimed';
-            if (chat.is_mine) ownershipNote = 'claimed by you';
-            else if (chat.is_resolved) ownershipNote = 'resolved';
-            else if (ownerLabel) ownershipNote = `read-only · handled by ${ownerLabel}`;
+    document.getElementById('refresh-btn').addEventListener('click', async () => {
+        try {
+            await refreshDashboard(true);
+            if (state.tab === 'closed') await loadClosedChats(state.closedPagination.page);
+            showBanner('Refreshed.', 'success');
+        } catch (e) { showBanner(e.message, 'error'); }
+    });
 
-            document.getElementById('detail-title').textContent = chat.customer_name || chat.visitor_id;
-            document.getElementById('detail-subtitle').textContent = `${chat.visitor_id} · ${ownershipNote} · ${chat.message_count} messages`;
-
-            const adminControls = currentUser.role === 'admin'
-                ? `
-                    <form id="open-assign-form" style="display:flex; gap:10px; align-items:center;">
-                        <select class="select" name="csr_id" style="min-width:220px;">
-                            <option value="auto">Auto-balance</option>
-                            ${state.dashboard.csrs.map((csr) => `
-                                <option value="${csr.id}" ${chat.assigned_csr_id === csr.id ? 'selected' : ''}>
-                                    ${escapeHtml(csr.display_name || csr.email)}
-                                </option>
-                            `).join('')}
-                        </select>
-                        <button class="btn" type="submit">Reassign</button>
-                    </form>
-                `
-                : '';
-
-            document.getElementById('detail-actions').innerHTML = `
-                ${adminControls}
-                ${chat.can_resolve ? '<button class="btn danger" id="resolve-btn" type="button">Resolve Chat</button>' : ''}
-            `;
-
-            let readOnlyNote = '';
-            if (!chat.can_reply) {
-                if (chat.is_resolved) {
-                    readOnlyNote = `This chat is already resolved. The transcript is read-only${ownerLabel ? ` and was handled by ${escapeHtml(ownerLabel)}` : ''}.`;
-                } else if (ownerLabel) {
-                    readOnlyNote = `This chat has been claimed by <strong>${escapeHtml(ownerLabel)}</strong>. You can read the live transcript here, but only ${escapeHtml(ownerLabel)} can reply or resolve it.`;
-                } else {
-                    readOnlyNote = 'This chat is unclaimed. Click the card in the list to claim it and start replying.';
-                }
-            }
-
-            document.getElementById('workspace-body').innerHTML = `
-                <div class="chat-window">
-                    <div class="messages" id="messages-panel">${renderMessages(state.selectedMessages)}</div>
-                    ${chat.can_reply ? `
-                    <div class="reply-box">
-                        <div class="reply-box-top">
-                            <div class="reply-title">Reply as ${escapeHtml(state.dashboard.current_user.display_name || state.dashboard.current_user.email)}</div>
-                            <div class="tiny-note">${escapeHtml(chat.status.replace('_', ' '))}</div>
-                        </div>
-                        <form id="reply-form" class="reply-form">
-                            <textarea class="textarea" name="message" placeholder="Type your response to the customer"></textarea>
-                            <button class="btn primary" type="submit">Send Reply</button>
-                        </form>
-                    </div>
-                    ` : `
-                    <div class="workspace-note">
-                        ${readOnlyNote}
-                    </div>
-                    `}
-                </div>
-            `;
-
-            const messagesPanel = document.getElementById('messages-panel');
-            if (messagesPanel) {
-                messagesPanel.scrollTop = messagesPanel.scrollHeight;
-            }
-
-            const replyForm = document.getElementById('reply-form');
-            if (replyForm) {
-                const textarea = replyForm.querySelector('textarea[name="message"]');
-                if (textarea) {
-                    textarea.value = getDraftMessage(chat.id);
-                    textarea.addEventListener('input', (event) => {
-                        setDraftMessage(chat.id, event.currentTarget.value);
-                    });
-                    textarea.addEventListener('focus', () => {
-                        state.composingChatId = String(chat.id);
-                    });
-                    textarea.addEventListener('blur', () => {
-                        captureActiveDraft();
-                        if (state.composingChatId === String(chat.id)) {
-                            state.composingChatId = null;
-                        }
-                    });
-                }
-
-                replyForm.addEventListener('submit', async (event) => {
-                    event.preventDefault();
-                    const activeTextarea = event.currentTarget.querySelector('textarea[name="message"]');
-                    const message = activeTextarea.value.trim();
-                    if (!message) {
-                        showBanner('Reply message cannot be empty.', 'error');
-                        return;
-                    }
-
-                    try {
-                        const response = await requestJson(`/api/chats/${chat.id}/reply`, {
-                            method: 'POST',
-                            body: JSON.stringify({ message })
-                        });
-                        setDraftMessage(chat.id, '');
-                        activeTextarea.value = '';
-                        state.selectedMessages = response.messages;
-                        await refreshDashboard(false);
-                        showBanner(response.relay && response.relay.skipped ? 'Reply saved locally. Central widget relay is not configured yet.' : 'Reply sent.', response.relay && response.relay.skipped ? 'error' : 'success');
-                    } catch (error) {
-                        showBanner(error.message, 'error');
-                    }
-                });
-            }
-
-            const resolveBtn = document.getElementById('resolve-btn');
-            if (resolveBtn) {
-                resolveBtn.addEventListener('click', async () => {
-                    try {
-                        const response = await requestJson(`/api/chats/${chat.id}/resolve`, {
-                            method: 'POST',
-                            body: JSON.stringify({})
-                        });
-                        state.selectedChatId = null;
-                        state.selectedMessages = [];
-                        state.dashboard = response.dashboard;
-                        renderSummary();
-                        renderChatList();
-                        renderLoadList();
-                        renderWorkspace();
-                        showBanner(response.relay && response.relay.skipped ? 'Chat resolved locally. Central widget transfer is not configured yet.' : 'Chat resolved and returned to AI.', response.relay && response.relay.skipped ? 'error' : 'success');
-                    } catch (error) {
-                        showBanner(error.message, 'error');
-                    }
-                });
-            }
-
-            const openAssignForm = document.getElementById('open-assign-form');
-            if (openAssignForm) {
-                openAssignForm.addEventListener('submit', async (event) => {
-                    event.preventDefault();
-                    const csrId = openAssignForm.querySelector('select[name="csr_id"]').value;
-                    try {
-                        const response = await requestJson(`/api/chats/${chat.id}/assign`, {
-                            method: 'POST',
-                            body: JSON.stringify({ csr_id: csrId })
-                        });
-                        state.dashboard = response.dashboard;
-                        renderSummary();
-                        renderChatList();
-                        renderLoadList();
-                        renderWorkspace();
-                        showBanner('Chat reassigned.', 'success');
-                    } catch (error) {
-                        showBanner(error.message, 'error');
-                    }
-                });
-            }
-        }
-
-        function renderWorkspace() {
-            const chat = getSelectedChat();
-            if (!chat) {
-                renderEmptyWorkspace();
-                return;
-            }
-
-            renderOpenWorkspace(chat);
-        }
-
-        async function loadSelectedMessages() {
-            const chat = getSelectedChat();
-            if (!chat) {
-                state.selectedMessages = [];
-                renderWorkspace();
-                return;
-            }
-
-            const payload = await requestJson(`/api/chats/${chat.id}/messages`, { method: 'GET' });
-            state.selectedMessages = payload.messages || [];
-            renderWorkspace();
-        }
-
-        async function refreshDashboard(loadMessagesAfter = true) {
-            captureActiveDraft();
-            const preserveComposer = isComposingSelectedChat();
-            const payload = await requestJson('/api/dashboard-data', { method: 'GET' });
-            state.dashboard = payload;
-
-            // Only auto-select chats already owned by this CSR so a refresh
-            // never silently lands on someone else's transcript.
-            if (!state.selectedChatId) {
-                const firstMine = payload.chats.find((chat) => chat.can_reply);
-                if (firstMine) state.selectedChatId = firstMine.id;
-            }
-
-            if (state.selectedChatId && !payload.chats.some((chat) => chat.id === state.selectedChatId)) {
-                state.selectedChatId = null;
-                state.selectedMessages = [];
-            }
-
-            renderSummary();
-            renderChatList();
-            renderLoadList();
-            if (!preserveComposer) {
-                renderWorkspace();
-                captureActiveDraft();
-            }
-
-            if (!preserveComposer && loadMessagesAfter && getSelectedChat()) {
-                await loadSelectedMessages();
-            }
-        }
-
-        document.getElementById('refresh-btn').addEventListener('click', async () => {
-            try {
-                await refreshDashboard(true);
-                showBanner('Chat list refreshed.', 'success');
-            } catch (error) {
-                showBanner(error.message, 'error');
-            }
-        });
-
-        refreshDashboard(true).catch((error) => {
-            showBanner(error.message, 'error');
-        });
-
-        refreshInterval = window.setInterval(() => {
-            refreshDashboard(Boolean(getSelectedChat())).catch(() => {});
-        }, 5000);
-    </script>
+    refreshDashboard(true).catch((e) => showBanner(e.message, 'error'));
+    refreshInterval = window.setInterval(() => { refreshDashboard(Boolean(getSelectedChat())).catch(() => {}); }, 5000);
+</script>
 </body>
 </html>

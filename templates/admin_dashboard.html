@@ -223,8 +223,17 @@
             flex: 1;
             min-height: 0;
             overflow-y: auto;
+            overflow-x: hidden;
             padding: 20px 24px 28px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148,163,184,0.18) transparent;
         }
+        .workspace::-webkit-scrollbar { width: 5px; }
+        .workspace::-webkit-scrollbar-thumb {
+            background: rgba(148,163,184,0.18);
+            border-radius: 10px;
+        }
+        .workspace::-webkit-scrollbar-track { background: transparent; }
 
         .flash-banner {
             padding: 12px 14px;
@@ -619,13 +628,32 @@
 
         .csr-table-wrap,
         .chat-table-wrap {
-            overflow: auto;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148,163,184,0.18) transparent;
         }
+        .csr-table-wrap::-webkit-scrollbar,
+        .chat-table-wrap::-webkit-scrollbar { height: 5px; }
+        .csr-table-wrap::-webkit-scrollbar-thumb,
+        .chat-table-wrap::-webkit-scrollbar-thumb {
+            background: rgba(148,163,184,0.18);
+            border-radius: 10px;
+        }
+        .csr-table-wrap::-webkit-scrollbar-track,
+        .chat-table-wrap::-webkit-scrollbar-track { background: transparent; }
 
         table {
             width: 100%;
             border-collapse: collapse;
             min-width: 760px;
+        }
+
+        @media (max-width: 780px) {
+            table { min-width: 640px; }
+        }
+        @media (max-width: 520px) {
+            table { min-width: 520px; }
         }
 
         th, td {
@@ -663,6 +691,85 @@
             gap: 8px;
             font-size: 12px;
             color: var(--muted);
+        }
+
+        /* Visual hint so admins spot the “unlimited” option quickly. */
+        .checkbox-row.unlimited-row {
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: rgba(124, 58, 237, 0.08);
+            border: 1px solid rgba(124, 58, 237, 0.25);
+            color: #c4b5fd;
+        }
+        .checkbox-row.unlimited-row input { accent-color: #a855f7; }
+
+        .badge.unlimited {
+            background: rgba(124, 58, 237, 0.18);
+            color: #c4b5fd;
+            border: 1px solid rgba(124, 58, 237, 0.35);
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+
+        .pagination-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+            background: rgba(255,255,255,0.02);
+            flex-wrap: wrap;
+        }
+        .pagination-bar .page-info {
+            font-size: 12px;
+            color: var(--muted);
+        }
+        .pagination-bar .page-buttons {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .pagination-bar .page-btn {
+            min-width: 34px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text);
+            cursor: pointer;
+        }
+        .pagination-bar .page-btn:hover:not(:disabled) {
+            border-color: rgba(59, 130, 246, 0.5);
+            background: rgba(59, 130, 246, 0.08);
+        }
+        .pagination-bar .page-btn.active {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: rgba(59, 130, 246, 0.7);
+            color: #bfdbfe;
+        }
+        .pagination-bar .page-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .pagination-bar .per-page-select {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 6px 8px;
+            font-size: 12px;
+        }
+        @media (max-width: 720px) {
+            .pagination-bar {
+                justify-content: center;
+            }
         }
 
         .chat-grid {
@@ -1188,7 +1295,30 @@
                                     </label>
                                     <label>
                                         <span>Max Concurrent Chats</span>
-                                        <input class="input" type="number" min="1" name="max_concurrent_chats" value="4">
+                                        <select class="input" name="max_concurrent_chats_sel" id="create-max-sel">
+                                            <option value="1">1</option>
+                                            <option value="2">2</option>
+                                            <option value="3">3</option>
+                                            <option value="4" selected>4</option>
+                                            <option value="5">5</option>
+                                            <option value="10">10</option>
+                                            <option value="20">20</option>
+                                            <option value="30">30</option>
+                                            <option value="40">40</option>
+                                            <option value="50">50</option>
+                                            <option value="75">75</option>
+                                            <option value="100">100</option>
+                                            <option value="200">200</option>
+                                            <option value="500">500</option>
+                                            <option value="1000">1000</option>
+                                            <option value="custom">Custom...</option>
+                                            <option value="unlimited">∞ Unlimited</option>
+                                        </select>
+                                        <input class="input" type="number" min="1" name="max_concurrent_chats" id="create-max-custom" value="4" style="display:none;margin-top:6px;" placeholder="Enter number">
+                                    </label>
+                                    <label class="checkbox-row unlimited-row">
+                                        <input type="checkbox" name="unlimited_chats" id="create-unlimited-chk">
+                                        <span><strong>Unlimited chat handling</strong> &mdash; this CSR can be assigned any number of concurrent chats (ignores the cap above).</span>
                                     </label>
                                     <label class="checkbox-row">
                                         <input type="checkbox" name="is_available" checked>
@@ -1268,6 +1398,19 @@
                                     </tbody>
                                 </table>
                             </div>
+                            <div class="pagination-bar" id="chat-pagination" style="display:none;">
+                                <div class="page-info" id="chat-page-info"></div>
+                                <div class="page-buttons" id="chat-page-buttons"></div>
+                                <label class="page-info" style="display:flex;align-items:center;gap:6px;">
+                                    Per page
+                                    <select class="per-page-select" id="chat-per-page">
+                                        <option value="10">10</option>
+                                        <option value="20" selected>20</option>
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                    </select>
+                                </label>
+                            </div>
                         </section>
 
                         <section class="panel">
@@ -1335,7 +1478,9 @@
             selectedChatId: null,
             selectedMessages: [],
             selectedEvents: [],
-            integrationDraftDirty: false
+            integrationDraftDirty: false,
+            chatPage: 1,
+            chatPerPage: 20
         };
 
         const flashBanner = document.getElementById('flash-banner');
@@ -1343,9 +1488,15 @@
         let refreshInterval = null;
         const currentPage = document.body.dataset.adminPage || 'overview';
         const dashboardEnabled = document.body.dataset.dashboardEnabled === 'true';
-        const dashboardApiUrl = dashboardEnabled
-            ? `/api/dashboard-data?page=${encodeURIComponent(currentPage)}`
-            : null;
+        function buildDashboardApiUrl() {
+            if (!dashboardEnabled) return null;
+            const params = new URLSearchParams({ page: currentPage });
+            if (currentPage === 'chats') {
+                params.set('chat_page', String(state.chatPage));
+                params.set('per_page', String(state.chatPerPage));
+            }
+            return `/api/dashboard-data?${params.toString()}`;
+        }
 
         function escapeHtml(value) {
             return String(value || '')
@@ -1922,6 +2073,10 @@
 
             tbody.innerHTML = rows.map((csr) => {
                 const report = leaderboard.get(csr.id) || { resolved_today: 0, resolved_yesterday: 0 };
+                const unlimited = Boolean(csr.unlimited_chats);
+                const loadCell = unlimited
+                    ? `${csr.active_chat_count} <span class="badge unlimited">Unlimited</span>`
+                    : `${csr.active_chat_count}/${csr.max_concurrent_chats}`;
                 return `
                     <tr>
                         <td>
@@ -1933,7 +2088,7 @@
                             <span class="cell-subtle">${escapeHtml(formatPresence(csr))}</span>
                         </td>
                         <td>
-                            ${csr.active_chat_count}/${csr.max_concurrent_chats}<br>
+                            ${loadCell}<br>
                             <span class="cell-subtle">${csr.is_available ? 'Available' : 'Paused'}</span>
                         </td>
                         <td>${report.resolved_today}</td>
@@ -1942,7 +2097,19 @@
                             <form class="settings-form" data-csr-id="${csr.id}">
                                 <label>
                                     <span>Max chats</span>
-                                    <input class="input" type="number" min="1" name="max_concurrent_chats" value="${csr.max_concurrent_chats}">
+                                    <select class="input" name="max_concurrent_chats_sel">
+                                        ${[1,2,3,4,5,10,20,30,40,50,75,100,200,500,1000].map((n) => {
+                                            const sel = !unlimited && Number(csr.max_concurrent_chats) === n ? 'selected' : '';
+                                            return `<option value="${n}" ${sel}>${n}</option>`;
+                                        }).join('')}
+                                        <option value="custom" ${!unlimited && ![1,2,3,4,5,10,20,30,40,50,75,100,200,500,1000].includes(Number(csr.max_concurrent_chats)) ? 'selected' : ''}>Custom...</option>
+                                        <option value="unlimited" ${unlimited ? 'selected' : ''}>∞ Unlimited</option>
+                                    </select>
+                                    <input class="input" type="number" min="1" name="max_concurrent_chats" value="${csr.max_concurrent_chats}" style="${unlimited || [1,2,3,4,5,10,20,30,40,50,75,100,200,500,1000].includes(Number(csr.max_concurrent_chats)) ? 'display:none;' : ''}margin-top:6px;" placeholder="Enter number">
+                                </label>
+                                <label class="checkbox-row unlimited-row">
+                                    <input type="checkbox" name="unlimited_chats" ${unlimited ? 'checked' : ''}>
+                                    <span>Unlimited</span>
                                 </label>
                                 <label class="checkbox-row">
                                     <input type="checkbox" name="is_available" ${csr.is_available ? 'checked' : ''}>
@@ -1956,17 +2123,55 @@
             }).join('');
 
             tbody.querySelectorAll('.settings-form').forEach((form) => {
+                const unlimitedCheckbox = form.querySelector('input[name="unlimited_chats"]');
+                const maxChatsInput = form.querySelector('input[name="max_concurrent_chats"]');
+                const maxChatsSel = form.querySelector('select[name="max_concurrent_chats_sel"]');
+
+                // Helper: sync UI state from select value
+                function applySelChange(val) {
+                    if (val === 'unlimited') {
+                        if (unlimitedCheckbox) unlimitedCheckbox.checked = true;
+                        if (maxChatsInput) maxChatsInput.style.display = 'none';
+                    } else if (val === 'custom') {
+                        if (unlimitedCheckbox) unlimitedCheckbox.checked = false;
+                        if (maxChatsInput) { maxChatsInput.style.display = ''; maxChatsInput.focus(); }
+                    } else {
+                        if (unlimitedCheckbox) unlimitedCheckbox.checked = false;
+                        if (maxChatsInput) { maxChatsInput.style.display = 'none'; maxChatsInput.value = val; }
+                    }
+                }
+
+                if (maxChatsSel) {
+                    maxChatsSel.addEventListener('change', () => applySelChange(maxChatsSel.value));
+                }
+
+                if (unlimitedCheckbox && maxChatsSel) {
+                    unlimitedCheckbox.addEventListener('change', () => {
+                        if (unlimitedCheckbox.checked) {
+                            maxChatsSel.value = 'unlimited';
+                            if (maxChatsInput) maxChatsInput.style.display = 'none';
+                        } else {
+                            maxChatsSel.value = maxChatsInput ? (maxChatsInput.value || '4') : '4';
+                            applySelChange(maxChatsSel.value);
+                        }
+                    });
+                }
                 form.addEventListener('submit', async (event) => {
                     event.preventDefault();
                     const csrId = form.dataset.csrId;
-                    const maxConcurrentChats = form.querySelector('input[name="max_concurrent_chats"]').value;
+                    const selVal = maxChatsSel ? maxChatsSel.value : null;
+                    const isUnlimited = selVal === 'unlimited' || (unlimitedCheckbox ? unlimitedCheckbox.checked : false);
+                    // For custom or preset values, read from the number input; for unlimited use 0 as sentinel
+                    const maxConcurrentChats = isUnlimited ? 0
+                        : (selVal === 'custom' ? (maxChatsInput ? maxChatsInput.value : 4) : (selVal || (maxChatsInput ? maxChatsInput.value : 4)));
                     const isAvailable = form.querySelector('input[name="is_available"]').checked;
                     try {
                         const response = await requestJson(`/api/csrs/${csrId}/settings`, {
                             method: 'POST',
                             body: JSON.stringify({
                                 max_concurrent_chats: maxConcurrentChats,
-                                is_available: isAvailable
+                                is_available: isAvailable,
+                                unlimited_chats: isUnlimited
                             })
                         });
                         state.dashboard = response.dashboard;
@@ -1982,10 +2187,13 @@
         function renderChatTable() {
             const tbody = document.getElementById('chat-table-body');
             const chats = state.dashboard.chats || [];
-            document.getElementById('chat-count').textContent = `${chats.length} chats`;
+            const pagination = state.dashboard.chats_pagination || null;
+            const total = pagination ? pagination.total : chats.length;
+            document.getElementById('chat-count').textContent = `${total} chat${total === 1 ? '' : 's'}`;
 
             if (!chats.length) {
                 tbody.innerHTML = '<tr><td colspan="7" class="tiny-note" style="padding:24px;">No chats have been stored yet.</td></tr>';
+                renderChatPagination(pagination);
                 return;
             }
 
@@ -2043,6 +2251,76 @@
                     }
                 });
             });
+
+            renderChatPagination(pagination);
+        }
+
+        function renderChatPagination(pagination) {
+            const bar = document.getElementById('chat-pagination');
+            if (!bar) return;
+            if (!pagination || pagination.total === 0) {
+                bar.style.display = 'none';
+                return;
+            }
+            bar.style.display = 'flex';
+
+            // Keep client state in sync with the server’s clamped page number
+            // so “Next”/“Prev” stay accurate if the dataset changed.
+            state.chatPage = pagination.page;
+            state.chatPerPage = pagination.per_page;
+            const perPageSel = document.getElementById('chat-per-page');
+            if (perPageSel && Number(perPageSel.value) !== pagination.per_page) {
+                perPageSel.value = String(pagination.per_page);
+            }
+
+            const start = (pagination.page - 1) * pagination.per_page + 1;
+            const end = Math.min(pagination.total, pagination.page * pagination.per_page);
+            document.getElementById('chat-page-info').textContent =
+                `Showing ${start}–${end} of ${pagination.total} chats (page ${pagination.page} of ${pagination.total_pages})`;
+
+            const btns = document.getElementById('chat-page-buttons');
+            const pages = buildPageList(pagination.page, pagination.total_pages);
+            const html = [];
+            html.push(`<button class="page-btn" data-page="prev" ${pagination.has_prev ? '' : 'disabled'}>‹ Prev</button>`);
+            pages.forEach((entry) => {
+                if (entry === '...') {
+                    html.push('<span class="page-btn" style="cursor:default;border:none;">…</span>');
+                } else {
+                    html.push(`<button class="page-btn ${entry === pagination.page ? 'active' : ''}" data-page="${entry}">${entry}</button>`);
+                }
+            });
+            html.push(`<button class="page-btn" data-page="next" ${pagination.has_next ? '' : 'disabled'}>Next ›</button>`);
+            btns.innerHTML = html.join('');
+
+            btns.querySelectorAll('button[data-page]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const val = btn.dataset.page;
+                    let target = pagination.page;
+                    if (val === 'prev') target = pagination.page - 1;
+                    else if (val === 'next') target = pagination.page + 1;
+                    else target = Number(val);
+                    if (target < 1 || target > pagination.total_pages || target === pagination.page) return;
+                    state.chatPage = target;
+                    refreshDashboard(false).catch((error) => showBanner(error.message, 'error'));
+                });
+            });
+        }
+
+        // Condensed numeric pager: show first, last and a window around the current page.
+        function buildPageList(current, total) {
+            const out = [];
+            if (total <= 7) {
+                for (let i = 1; i <= total; i += 1) out.push(i);
+                return out;
+            }
+            out.push(1);
+            if (current > 3) out.push('...');
+            const start = Math.max(2, current - 1);
+            const end = Math.min(total - 1, current + 1);
+            for (let i = start; i <= end; i += 1) out.push(i);
+            if (current < total - 2) out.push('...');
+            out.push(total);
+            return out;
         }
 
         function renderMessages(messages) {
@@ -2236,7 +2514,7 @@
             if (!dashboardEnabled) {
                 return;
             }
-            const payload = await requestJson(dashboardApiUrl, { method: 'GET' });
+            const payload = await requestJson(buildDashboardApiUrl(), { method: 'GET' });
             state.dashboard = payload;
             const chats = state.dashboard.chats || [];
             if (currentPage === 'chats' && reloadSelectedChat && state.selectedChatId && chats.some((chat) => chat.id === state.selectedChatId)) {
@@ -2259,10 +2537,47 @@
 
         const createCsrForm = document.getElementById('create-csr-form');
         if (createCsrForm) {
+            const unlimitedBox = createCsrForm.querySelector('input[name="unlimited_chats"]');
+            const maxChatsSel = createCsrForm.querySelector('select[name="max_concurrent_chats_sel"]');
+            const maxChatsCustom = createCsrForm.querySelector('input[name="max_concurrent_chats"]');
+
+            function applyCreateSelChange(val) {
+                if (val === 'unlimited') {
+                    if (unlimitedBox) unlimitedBox.checked = true;
+                    if (maxChatsCustom) maxChatsCustom.style.display = 'none';
+                } else if (val === 'custom') {
+                    if (unlimitedBox) unlimitedBox.checked = false;
+                    if (maxChatsCustom) { maxChatsCustom.style.display = ''; maxChatsCustom.focus(); }
+                } else {
+                    if (unlimitedBox) unlimitedBox.checked = false;
+                    if (maxChatsCustom) { maxChatsCustom.style.display = 'none'; maxChatsCustom.value = val; }
+                }
+            }
+
+            if (maxChatsSel) {
+                maxChatsSel.addEventListener('change', () => applyCreateSelChange(maxChatsSel.value));
+            }
+
+            if (unlimitedBox && maxChatsSel) {
+                unlimitedBox.addEventListener('change', () => {
+                    if (unlimitedBox.checked) {
+                        maxChatsSel.value = 'unlimited';
+                        if (maxChatsCustom) maxChatsCustom.style.display = 'none';
+                    } else {
+                        maxChatsSel.value = '4';
+                        if (maxChatsCustom) { maxChatsCustom.style.display = 'none'; maxChatsCustom.value = '4'; }
+                    }
+                });
+            }
+
             createCsrForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 const form = event.currentTarget;
                 const formData = new FormData(form);
+                const selVal = maxChatsSel ? maxChatsSel.value : '4';
+                const isUnlimited = selVal === 'unlimited' || formData.get('unlimited_chats') === 'on';
+                const maxConcurrentChats = isUnlimited ? 0
+                    : (selVal === 'custom' ? (maxChatsCustom ? maxChatsCustom.value : 4) : (selVal || 4));
                 try {
                     const response = await requestJson('/api/admin/csrs/create', {
                         method: 'POST',
@@ -2270,19 +2585,31 @@
                             display_name: formData.get('display_name'),
                             email: formData.get('email'),
                             password: formData.get('password'),
-                            max_concurrent_chats: formData.get('max_concurrent_chats'),
-                            is_available: formData.get('is_available') === 'on'
+                            max_concurrent_chats: maxConcurrentChats,
+                            is_available: formData.get('is_available') === 'on',
+                            unlimited_chats: isUnlimited
                         })
                     });
                     form.reset();
+                    if (maxChatsSel) maxChatsSel.value = '4';
+                    if (maxChatsCustom) { maxChatsCustom.style.display = 'none'; maxChatsCustom.value = '4'; }
                     form.querySelector('input[name="is_available"]').checked = true;
-                    form.querySelector('input[name="max_concurrent_chats"]').value = 4;
+                    if (unlimitedBox) unlimitedBox.checked = false;
                     state.dashboard = response.dashboard;
                     renderCurrentPage();
                     showBanner(response.message || 'CSR account created.', 'success');
                 } catch (error) {
                     showBanner(error.message, 'error');
                 }
+            });
+        }
+
+        const chatPerPageSel = document.getElementById('chat-per-page');
+        if (chatPerPageSel) {
+            chatPerPageSel.addEventListener('change', () => {
+                state.chatPerPage = Number(chatPerPageSel.value) || 20;
+                state.chatPage = 1;
+                refreshDashboard(false).catch((error) => showBanner(error.message, 'error'));
             });
         }
 

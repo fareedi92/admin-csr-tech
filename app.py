@@ -11,6 +11,7 @@ from flask import Flask, flash, jsonify, redirect, render_template, request, ses
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import and_, func, inspect, text, update
+from sqlalchemy.orm import joinedload
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
@@ -408,6 +409,7 @@ class User(db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     is_available = db.Column(db.Boolean, nullable=False, default=True)
     max_concurrent_chats = db.Column(db.Integer, nullable=False, default=DEFAULT_MAX_CONCURRENT_CHATS)
+    unlimited_chats = db.Column(db.Boolean, nullable=False, default=False)
     last_assigned_at = db.Column(db.DateTime)
     last_seen_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=utcnow)
@@ -675,6 +677,10 @@ def get_support_user_rows(available_only=False, online_only=False, include_inact
 def pick_best_csr():
     eligible_rows = []
     for user, active_chat_count in get_support_user_rows(available_only=True, online_only=True):
+        if getattr(user, "unlimited_chats", False):
+            # Unlimited-capacity CSRs are always eligible regardless of load.
+            eligible_rows.append((user, active_chat_count))
+            continue
         capacity = user.max_concurrent_chats or DEFAULT_MAX_CONCURRENT_CHATS
         if active_chat_count < capacity:
             eligible_rows.append((user, active_chat_count))
@@ -940,6 +946,7 @@ def serialize_user(user):
         "is_available": bool(user.is_available),
         "is_online": is_user_online(user),
         "max_concurrent_chats": user.max_concurrent_chats or DEFAULT_MAX_CONCURRENT_CHATS,
+        "unlimited_chats": bool(getattr(user, "unlimited_chats", False)),
         "last_assigned_at": isoformat_or_none(user.last_assigned_at),
         "last_seen_at": isoformat_or_none(user.last_seen_at),
         "created_at": isoformat_or_none(user.created_at),
@@ -958,8 +965,13 @@ def serialize_admin(admin):
 
 
 def serialize_support_user(user, active_chat_count):
+    unlimited = bool(getattr(user, "unlimited_chats", False))
     capacity = user.max_concurrent_chats or DEFAULT_MAX_CONCURRENT_CHATS
-    load_pct = min(100, round((active_chat_count / capacity) * 100)) if capacity else 0
+    if unlimited:
+        # Unlimited CSRs are never "full", so keep the load bar visually light.
+        load_pct = min(100, min(40, active_chat_count * 4))
+    else:
+        load_pct = min(100, round((active_chat_count / capacity) * 100)) if capacity else 0
     payload = serialize_user(user)
     payload.update(
         {
@@ -979,7 +991,7 @@ def serialize_message(message):
     }
 
 
-def serialize_chat(chat, current_user):
+def serialize_chat(chat, current_user, message_count=None):
     assigned_name = chat.assigned_csr.display_name or chat.assigned_csr.email if chat.assigned_csr else None
     is_csr_actor = isinstance(current_user, User) and getattr(current_user, "role", None) in ASSIGNABLE_ROLES
     is_mine = bool(is_csr_actor and chat.assigned_csr_id == current_user.id)
@@ -1023,7 +1035,7 @@ def serialize_chat(chat, current_user):
         "reverted_at": isoformat_or_none(chat.reverted_at),
         "last_activity_at": isoformat_or_none(chat.last_activity_at),
         "resolved_at": isoformat_or_none(chat.resolved_at),
-        "message_count": len(chat.messages),
+        "message_count": message_count if message_count is not None else len(chat.messages),
         "ownership_bucket": ownership_bucket,
         "is_active": chat.status in ACTIVE_CHAT_STATUSES,
         "is_resolved": is_resolved,
@@ -1127,7 +1139,28 @@ ADMIN_DASHBOARD_PAGE_SCOPES = {
 }
 
 
-def build_admin_dashboard_payload(current_admin, page=None):
+ADMIN_CHATS_DEFAULT_PER_PAGE = 20
+ADMIN_CHATS_MAX_PER_PAGE = 100
+
+
+def get_message_counts_for_chats(chat_ids):
+    """Return {chat_id: message_count} in a single SQL query.
+
+    Avoids the N+1 pattern of calling ``len(chat.messages)`` per chat, which
+    otherwise triggers a full transcript load for every row in the ledger.
+    """
+    if not chat_ids:
+        return {}
+    rows = (
+        db.session.query(ChatMessage.chat_id, func.count(ChatMessage.id))
+        .filter(ChatMessage.chat_id.in_(list(chat_ids)))
+        .group_by(ChatMessage.chat_id)
+        .all()
+    )
+    return {chat_id: count for chat_id, count in rows}
+
+
+def build_admin_dashboard_payload(current_admin, page=None, chat_page=1, chat_per_page=ADMIN_CHATS_DEFAULT_PER_PAGE):
     scope = ADMIN_DASHBOARD_PAGE_SCOPES.get(page)
     integration = serialize_integration_settings()
     online_cutoff = get_online_cutoff()
@@ -1219,19 +1252,56 @@ def build_admin_dashboard_payload(current_admin, page=None):
         }
 
     if include_all or "chats" in scope:
+        try:
+            page_num = max(1, int(chat_page or 1))
+        except (TypeError, ValueError):
+            page_num = 1
+        try:
+            per_page = int(chat_per_page or ADMIN_CHATS_DEFAULT_PER_PAGE)
+        except (TypeError, ValueError):
+            per_page = ADMIN_CHATS_DEFAULT_PER_PAGE
+        per_page = max(5, min(ADMIN_CHATS_MAX_PER_PAGE, per_page))
+
+        total_chats_count = ChatConversation.query.count()
+        total_pages = max(1, (total_chats_count + per_page - 1) // per_page)
+        if page_num > total_pages:
+            page_num = total_pages
+        offset = (page_num - 1) * per_page
+
         chats = (
-            ChatConversation.query.order_by(
+            ChatConversation.query
+            .options(joinedload(ChatConversation.assigned_csr))
+            .order_by(
                 ChatConversation.last_activity_at.desc(),
                 ChatConversation.reverted_at.desc(),
             )
-            .limit(150)
+            .offset(offset)
+            .limit(per_page)
             .all()
         )
-        payload["chats"] = [serialize_chat(chat, current_admin) for chat in chats]
+        counts = get_message_counts_for_chats([chat.id for chat in chats])
+        payload["chats"] = [
+            serialize_chat(chat, current_admin, message_count=counts.get(chat.id, 0))
+            for chat in chats
+        ]
+        payload["chats_pagination"] = {
+            "page": page_num,
+            "per_page": per_page,
+            "total": total_chats_count,
+            "total_pages": total_pages,
+            "has_prev": page_num > 1,
+            "has_next": page_num < total_pages,
+        }
 
     if include_all or "recent_activity" in scope:
         recent_events = (
-            ChatAssignmentEvent.query.order_by(
+            ChatAssignmentEvent.query
+            .options(
+                joinedload(ChatAssignmentEvent.from_csr),
+                joinedload(ChatAssignmentEvent.to_csr),
+                joinedload(ChatAssignmentEvent.acted_by),
+            )
+            .order_by(
                 ChatAssignmentEvent.created_at.desc(),
                 ChatAssignmentEvent.id.desc(),
             )
@@ -1243,16 +1313,26 @@ def build_admin_dashboard_payload(current_admin, page=None):
     return payload
 
 
+CSR_ACTIVE_CHATS_LIMIT = 120
+
+
 def build_csr_dashboard_payload(current_user):
     integration = serialize_integration_settings()
+    # Only load OPEN chats on the main dashboard payload so the initial load
+    # stays light. Resolved history is fetched on demand via the dedicated
+    # paginated endpoint below when the user switches to the "Closed" tab.
     chats = (
-        ChatConversation.query.order_by(
+        ChatConversation.query
+        .options(joinedload(ChatConversation.assigned_csr))
+        .filter(ChatConversation.status.in_(ACTIVE_CHAT_STATUSES))
+        .order_by(
             ChatConversation.last_activity_at.desc(),
             ChatConversation.reverted_at.desc(),
         )
-        .limit(100)
+        .limit(CSR_ACTIVE_CHATS_LIMIT)
         .all()
     )
+    chat_counts = get_message_counts_for_chats([chat.id for chat in chats])
 
     support_user_rows = sorted(
         get_support_user_rows(available_only=False),
@@ -1285,7 +1365,7 @@ def build_csr_dashboard_payload(current_user):
             ).count(),
         },
         "csrs": support_users,
-        "chats": [serialize_chat(chat, current_user) for chat in chats],
+        "chats": [serialize_chat(chat, current_user, message_count=chat_counts.get(chat.id, 0)) for chat in chats],
     }
 
 
@@ -1388,6 +1468,7 @@ def ensure_schema():
             "ALTER TABLE users ADD COLUMN max_concurrent_chats "
             f"INTEGER DEFAULT {DEFAULT_MAX_CONCURRENT_CHATS}"
         ),
+        "unlimited_chats": "ALTER TABLE users ADD COLUMN unlimited_chats BOOLEAN DEFAULT 0",
         "last_assigned_at": "ALTER TABLE users ADD COLUMN last_assigned_at DATETIME",
         "last_seen_at": "ALTER TABLE users ADD COLUMN last_seen_at DATETIME",
     }
@@ -1902,8 +1983,73 @@ def external_cleanup():
 def dashboard_data():
     current_user = get_current_user()
     if isinstance(current_user, AdminAccount):
-        return jsonify(build_admin_dashboard_payload(current_user, request.args.get("page")))
+        return jsonify(
+            build_admin_dashboard_payload(
+                current_user,
+                request.args.get("page"),
+                chat_page=request.args.get("chat_page", 1),
+                chat_per_page=request.args.get("per_page", ADMIN_CHATS_DEFAULT_PER_PAGE),
+            )
+        )
     return jsonify(build_csr_dashboard_payload(current_user))
+
+
+@app.route("/api/csr/chats/resolved")
+@login_required
+def csr_resolved_chats():
+    """Paginated access to closed/resolved chats for the CSR dashboard.
+
+    Query params:
+      - page (1-based, default 1)
+      - per_page (default 20, max 50)
+    """
+    current_user = get_current_user()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = int(request.args.get("per_page", 20))
+    except (TypeError, ValueError):
+        per_page = 20
+    per_page = max(5, min(per_page, 50))
+
+    base_query = (
+        ChatConversation.query
+        .filter(ChatConversation.status.in_(RESOLVED_CHAT_STATUSES))
+    )
+    total = base_query.count()
+    total_pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    page = min(page, total_pages)
+    offset = (page - 1) * per_page
+
+    chats = (
+        base_query
+        .options(joinedload(ChatConversation.assigned_csr))
+        .order_by(
+            ChatConversation.last_activity_at.desc(),
+            ChatConversation.reverted_at.desc(),
+        )
+        .offset(offset)
+        .limit(per_page)
+        .all()
+    )
+    chat_counts = get_message_counts_for_chats([chat.id for chat in chats])
+
+    return jsonify({
+        "chats": [
+            serialize_chat(chat, current_user, message_count=chat_counts.get(chat.id, 0))
+            for chat in chats
+        ],
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+        },
+    })
 
 
 @app.route("/api/chats/<int:chat_id>/messages")
@@ -2114,6 +2260,8 @@ def update_csr_settings(user_id):
 
     payload = get_request_payload()
     csr_user.is_available = parse_bool(payload.get("is_available"), default=csr_user.is_available)
+    if "unlimited_chats" in payload:
+        csr_user.unlimited_chats = parse_bool(payload.get("unlimited_chats"), default=False)
     csr_user.max_concurrent_chats = parse_int(
         payload.get("max_concurrent_chats"),
         csr_user.max_concurrent_chats or DEFAULT_MAX_CONCURRENT_CHATS,
@@ -2131,6 +2279,7 @@ def create_csr_account():
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password") or ""
     display_name = (payload.get("display_name") or "").strip()
+    unlimited_chats = parse_bool(payload.get("unlimited_chats"), default=False)
     max_concurrent_chats = parse_int(payload.get("max_concurrent_chats"), DEFAULT_MAX_CONCURRENT_CHATS)
     is_available = parse_bool(payload.get("is_available"), default=True)
 
@@ -2150,6 +2299,7 @@ def create_csr_account():
         is_active=True,
         is_available=is_available,
         max_concurrent_chats=max_concurrent_chats,
+        unlimited_chats=unlimited_chats,
     )
     csr_user.set_password(password)
     db.session.add(csr_user)
