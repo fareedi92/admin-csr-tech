@@ -6,6 +6,8 @@
     <title>Admin Operations Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = { corePlugins: { preflight: false } };</script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -285,6 +287,104 @@
             display: grid;
             grid-template-columns: repeat(6, minmax(0, 1fr));
             gap: 12px;
+        }
+
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .status-list, .ticket-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--surface-3);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+
+        .status-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .status-label {
+            flex: 1;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        .ticket-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 12px;
+            background: var(--surface-3);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+
+        .ticket-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ticket-title {
+            flex: 1;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .ticket-meta {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .ticket-admin-panel {
+            grid-column: 1 / -1;
+        }
+
+        .ticket-filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .ticket-filter-bar select {
+            min-width: 160px;
+        }
+
+        .ticket-admin-table-wrap {
+            overflow-x: auto;
+        }
+
+        .ticket-admin-table-wrap table {
+            width: 100%;
+            min-width: 960px;
+        }
+
+        .ticket-num-cell {
+            font-family: ui-monospace, monospace;
+            font-weight: 700;
+            color: #a78bfa;
+            white-space: nowrap;
         }
 
         .summary-card,
@@ -991,6 +1091,7 @@
                 <a class="nav-btn {% if admin_page == 'credentials' %}active{% endif %}" href="{{ url_for('admin_credentials') }}"><i class="fa-solid fa-key"></i><span>Credentials</span></a>
                 <a class="nav-btn {% if admin_page == 'knowledge-base' %}active{% endif %}" href="{{ url_for('admin_knowledge_base') }}"><i class="fa-solid fa-book-open-reader"></i><span>Knowledge Base</span></a>
                 <a class="nav-btn {% if admin_page == 'team' %}active{% endif %}" href="{{ url_for('admin_team') }}"><i class="fa-solid fa-users-gear"></i><span>CSR Management</span></a>
+                                <a class="nav-btn {% if admin_page == 'tech' %}active{% endif %}" href="{{ url_for('admin_tech') }}"><i class="fa-solid fa-wrench"></i><span>Technical Team</span></a>
                 <a class="nav-btn {% if admin_page == 'chats' %}active{% endif %}" href="{{ url_for('admin_chats') }}"><i class="fa-solid fa-comments"></i><span>Chat Ledger</span></a>
                 <a class="nav-btn {% if admin_page == 'activity' %}active{% endif %}" href="{{ url_for('admin_activity') }}"><i class="fa-solid fa-clock-rotate-left"></i><span>Activity Timeline</span></a>
             </div>
@@ -1364,6 +1465,225 @@
                         </section>
                     </div>
                 </section>
+
+                {% elif admin_page == 'tech' %}
+                <section class="section" id="tech-section">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-title">Technical Team Management</div>
+                            <div class="section-copy">Manage technical team accounts, customize ticket statuses, and view ticket analytics.</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+                        <div class="rounded-xl border border-slate-700/60 bg-slate-900/60 p-4">
+                            <p class="text-xs text-slate-400">Tech Members</p>
+                            <p class="text-2xl font-bold text-white mt-1" id="stat-tech-count">0</p>
+                            <p class="text-[11px] text-slate-500 mt-1">Active accounts</p>
+                        </div>
+                        <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                            <p class="text-xs text-amber-300/80">Open Tickets</p>
+                            <p class="text-2xl font-bold text-amber-200 mt-1" id="stat-open-tickets">0</p>
+                            <p class="text-[11px] text-slate-500 mt-1">Awaiting claim</p>
+                        </div>
+                        <div class="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
+                            <p class="text-xs text-blue-300/80">In Progress</p>
+                            <p class="text-2xl font-bold text-blue-200 mt-1" id="stat-progress-tickets">0</p>
+                            <p class="text-[11px] text-slate-500 mt-1">Being handled</p>
+                        </div>
+                        <div class="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                            <p class="text-xs text-emerald-300/80">Resolved / Closed</p>
+                            <p class="text-2xl font-bold text-emerald-200 mt-1" id="stat-closed-tickets">0</p>
+                            <p class="text-[11px] text-slate-500 mt-1">Finished tickets</p>
+                        </div>
+                        <div class="rounded-xl border border-slate-700/60 bg-slate-900/60 p-4">
+                            <p class="text-xs text-slate-400">Total Tickets</p>
+                            <p class="text-2xl font-bold text-white mt-1" id="stat-total-tickets">0</p>
+                            <p class="text-[11px] text-slate-500 mt-1">All time</p>
+                        </div>
+                        <div class="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
+                            <p class="text-xs text-violet-300/80">Unassigned</p>
+                            <p class="text-2xl font-bold text-violet-200 mt-1" id="stat-unassigned-tickets">0</p>
+                            <p class="text-[11px] text-slate-500 mt-1">No tech owner yet</p>
+                        </div>
+                    </div>
+
+                    <div class="tech-grid grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <!-- Add Tech Member Panel -->
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div class="panel-title">Add Technical Team Member</div>
+                            </div>
+                            <div class="panel-copy">Admins can register technical team accounts here. Members can then log in at <a href="/tech/login" style="color:#a78bfa">/tech/login</a> to claim and manage tickets.</div>
+                            <div class="panel-body">
+                                <form class="stack-form" id="create-tech-form">
+                                    <label>
+                                        <span>Display Name</span>
+                                        <input class="input" type="text" name="display_name" placeholder="Tech member name">
+                                    </label>
+                                    <label>
+                                        <span>Email</span>
+                                        <input class="input" type="email" name="email" placeholder="tech@company.com" required>
+                                    </label>
+                                    <label>
+                                        <span>Password</span>
+                                        <input class="input" type="password" name="password" placeholder="Minimum 6 characters" required minlength="6">
+                                    </label>
+                                    <label>
+                                        <span>Specialty</span>
+                                        <select class="input" name="specialty">
+                                            <option value="General">General</option>
+                                            <option value="Hardware">Hardware</option>
+                                            <option value="Software">Software</option>
+                                            <option value="Network">Network</option>
+                                            <option value="Security">Security</option>
+                                            <option value="Database">Database</option>
+                                            <option value="Infrastructure">Infrastructure</option>
+                                        </select>
+                                    </label>
+                                    <button class="btn primary" type="submit">Create Technical Team Account</button>
+                                </form>
+                            </div>
+                        </section>
+
+                        <!-- Existing Tech Members Panel -->
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div class="panel-title">Technical Team Members</div>
+                                <span class="tiny-note" id="tech-count">0 members</span>
+                            </div>
+                            <div class="panel-body">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Specialty</th>
+                                            <th>Status</th>
+                                            <th>Last Seen</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tech-table-body">
+                                        <tr><td colspan="6" class="tiny-note" style="padding:24px;">No technical team members yet.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <!-- Add Ticket Status Panel -->
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div class="panel-title">Add Ticket Status</div>
+                            </div>
+                            <div class="panel-copy">Create custom statuses for your ticket workflow. Default statuses (open, in_progress, waiting_parts, resolved, closed) are already configured.</div>
+                            <div class="panel-body">
+                                <form class="stack-form" id="create-status-form">
+                                    <label>
+                                        <span>Status Name (lowercase, no spaces)</span>
+                                        <input class="input" type="text" name="name" placeholder="e.g. on_hold" required pattern="^[a-z][a-z0-9_]*$">
+                                    </label>
+                                    <label>
+                                        <span>Display Label</span>
+                                        <input class="input" type="text" name="label" placeholder="e.g. On Hold" required>
+                                    </label>
+                                    <label>
+                                        <span>Color (hex)</span>
+                                        <input class="input" type="color" name="color" value="#8b5cf6" style="height:40px;padding:4px;">
+                                    </label>
+                                    <label>
+                                        <span>Sort Order</span>
+                                        <input class="input" type="number" name="sort_order" value="10" min="0">
+                                    </label>
+                                    <label class="checkbox-row">
+                                        <input type="checkbox" name="is_resolved">
+                                        <span><strong>Mark as resolved status</strong> &mdash; tickets in this status are considered complete.</span>
+                                    </label>
+                                    <button class="btn primary" type="submit">Add Ticket Status</button>
+                                </form>
+                            </div>
+                        </section>
+
+                        <!-- Ticket Statuses List Panel -->
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div class="panel-title">Ticket Statuses</div>
+                            </div>
+                            <div class="panel-body">
+                                <div id="status-list" class="status-list"></div>
+                            </div>
+                        </section>
+
+                        <!-- Tech workload (Tailwind) -->
+                        <section class="col-span-full rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                <h3 class="text-lg font-bold text-white">Technical Team Workload</h3>
+                                <span class="text-xs text-slate-400">Who is handling which tickets</span>
+                            </div>
+                            <p class="text-sm text-slate-400 mb-4">See how many tickets each technical person has claimed and what is still active.</p>
+                            <div class="overflow-x-auto rounded-xl border border-slate-700/50">
+                                <table class="min-w-full text-sm text-left">
+                                    <thead class="bg-slate-800/80 text-slate-300 uppercase text-xs">
+                                        <tr>
+                                            <th class="px-4 py-3">Technician</th>
+                                            <th class="px-4 py-3">Specialty</th>
+                                            <th class="px-4 py-3">Status</th>
+                                            <th class="px-4 py-3">Active</th>
+                                            <th class="px-4 py-3">In Progress</th>
+                                            <th class="px-4 py-3">Open</th>
+                                            <th class="px-4 py-3">Total Assigned</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tech-workload-body" class="divide-y divide-slate-700/50 text-slate-200">
+                                        <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">Loading workload...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <!-- All tickets (Tailwind) -->
+                        <section class="col-span-full rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                <h3 class="text-lg font-bold text-white">All Support Tickets</h3>
+                                <span class="text-xs font-semibold text-violet-300" id="admin-ticket-count">0 tickets</span>
+                            </div>
+                            <p class="text-sm text-slate-400 mb-4">Full ticket ledger: open, in progress, closed, CSR creator, assigned technician, and last update.</p>
+                            <div class="flex flex-wrap items-center gap-3 mb-4">
+                                <label class="flex items-center gap-2 text-sm text-slate-400">
+                                    Filter by status
+                                    <select id="admin-ticket-status-filter" class="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white focus:border-violet-500 focus:outline-none">
+                                        <option value="all">All statuses</option>
+                                    </select>
+                                </label>
+                                <button type="button" id="admin-ticket-refresh-btn" class="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition">
+                                    <i class="fa-solid fa-rotate"></i> Refresh
+                                </button>
+                            </div>
+                            <div class="overflow-x-auto rounded-xl border border-slate-700/50">
+                                <table class="min-w-full text-sm text-left">
+                                    <thead class="bg-slate-800/80 text-slate-300 uppercase text-xs">
+                                        <tr>
+                                            <th class="px-4 py-3">Ticket #</th>
+                                            <th class="px-4 py-3">Title</th>
+                                            <th class="px-4 py-3">Status</th>
+                                            <th class="px-4 py-3">Priority</th>
+                                            <th class="px-4 py-3">CSR</th>
+                                            <th class="px-4 py-3">Technician</th>
+                                            <th class="px-4 py-3">Messages</th>
+                                            <th class="px-4 py-3">Created</th>
+                                            <th class="px-4 py-3">Updated</th>
+                                            <th class="px-4 py-3">Resolved</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-ticket-table-body" class="divide-y divide-slate-700/50 text-slate-200">
+                                        <tr><td colspan="10" class="px-4 py-8 text-center text-slate-500">Loading tickets...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+
                 {% elif admin_page == 'chats' %}
                 <section class="section" id="chat-section">
                     <div class="section-head">
@@ -2690,6 +3010,313 @@
             refreshInterval = window.setInterval(() => {
                 refreshDashboard(currentPage === 'chats' && Boolean(state.selectedChatId)).catch(() => {});
             }, 8000);
+        }
+
+        // ── Technical Team Section ──
+        function showTechSection() {
+            currentPage = 'tech';
+            document.querySelectorAll('.section').forEach(s => s.style.display = 'none');
+            document.getElementById('tech-section').style.display = 'block';
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if (btn.textContent.includes('Technical Team')) btn.classList.add('active');
+            });
+            loadTechData();
+        }
+
+        let adminTicketStatuses = [];
+
+        function setTechDataLoadError(message) {
+            const err = escapeHtml(message || 'Failed to load data');
+            const wl = document.getElementById('tech-workload-body');
+            const tb = document.getElementById('admin-ticket-table-body');
+            if (wl) wl.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400">${err}</td></tr>`;
+            if (tb) tb.innerHTML = `<tr><td colspan="10" class="px-4 py-8 text-center text-red-400">${err}</td></tr>`;
+        }
+
+        async function loadTechData() {
+            const workloadBody = document.getElementById('tech-workload-body');
+            const ticketBody = document.getElementById('admin-ticket-table-body');
+            if (workloadBody) workloadBody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">Loading workload...</td></tr>';
+            if (ticketBody) ticketBody.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-500">Loading tickets...</td></tr>';
+
+            try {
+                const statusFilter = document.getElementById('admin-ticket-status-filter')?.value || 'all';
+                const ticketUrl = statusFilter === 'all'
+                    ? '/api/admin/tickets'
+                    : `/api/admin/tickets?status=${encodeURIComponent(statusFilter)}`;
+
+                const [techResp, ticketsResp] = await Promise.all([
+                    requestJson('/api/admin/tech-accounts'),
+                    requestJson(ticketUrl),
+                ]);
+
+                const techs = techResp.techs || [];
+                const tickets = ticketsResp.tickets || [];
+                const statuses = ticketsResp.statuses || [];
+                const stats = ticketsResp.stats || {};
+                const workload = ticketsResp.tech_workload || [];
+                adminTicketStatuses = statuses;
+
+                const setStat = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+                setStat('stat-tech-count', techs.filter(t => t.is_active).length);
+                setStat('stat-open-tickets', stats.open ?? 0);
+                setStat('stat-progress-tickets', stats.in_progress ?? 0);
+                setStat('stat-closed-tickets', stats.closed ?? 0);
+                setStat('stat-total-tickets', stats.total ?? 0);
+                setStat('stat-unassigned-tickets', stats.unassigned ?? 0);
+
+                populateAdminTicketStatusFilter(statuses);
+
+                // Render tech table
+                const techBody = document.getElementById('tech-table-body');
+                if (techs.length === 0) {
+                    techBody.innerHTML = '<tr><td colspan="6" class="tiny-note" style="padding:24px;">No technical team members yet. Use the form above to add one.</td></tr>';
+                } else {
+                    document.getElementById('tech-count').textContent = `${techs.length} member${techs.length !== 1 ? 's' : ''}`;
+                    techBody.innerHTML = techs.map(tech => `
+                        <tr>
+                            <td><strong>${escapeHtml(tech.display_name || 'Unnamed')}</strong></td>
+                            <td>${escapeHtml(tech.email)}</td>
+                            <td>${escapeHtml(tech.specialty || 'General')}</td>
+                            <td>${tech.is_active ? '<span class="chip chip-active">Active</span>' : '<span class="chip chip-inactive">Inactive</span>'}</td>
+                            <td>${tech.last_seen_at ? formatDate(tech.last_seen_at) : 'Never'}</td>
+                            <td>
+                                <button class="mini-btn" onclick="editTechMember(${tech.id})" title="Toggle active"><i class="fa-solid fa-power-off"></i></button>
+                                <button class="mini-btn danger" onclick="deleteTechMember(${tech.id})" title="Delete member"><i class="fa-solid fa-trash"></i></button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+
+                // Render statuses
+                const statusList = document.getElementById('status-list');
+                if (statuses.length === 0) {
+                    statusList.innerHTML = '<div class="tiny-note">No statuses configured.</div>';
+                } else {
+                    statusList.innerHTML = statuses.map(s => `
+                        <div class="status-item">
+                            <div class="status-color" style="background:${s.color}"></div>
+                            <div class="status-label">${escapeHtml(s.label)}</div>
+                            <div class="status-badge" style="background:${s.color}22;color:${s.color}">${escapeHtml(s.name)}</div>
+                            ${s.is_resolved ? '<span class="status-badge" style="background:#10b98122;color:#10b981">Resolved</span>' : ''}
+                        </div>
+                    `).join('');
+                }
+
+                if (workloadBody) {
+                    if (!workload.length) {
+                        workloadBody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">No technical team members yet.</td></tr>';
+                    } else {
+                        workloadBody.innerHTML = workload.map(row => `
+                            <tr class="hover:bg-slate-800/40">
+                                <td class="px-4 py-3"><strong class="text-white">${escapeHtml(row.display_name)}</strong><div class="text-xs text-slate-500">${escapeHtml(row.email)}</div></td>
+                                <td class="px-4 py-3">${escapeHtml(row.specialty || 'General')}</td>
+                                <td class="px-4 py-3">${row.is_active ? '<span class="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-300">Active</span>' : '<span class="inline-flex rounded-full bg-slate-600/30 px-2 py-0.5 text-xs text-slate-400">Inactive</span>'}</td>
+                                <td class="px-4 py-3 font-bold text-violet-300">${row.active}</td>
+                                <td class="px-4 py-3">${row.in_progress}</td>
+                                <td class="px-4 py-3">${row.open}</td>
+                                <td class="px-4 py-3">${row.total_assigned}</td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+
+                const countEl = document.getElementById('admin-ticket-count');
+                if (countEl) countEl.textContent = `${tickets.length} ticket${tickets.length !== 1 ? 's' : ''}`;
+                if (ticketBody) {
+                    if (!tickets.length) {
+                        ticketBody.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-500">No tickets match this filter.</td></tr>';
+                    } else {
+                        ticketBody.innerHTML = tickets.map(t => {
+                            const status = statuses.find(s => s.name === t.status) || {};
+                            const csrName = t.created_by_csr ? (t.created_by_csr.display_name || t.created_by_csr.email) : '—';
+                            const statusColor = status.color || '#64748b';
+                            const lastNote = t.last_status_update?.notes
+                                ? `<div class="text-xs text-slate-500 mt-1" title="${escapeHtml(t.last_status_update.notes)}">${escapeHtml(t.last_status_update.notes).slice(0, 50)}${t.last_status_update.notes.length > 50 ? '…' : ''}</div>`
+                                : '';
+                            return `
+                                <tr class="hover:bg-slate-800/40 align-top">
+                                    <td class="px-4 py-3 font-mono font-bold text-violet-300 whitespace-nowrap">${escapeHtml(t.ticket_number || ('#' + t.id))}</td>
+                                    <td class="px-4 py-3"><div class="font-semibold text-white">${escapeHtml(t.title)}</div>${t.description ? `<div class="text-xs text-slate-500 mt-0.5">${escapeHtml(t.description).slice(0, 60)}${t.description.length > 60 ? '…' : ''}</div>` : ''}${lastNote}</td>
+                                    <td class="px-4 py-3"><span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold" style="background:${statusColor}22;color:${statusColor}">${escapeHtml(status.label || t.status)}</span></td>
+                                    <td class="px-4 py-3 capitalize">${escapeHtml(t.priority || 'normal')}</td>
+                                    <td class="px-4 py-3">${escapeHtml(csrName)}</td>
+                                    <td class="px-4 py-3">${t.assigned_tech ? `<span class="text-white">${escapeHtml(t.assigned_tech.display_name || 'Tech')}</span><div class="text-xs text-slate-500">${escapeHtml(t.assigned_tech.specialty || '')}</div>` : '<span class="inline-flex rounded-full bg-slate-600/30 px-2 py-0.5 text-xs text-slate-400">Unassigned</span>'}</td>
+                                    <td class="px-4 py-3">${t.message_count ?? 0}</td>
+                                    <td class="px-4 py-3 text-slate-400">${formatDate(t.created_at)}</td>
+                                    <td class="px-4 py-3 text-slate-400">${formatDate(t.updated_at)}</td>
+                                    <td class="px-4 py-3 text-slate-400">${t.resolved_at ? formatDate(t.resolved_at) : '—'}</td>
+                                </tr>
+                            `;
+                        }).join('');
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load tech data:', err);
+                setTechDataLoadError(err.message);
+                showBanner(err.message || 'Failed to load ticket data', 'error');
+            }
+        }
+
+        function populateAdminTicketStatusFilter(statuses) {
+            const select = document.getElementById('admin-ticket-status-filter');
+            if (!select) return;
+            const current = select.value || 'all';
+            const options = ['<option value="all">All statuses</option>']
+                .concat((statuses || []).map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.label)}</option>`));
+            select.innerHTML = options.join('');
+            if ([...select.options].some(o => o.value === current)) {
+                select.value = current;
+            }
+        }
+
+        const adminTicketStatusFilter = document.getElementById('admin-ticket-status-filter');
+        if (adminTicketStatusFilter) {
+            adminTicketStatusFilter.addEventListener('change', () => loadTechData());
+        }
+        const adminTicketRefreshBtn = document.getElementById('admin-ticket-refresh-btn');
+        if (adminTicketRefreshBtn) {
+            adminTicketRefreshBtn.addEventListener('click', () => loadTechData());
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return 'N/A';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function openTechModal() {
+            // No longer needed - inline form is used
+        }
+
+        function openStatusModal() {
+            // No longer needed - inline form is used
+        }
+
+        // ── Create Tech Account Form ──
+        const createTechForm = document.getElementById('create-tech-form');
+        if (createTechForm) {
+            createTechForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const form = event.currentTarget;
+                const formData = new FormData(form);
+                const payload = {
+                    email: formData.get('email').trim().toLowerCase(),
+                    password: formData.get('password'),
+                    display_name: formData.get('display_name').trim(),
+                    specialty: formData.get('specialty'),
+                };
+
+                if (!payload.email || !payload.password) {
+                    showBanner('Email and password are required.', 'error');
+                    return;
+                }
+                if (payload.password.length < 6) {
+                    showBanner('Password must be at least 6 characters.', 'error');
+                    return;
+                }
+
+                try {
+                    const resp = await requestJson('/api/admin/tech-accounts', {
+                        method: 'POST',
+                        body: JSON.stringify(payload),
+                    });
+                    if (resp.success) {
+                        showBanner(resp.message, 'success');
+                        form.reset();
+                        loadTechData();
+                    } else {
+                        showBanner(resp.error || 'Failed to create account', 'error');
+                    }
+                } catch (err) {
+                    showBanner(err.message, 'error');
+                }
+            });
+        }
+
+        // ── Create Ticket Status Form ──
+        const createStatusForm = document.getElementById('create-status-form');
+        if (createStatusForm) {
+            createStatusForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const form = event.currentTarget;
+                const formData = new FormData(form);
+                const payload = {
+                    name: formData.get('name').trim().toLowerCase(),
+                    label: formData.get('label').trim(),
+                    color: formData.get('color'),
+                    sort_order: parseInt(formData.get('sort_order')) || 10,
+                    is_resolved: formData.has('is_resolved'),
+                };
+
+                if (!payload.name || !payload.label) {
+                    showBanner('Status name and label are required.', 'error');
+                    return;
+                }
+
+                try {
+                    const resp = await requestJson('/api/admin/ticket-statuses', {
+                        method: 'POST',
+                        body: JSON.stringify(payload),
+                    });
+                    if (resp.success) {
+                        showBanner(resp.message, 'success');
+                        form.reset();
+                        loadTechData();
+                    } else {
+                        showBanner(resp.error || 'Failed to create status', 'error');
+                    }
+                } catch (err) {
+                    showBanner(err.message, 'error');
+                }
+            });
+        }
+
+        function editTechMember(id) {
+            // Toggle active/inactive
+            if (confirm('Toggle this member\'s active status?')) {
+                fetch(`/api/admin/tech-accounts/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: false })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        showBanner('Member status updated.', 'success');
+                        loadTechData();
+                    } else {
+                        showBanner(data.error || 'Failed to update member', 'error');
+                    }
+                })
+                .catch(() => showBanner('Failed to update member', 'error'));
+            }
+        }
+
+        function deleteTechMember(id) {
+            if (confirm('Are you sure you want to delete this technical team member?')) {
+                requestJson(`/api/admin/tech-accounts/${id}`, { method: 'DELETE' })
+                    .then(data => {
+                        if (data.success) {
+                            showBanner('Technical team member deleted.', 'success');
+                            loadTechData();
+                        } else {
+                            showBanner(data.error || 'Failed to delete member', 'error');
+                        }
+                    })
+                    .catch((err) => showBanner(err.message || 'Failed to delete member', 'error'));
+            }
+        }
+
+        if (document.body.dataset.adminPage === 'tech') {
+            loadTechData();
+            window.setInterval(() => loadTechData().catch(() => {}), 30000);
         }
     </script>
 </body>

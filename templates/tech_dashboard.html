@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Technical Team Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                fontFamily: { sans: ['Inter', 'sans-serif'] },
+                colors: {
+                    sf: '#121a2b',
+                    'sf-2': '#182235',
+                    'sf-3': '#0f1728',
+                    bd: 'rgba(148,163,184,0.14)',
+                },
+            },
+        },
+    }
+    </script>
+    <style>
+        .scrollbar-thin { scrollbar-width:thin; scrollbar-color:rgba(148,163,184,.22) transparent; }
+        .scrollbar-thin::-webkit-scrollbar { width:6px; height:6px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background:rgba(148,163,184,.22); border-radius:10px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover { background:rgba(148,163,184,.4); }
+        .scrollbar-thin::-webkit-scrollbar-track { background:transparent; }
+
+        .ticket-card { transition: all 0.2s ease; }
+        .ticket-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+        .ticket-card.active-chat { border-color: rgba(139, 92, 246, 0.5); box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.25); }
+
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .status-open { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .status-in_progress { background: rgba(59,130,246,0.15); color: #93c5fd; }
+        .status-waiting_parts { background: rgba(139,92,246,0.15); color: #c4b5fd; }
+        .status-resolved { background: rgba(16,185,129,0.15); color: #86efac; }
+        .status-closed { background: rgba(100,116,139,0.15); color: #94a3b8; }
+
+        .priority-high { border-left: 4px solid #ef4444; }
+        .priority-normal { border-left: 4px solid #3b82f6; }
+        .priority-low { border-left: 4px solid #10b981; }
+
+        .claim-btn { background: linear-gradient(135deg, #8b5cf6, #6366f1); }
+        .claim-btn:hover { background: linear-gradient(135deg, #7c3aed, #4f46e5); }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-[#09111f] to-[#0b1220] text-gray-200 font-sans"
+      data-user-id="{{ user.id if user else '' }}">
+
+<div class="flex flex-col min-h-screen lg:h-screen">
+
+    <!-- Topbar -->
+    <header class="sticky top-0 z-10 backdrop-blur-md bg-[#09111f]/80 border-b border-bd flex items-center justify-between gap-3 px-4 py-3 flex-wrap">
+        <div class="min-w-0 flex-1 basis-[260px]">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+                    <i class="fa-solid fa-wrench text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg lg:text-xl font-extrabold">Technical Team Dashboard</h1>
+                    <p class="text-[12px] text-gray-400">Handle and track support tickets</p>
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+            <div class="flex items-center gap-2 px-3 py-2 rounded-full border border-purple-500/25 bg-purple-500/10 text-purple-300 text-xs font-semibold">
+                <i class="fa-solid fa-wrench"></i>
+                <span>{{ (user.display_name or user.email) if user else 'Tech User' }}</span>
+            </div>
+            <a href="/tech/logout" title="Logout" class="w-10 h-10 flex items-center justify-center rounded-full border border-bd bg-sf text-gray-200 hover:text-white transition-colors">
+                <i class="fa-solid fa-right-from-bracket"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-hidden flex flex-col lg:flex-row">
+
+        <!-- Sidebar -->
+        <aside class="w-full lg:w-64 bg-[#0d1525] border-b lg:border-b-0 lg:border-r border-bd p-4 flex-shrink-0">
+            <nav class="space-y-1">
+                <button onclick="showTab('queue')" id="tab-queue" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                    <i class="fa-solid fa-list-check w-5"></i>
+                    <span>Open Queue</span>
+                    <span id="queue-count" class="ml-auto bg-amber-500 text-black text-xs font-bold px-2 py-0.5 rounded-full">0</span>
+                </button>
+                <button onclick="showTab('mine')" id="tab-mine" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all text-gray-400 hover:bg-white/5 hover:text-gray-200">
+                    <i class="fa-solid fa-user-check w-5"></i>
+                    <span>My Tickets</span>
+                    <span id="mine-count" class="ml-auto bg-blue-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">0</span>
+                </button>
+                <button onclick="showTab('all')" id="tab-all" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all text-gray-400 hover:bg-white/5 hover:text-gray-200">
+                    <i class="fa-solid fa-folder-open w-5"></i>
+                    <span>All Tickets</span>
+                </button>
+            </nav>
+
+            <!-- Stats -->
+            <div class="mt-6 p-4 bg-sf rounded-xl border border-bd">
+                <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">My Stats</h3>
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-400">Active</span>
+                        <span id="stat-active" class="text-sm font-semibold text-blue-400">0</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-400">Resolved Today</span>
+                        <span id="stat-resolved-today" class="text-sm font-semibold text-emerald-400">0</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-400">Total Claimed</span>
+                        <span id="stat-total" class="text-sm font-semibold text-purple-400">0</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Ticket List -->
+        <main class="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4">
+            <!-- Queue Tab -->
+            <div id="panel-queue" class="tab-panel">
+                <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-amber-400"></i>
+                    Open Tickets
+                    <span class="text-sm font-normal text-gray-400 ml-2">Ready for claim</span>
+                </h2>
+                <div id="queue-tickets" class="space-y-3">
+                    <div class="text-center py-12 text-gray-500">
+                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-3"></i>
+                        <p>Loading open tickets...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- My Tickets Tab -->
+            <div id="panel-mine" class="tab-panel hidden">
+                <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-user-check text-blue-400"></i>
+                    My Tickets
+                    <span class="text-sm font-normal text-gray-400 ml-2">Assigned to you</span>
+                </h2>
+                <div id="mine-tickets" class="space-y-3">
+                    <div class="text-center py-12 text-gray-500">
+                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-3"></i>
+                        <p>Loading your tickets...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- All Tickets Tab -->
+            <div id="panel-all" class="tab-panel hidden">
+                <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-folder-open text-purple-400"></i>
+                    All Tickets
+                    <span class="text-sm font-normal text-gray-400 ml-2">Complete overview</span>
+                </h2>
+                <div class="mb-4 flex items-center gap-3 flex-wrap">
+                    <select id="filter-status" onchange="loadTickets()" class="px-3 py-2 rounded-lg bg-sf border border-bd text-sm">
+                        <option value="">All Statuses</option>
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="waiting_parts">Waiting Parts</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="closed">Closed</option>
+                    </select>
+                </div>
+                <div id="all-tickets" class="space-y-3">
+                    <div class="text-center py-12 text-gray-500">
+                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-3"></i>
+                        <p>Loading all tickets...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Ticket Detail Panel (chat) -->
+        <aside id="ticket-detail" class="hidden w-full lg:w-96 bg-[#0d1525] border-t lg:border-t-0 lg:border-l border-bd p-4 overflow-y-auto flex flex-col">
+            <div id="ticket-chat-header" class="flex-shrink-0"></div>
+            <div id="tech-chat-messages" class="flex-1 space-y-3 overflow-y-auto scrollbar-thin my-3 pr-1 min-h-[180px]" style="max-height: calc(100vh - 320px);"></div>
+            <div id="ticket-chat-compose" class="flex-shrink-0 flex items-end gap-2 sticky bottom-0 bg-[#0d1525] pt-2">
+                <textarea id="tech-chat-input" rows="2" class="flex-1 px-3 py-2 rounded-xl bg-sf border border-bd text-white text-sm resize-none focus:border-purple-500 focus:outline-none" placeholder="Message CSR about this ticket..."></textarea>
+                <button type="button" id="tech-chat-send-btn" class="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<!-- Status Update Modal -->
+<div id="status-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#0f172a] rounded-2xl border border-bd w-full max-w-md p-6">
+        <h3 class="text-lg font-bold mb-1 flex items-center gap-2">
+            <i class="fa-solid fa-pen-to-square text-purple-400"></i>
+            Update Ticket Status
+        </h3>
+        <p id="modal-ticket-number" class="font-mono text-sm font-semibold text-violet-300 mb-4"></p>
+        <input type="hidden" id="modal-ticket-id">
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-400 mb-2">New Status</label>
+            <select id="modal-new-status" class="w-full px-4 py-3 rounded-xl bg-sf border border-bd text-white">
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="waiting_parts">Waiting for Parts</option>
+                <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
+            </select>
+        </div>
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-400 mb-2">Notes (optional)</label>
+            <textarea id="modal-notes" rows="3" class="w-full px-4 py-3 rounded-xl bg-sf border border-bd text-white resize-none" placeholder="Add notes about this status change..."></textarea>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="updateTicketStatus()" class="flex-1 px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors">
+                <i class="fa-solid fa-check mr-2"></i>Update Status
+            </button>
+            <button onclick="closeStatusModal()" class="px-4 py-3 rounded-xl bg-sf hover:bg-sf-2 border border-bd text-gray-400 font-semibold transition-colors">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentTab = 'queue';
+let tickets = [];
+let statuses = [];
+let activeChatTicketId = null;
+let ticketChatPollTimer = null;
+let lastTicketChatMessageId = 0;
+
+function showTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    document.getElementById(`panel-${tab}`).classList.remove('hidden');
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-purple-500/15', 'text-purple-300', 'border-purple-500/30');
+        btn.classList.add('text-gray-400');
+    });
+    const activeBtn = document.getElementById(`tab-${tab}`);
+    activeBtn.classList.add('bg-purple-500/15', 'text-purple-300', 'border-purple-500/30');
+    activeBtn.classList.remove('text-gray-400');
+}
+
+function renderTicketCard(ticket) {
+    const priorityClass = ticket.priority === 'high' ? 'priority-high' : ticket.priority === 'low' ? 'priority-low' : 'priority-normal';
+    const statusClass = `status-${ticket.status}`;
+    const createdDate = new Date(ticket.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    
+    let actionBtn = '';
+    if (ticket.status === 'open' && !ticket.assigned_tech_id) {
+        actionBtn = `<button onclick="claimTicket(${ticket.id})" class="claim-btn px-4 py-2 rounded-lg text-white text-sm font-semibold">
+            <i class="fa-solid fa-hand-pointer mr-1"></i>Claim Ticket
+        </button>`;
+    } else if (ticket.assigned_tech_id) {
+        actionBtn = `<button onclick="openStatusModal(${ticket.id})" class="px-4 py-2 rounded-lg bg-sf-2 hover:bg-sf-3 border border-bd text-white text-sm font-semibold transition-colors">
+            <i class="fa-solid fa-pen-to-square mr-1"></i>Update Status
+        </button>`;
+    }
+
+    const chatActive = activeChatTicketId === ticket.id ? ' active-chat' : '';
+
+    const num = ticketNum(ticket);
+    return `
+    <div class="ticket-card bg-sf rounded-xl border border-bd p-4 ${priorityClass}${chatActive}" data-ticket-id="${ticket.id}" data-ticket-number="${escapeHtml(num)}">
+        <div class="flex items-start justify-between gap-3 mb-3">
+            <div class="flex-1 min-w-0">
+                <span class="inline-flex items-center gap-1.5 font-mono text-sm font-bold text-violet-300 bg-violet-500/15 border border-violet-500/25 px-2.5 py-1 rounded-lg mb-2">
+                    <i class="fa-solid fa-hashtag text-[10px] text-violet-400"></i>${escapeHtml(num)}
+                </span>
+                <h4 class="font-semibold text-white truncate">${escapeHtml(ticket.title)}</h4>
+                <p class="text-xs text-gray-400 mt-1">Created ${createdDate}</p>
+            </div>
+            <span class="status-badge ${statusClass}">${getStatusLabel(ticket.status)}</span>
+        </div>
+        ${ticket.description ? `<p class="text-sm text-gray-400 mb-3 line-clamp-2">${escapeHtml(ticket.description)}</p>` : ''}
+        <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+                <span class="text-xs ${ticket.priority === 'high' ? 'text-red-400' : ticket.priority === 'low' ? 'text-emerald-400' : 'text-blue-400'}">
+                    <i class="fa-solid fa-flag mr-1"></i>${ticket.priority}
+                </span>
+                <span class="text-xs text-gray-500">&bull;</span>
+                <span class="text-xs text-gray-400">
+                    <i class="fa-solid fa-user mr-1"></i>${ticket.created_by_csr ? ticket.created_by_csr.display_name : 'Unknown'}
+                </span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="openTicketChat(${ticket.id})" class="px-3 py-2 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 text-sm font-semibold transition-colors" title="Chat with CSR">
+                    <i class="fa-solid fa-comments mr-1"></i>Chat
+                </button>
+                ${actionBtn}
+            </div>
+        </div>
+    </div>`;
+}
+
+function getStatusLabel(status) {
+    const statusObj = statuses.find(s => s.name === status);
+    return statusObj ? statusObj.label : status;
+}
+
+function ticketNum(ticket) {
+    if (!ticket) return '';
+    return ticket.ticket_number || ('#' + ticket.id);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function loadTickets() {
+    const statusFilter = document.getElementById('filter-status')?.value || '';
+    let url = '/api/tickets';
+    if (statusFilter) url += `?status=${statusFilter}`;
+    
+    fetch(url, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            tickets = data.tickets || [];
+            statuses = data.statuses || [];
+            updateTicketLists();
+            if (activeChatTicketId) {
+                const ticket = tickets.find(t => Number(t.id) === Number(activeChatTicketId));
+                if (ticket) renderTicketChatHeader(ticket);
+            }
+        })
+        .catch(err => {
+            console.error('Failed to load tickets:', err);
+        });
+}
+
+function updateTicketLists() {
+    const queueTickets = tickets.filter(t => t.status === 'open' && !t.assigned_tech_id);
+    const myId = Number(document.body.dataset.userId || 0);
+    const myTickets = tickets.filter(t => Number(t.assigned_tech_id) === myId);
+    const allTickets = tickets;
+
+    document.getElementById('queue-tickets').innerHTML = queueTickets.length ? 
+        queueTickets.map(renderTicketCard).join('') :
+        '<div class="text-center py-12 text-gray-500"><i class="fa-solid fa-check-circle text-3xl mb-3"></i><p>No open tickets in queue</p></div>';
+    
+    document.getElementById('mine-tickets').innerHTML = myTickets.length ?
+        myTickets.map(renderTicketCard).join('') :
+        '<div class="text-center py-12 text-gray-500"><i class="fa-solid fa-inbox text-3xl mb-3"></i><p>No tickets assigned to you</p></div>';
+    
+    document.getElementById('all-tickets').innerHTML = allTickets.length ?
+        allTickets.map(renderTicketCard).join('') :
+        '<div class="text-center py-12 text-gray-500"><i class="fa-solid fa-folder-open text-3xl mb-3"></i><p>No tickets found</p></div>';
+
+    document.getElementById('queue-count').textContent = queueTickets.length;
+    document.getElementById('mine-count').textContent = myTickets.length;
+
+    // Update stats
+    const activeTickets = myTickets.filter(t => t.status !== 'resolved' && t.status !== 'closed');
+    const resolvedToday = myTickets.filter(t => {
+        if (!t.resolved_at) return false;
+        const today = new Date().toDateString();
+        return new Date(t.resolved_at).toDateString() === today;
+    });
+
+    document.getElementById('stat-active').textContent = activeTickets.length;
+    document.getElementById('stat-resolved-today').textContent = resolvedToday.length;
+    document.getElementById('stat-total').textContent = myTickets.length;
+
+    // Update modal status options
+    const statusSelect = document.getElementById('modal-new-status');
+    statusSelect.innerHTML = statuses.map(s => `<option value="${s.name}">${s.label}</option>`).join('');
+}
+
+function claimTicket(ticketId) {
+    fetch(`/api/tickets/${ticketId}/claim`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const num = data.ticket?.ticket_number || ticketNum(tickets.find(t => Number(t.id) === Number(ticketId)));
+                showNotification(num ? `${num} claimed successfully!` : 'Ticket claimed successfully!', 'success');
+                loadTickets();
+                if (Number(activeChatTicketId) === Number(ticketId)) loadTicketChatMessages();
+            } else {
+                showNotification(data.error || 'Failed to claim ticket', 'error');
+            }
+        })
+        .catch(err => {
+            showNotification('Failed to claim ticket', 'error');
+        });
+}
+
+function openStatusModal(ticketId) {
+    document.getElementById('modal-ticket-id').value = ticketId;
+    const ticket = tickets.find(t => Number(t.id) === Number(ticketId));
+    document.getElementById('modal-ticket-number').textContent = ticket ? ticketNum(ticket) : '';
+    document.getElementById('status-modal').classList.remove('hidden');
+}
+
+function closeStatusModal() {
+    document.getElementById('status-modal').classList.add('hidden');
+    document.getElementById('modal-notes').value = '';
+}
+
+function updateTicketStatus() {
+    const ticketId = document.getElementById('modal-ticket-id').value;
+    const newStatus = document.getElementById('modal-new-status').value;
+    const notes = document.getElementById('modal-notes').value;
+
+    fetch(`/api/tickets/${ticketId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, notes: notes })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const num = data.ticket?.ticket_number || '';
+            showNotification(num ? `${num} status updated!` : 'Ticket status updated!', 'success');
+            closeStatusModal();
+            loadTickets();
+        } else {
+            showNotification(data.error || 'Failed to update status', 'error');
+        }
+    })
+    .catch(err => {
+        showNotification('Failed to update ticket status', 'error');
+    });
+}
+
+function showNotification(message, type) {
+    const notification = document.createElement('div');
+    notification.className = `fixed bottom-4 right-4 px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3 ${
+        type === 'success' ? 'bg-emerald-600' : 'bg-red-600'
+    } text-white font-semibold`;
+    notification.innerHTML = `<i class="fa-solid fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>${message}`;
+    document.body.appendChild(notification);
+    setTimeout(() => notification.remove(), 4000);
+}
+
+function closeTicketChat() {
+    activeChatTicketId = null;
+    document.getElementById('ticket-detail').classList.add('hidden');
+    if (ticketChatPollTimer) {
+        clearInterval(ticketChatPollTimer);
+        ticketChatPollTimer = null;
+    }
+    updateTicketLists();
+}
+
+function renderTicketChatHeader(ticket) {
+    const csrName = ticket.created_by_csr ? (ticket.created_by_csr.display_name || ticket.created_by_csr.email) : 'CSR';
+    const statusLabel = getStatusLabel(ticket.status);
+    const myId = Number(document.body.dataset.userId || 0);
+    document.getElementById('ticket-chat-header').innerHTML = `
+        <div class="flex items-start justify-between gap-2 mb-3">
+            <div class="min-w-0">
+                <span class="inline-flex items-center gap-1.5 font-mono text-sm font-bold text-violet-300 bg-violet-500/15 border border-violet-500/25 px-2.5 py-1 rounded-lg mb-2">
+                    <i class="fa-solid fa-hashtag text-[10px] text-violet-400"></i>${escapeHtml(ticketNum(ticket))}
+                </span>
+                <h3 class="font-bold text-white truncate">${escapeHtml(ticket.title)}</h3>
+                <p class="text-xs text-gray-400 mt-1">${statusLabel} &bull; CSR: ${escapeHtml(csrName)}</p>
+            </div>
+            <button type="button" onclick="closeTicketChat()" class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-sf hover:bg-sf-2 text-gray-400 hover:text-white">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        ${ticket.description ? `<p class="text-sm text-gray-400 mb-3 line-clamp-3">${escapeHtml(ticket.description)}</p>` : ''}
+        <div class="flex items-center gap-2 mb-2">
+            ${ticket.status === 'open' && !ticket.assigned_tech_id ? `<button onclick="claimTicket(${ticket.id})" class="claim-btn flex-1 px-3 py-2 rounded-lg text-white text-sm font-semibold"><i class="fa-solid fa-hand-pointer mr-1"></i>Claim</button>` : ''}
+            ${Number(ticket.assigned_tech_id) === myId ? `<button onclick="openStatusModal(${ticket.id})" class="flex-1 px-3 py-2 rounded-lg bg-sf-2 border border-bd text-white text-sm font-semibold"><i class="fa-solid fa-pen-to-square mr-1"></i>Status</button>` : ''}
+        </div>
+        <p class="text-xs font-semibold text-purple-300 flex items-center gap-1.5"><i class="fa-solid fa-comments"></i> Chat with CSR</p>
+    `;
+}
+
+function renderTicketChatMessages(messages) {
+    const container = document.getElementById('tech-chat-messages');
+    if (!container) return;
+
+    if (!messages.length) {
+        container.innerHTML = '<div class="text-xs text-gray-500 text-center py-6">No messages yet. Reply to the CSR about this ticket.</div>';
+        return;
+    }
+
+    container.innerHTML = messages.map(msg => {
+        const isMine = msg.sender_type === 'tech';
+        const time = new Date(msg.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return `
+            <div class="flex ${isMine ? 'justify-end' : 'justify-start'}">
+                <div class="max-w-[90%] rounded-2xl px-3 py-2 ${isMine ? 'bg-purple-600/30 border border-purple-500/30' : 'bg-sf-2 border border-bd'}">
+                    <div class="text-[10px] text-gray-400 mb-1 flex items-center gap-1.5">
+                        <i class="fa-solid fa-${isMine ? 'wrench' : 'headset'}"></i>
+                        <span class="font-semibold text-gray-300">${escapeHtml(msg.sender_name || (isMine ? 'You' : 'CSR'))}</span>
+                        <span>&bull; ${time}</span>
+                    </div>
+                    <p class="text-sm text-white whitespace-pre-wrap break-words">${escapeHtml(msg.content)}</p>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const latest = messages[messages.length - 1];
+    if (latest && latest.id !== lastTicketChatMessageId) {
+        lastTicketChatMessageId = latest.id;
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function openTicketChat(ticketId) {
+    activeChatTicketId = Number(ticketId);
+    lastTicketChatMessageId = 0;
+    document.getElementById('ticket-detail').classList.remove('hidden');
+    const ticket = tickets.find(t => Number(t.id) === activeChatTicketId);
+    if (ticket) renderTicketChatHeader(ticket);
+    document.getElementById('tech-chat-messages').innerHTML = '<div class="text-xs text-gray-500 text-center py-6">Loading messages...</div>';
+    loadTicketChatMessages();
+    if (ticketChatPollTimer) clearInterval(ticketChatPollTimer);
+    ticketChatPollTimer = setInterval(loadTicketChatMessages, 4000);
+    updateTicketLists();
+}
+
+function loadTicketChatMessages() {
+    if (!activeChatTicketId) return;
+    const input = document.getElementById('tech-chat-input');
+    const draft = input ? input.value : '';
+    const hadFocus = document.activeElement === input;
+
+    fetch(`/api/tickets/${activeChatTicketId}/messages`, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                showNotification(data.error, 'error');
+                return;
+            }
+            const ticket = data.ticket || tickets.find(t => Number(t.id) === Number(activeChatTicketId));
+            if (ticket) {
+                renderTicketChatHeader(ticket);
+                renderTicketChatMessages(data.messages || []);
+            }
+            if (input && draft) {
+                input.value = draft;
+                if (hadFocus) input.focus();
+            }
+        })
+        .catch(() => showNotification('Failed to load messages', 'error'));
+}
+
+function sendTicketChatMessage() {
+    if (!activeChatTicketId) return;
+    const input = document.getElementById('tech-chat-input');
+    if (!input) return;
+    const content = input.value.trim();
+    if (!content) return;
+
+    const sendBtn = document.getElementById('tech-chat-send-btn');
+    if (sendBtn) sendBtn.disabled = true;
+
+    fetch(`/api/tickets/${activeChatTicketId}/messages`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                input.value = '';
+                loadTicketChatMessages();
+            } else {
+                showNotification(data.error || 'Failed to send', 'error');
+            }
+        })
+        .catch(() => showNotification('Failed to send message', 'error'))
+        .finally(() => {
+            if (sendBtn) sendBtn.disabled = false;
+            input.focus();
+        });
+}
+
+function initTicketChatCompose() {
+    const input = document.getElementById('tech-chat-input');
+    const sendBtn = document.getElementById('tech-chat-send-btn');
+    if (!input || !sendBtn) return;
+    sendBtn.addEventListener('click', sendTicketChatMessage);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendTicketChatMessage();
+        }
+    });
+}
+
+initTicketChatCompose();
+
+// Initial load
+loadTickets();
+
+// Poll for updates every 5 seconds
+setInterval(loadTickets, 5000);
+</script>
+
+</body>
+</html>

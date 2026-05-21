@@ -3,6 +3,7 @@ from functools import wraps
 from html import escape
 import json
 import os
+import random
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -24,6 +25,7 @@ CSR_PRESENCE_WRITE_INTERVAL_SECONDS = 15
 CENTRAL_API_URL = os.environ.get("CENTRAL_API_URL", "http://52.74.227.205:5003").rstrip("/")
 CSR_WIDGET_KEY = os.environ.get("CSR_WIDGET_KEY", "csr_aridian_52_74_227_205_demo").strip()
 CSR_API_KEY = os.environ.get("CSR_API_KEY", "").strip()
+TICKET_CODE_PREFIXES = ("TCK", "FLT", "CLP", "IDK", "SUP", "OPS", "HLP", "TKT", "SRV", "INC")
 
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -86,7 +88,11 @@ def normalize_role(value, default="csr"):
 
 def dashboard_endpoint_for(user_or_role):
     role = user_or_role if isinstance(user_or_role, str) else getattr(user_or_role, "role", "csr")
-    return "admin_dashboard" if normalize_role(role) == "admin" else "csr_dashboard"
+    if isinstance(user_or_role, TechTeamAccount):
+        return "tech_dashboard"
+    if normalize_role(role) == "admin":
+        return "admin_dashboard"
+    return "csr_dashboard"
 
 
 def auth_context(role):
@@ -511,9 +517,114 @@ class ChatMessage(db.Model):
     chat_id = db.Column(db.Integer, db.ForeignKey("chat_conversations.id"), nullable=False, index=True)
     sender_type = db.Column(db.String(20), nullable=False, index=True)
     content = db.Column(db.Text, nullable=False)
+    image_attachments = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     chat = db.relationship("ChatConversation", back_populates="messages")
+
+
+# ─── Technical Team Models ───────────────────────────────────
+class TechTeamAccount(db.Model):
+    __tablename__ = "tech_team_accounts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(150), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    display_name = db.Column(db.String(120))
+    specialty = db.Column(db.String(100), default="General")
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    last_seen_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    claimed_tickets = db.relationship("Ticket", back_populates="assigned_tech")
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+
+class TicketStatus(db.Model):
+    __tablename__ = "ticket_statuses"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), unique=True, nullable=False)
+    label = db.Column(db.String(100), nullable=False)
+    color = db.Column(db.String(20), default="#64748b")
+    sort_order = db.Column(db.Integer, default=0)
+    is_default = db.Column(db.Boolean, default=False)
+    is_resolved = db.Column(db.Boolean, default=False)
+
+    @staticmethod
+    def get_default_statuses():
+        return [
+            {"name": "open", "label": "Open", "color": "#f59e0b", "sort_order": 1, "is_default": True, "is_resolved": False},
+            {"name": "in_progress", "label": "In Progress", "color": "#3b82f6", "sort_order": 2, "is_default": True, "is_resolved": False},
+            {"name": "waiting_parts", "label": "Waiting for Parts", "color": "#8b5cf6", "sort_order": 3, "is_default": True, "is_resolved": False},
+            {"name": "resolved", "label": "Resolved", "color": "#10b981", "sort_order": 4, "is_default": True, "is_resolved": True},
+            {"name": "closed", "label": "Closed", "color": "#64748b", "sort_order": 5, "is_default": True, "is_resolved": True},
+        ]
+
+
+class Ticket(db.Model):
+    __tablename__ = "tickets"
+
+    id = db.Column(db.Integer, primary_key=True)
+    ticket_number = db.Column(db.String(24), unique=True, nullable=False, index=True)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text)
+    priority = db.Column(db.String(20), nullable=False, default="normal")
+    status = db.Column(db.String(50), nullable=False, default="open", index=True)
+    created_by_csr_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    assigned_tech_id = db.Column(db.Integer, db.ForeignKey("tech_team_accounts.id"), index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    resolved_at = db.Column(db.DateTime)
+
+    created_by_csr = db.relationship("User", foreign_keys=[created_by_csr_id])
+    assigned_tech = db.relationship("TechTeamAccount", back_populates="claimed_tickets")
+    status_logs = db.relationship(
+        "TicketStatusLog",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketStatusLog.created_at.desc()",
+    )
+    messages = db.relationship(
+        "TicketMessage",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketMessage.created_at.asc()",
+    )
+
+
+class TicketStatusLog(db.Model):
+    __tablename__ = "ticket_status_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    ticket_id = db.Column(db.Integer, db.ForeignKey("tickets.id"), nullable=False, index=True)
+    old_status = db.Column(db.String(50))
+    new_status = db.Column(db.String(50), nullable=False)
+    changed_by_user_id = db.Column(db.Integer)
+    changed_by_role = db.Column(db.String(20))
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    ticket = db.relationship("Ticket", back_populates="status_logs")
+
+
+class TicketMessage(db.Model):
+    __tablename__ = "ticket_messages"
+
+    id = db.Column(db.Integer, primary_key=True)
+    ticket_id = db.Column(db.Integer, db.ForeignKey("tickets.id"), nullable=False, index=True)
+    sender_type = db.Column(db.String(20), nullable=False, index=True)  # 'csr' or 'tech'
+    sender_id = db.Column(db.Integer, nullable=False)
+    sender_name = db.Column(db.String(120))
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    ticket = db.relationship("Ticket", back_populates="messages")
 
 
 # ─── Auth Helpers ────────────────────────────────────────────
@@ -524,6 +635,8 @@ def build_unauthorized_response():
         return redirect(url_for("admin_login"))
     if request.path.startswith("/csr/"):
         return redirect(url_for("csr_login"))
+    if request.path.startswith("/tech/"):
+        return redirect(url_for("tech_login"))
     return redirect(url_for("login"))
 
 
@@ -543,7 +656,7 @@ def get_current_admin():
 
 
 def get_current_user():
-    return get_current_admin() or get_current_csr_user()
+    return get_current_admin() or get_current_csr_user() or get_current_tech_user()
 
 
 def get_online_cutoff(now=None):
@@ -584,6 +697,8 @@ def touch_actor_presence(actor, force=False):
         touch_user_presence(actor, force=force)
     elif isinstance(actor, AdminAccount):
         touch_admin_presence(actor, force=force)
+    elif isinstance(actor, TechTeamAccount):
+        touch_tech_presence(actor, force=force)
 
 
 def actor_user_id(actor):
@@ -640,6 +755,36 @@ def admin_required(f):
             session.clear()
             return build_unauthorized_response()
         touch_admin_presence(admin)
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def get_current_tech_user():
+    tech_id = session.get("tech_user_id")
+    if not tech_id:
+        return None
+    return db.session.get(TechTeamAccount, tech_id)
+
+
+def touch_tech_presence(tech, force=False):
+    if not tech:
+        return
+    now = utcnow()
+    if force or not tech.last_seen_at or (now - tech.last_seen_at).total_seconds() >= CSR_PRESENCE_WRITE_INTERVAL_SECONDS:
+        tech.last_seen_at = now
+        db.session.commit()
+
+
+def tech_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        tech = get_current_tech_user()
+        if not tech:
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Technical team access is required."}), 403
+            return redirect(url_for("tech_login"))
+        touch_tech_presence(tech)
         return f(*args, **kwargs)
 
     return decorated_function
@@ -880,24 +1025,133 @@ def claim_chat(chat, user):
     return True, None
 
 
-def append_chat_message(chat, sender_type, content, created_at=None):
+def normalize_image_attachments(payload):
+    raw_images = payload.get("images") or payload.get("attachments") or []
+    if not isinstance(raw_images, list):
+        raw_images = [raw_images]
+
+    attachments = []
+    for raw_image in raw_images:
+        if not isinstance(raw_image, dict):
+            continue
+        url = (
+            raw_image.get("image_url")
+            or raw_image.get("imageUrl")
+            or raw_image.get("url")
+            or raw_image.get("data_url")
+            or raw_image.get("dataUrl")
+            or ""
+        )
+        data_url = raw_image.get("data_url") or raw_image.get("dataUrl") or ""
+        if not url:
+            continue
+        attachments.append(
+            {
+                "name": str(raw_image.get("name") or "Uploaded image")[:160],
+                "mime_type": str(raw_image.get("mime_type") or raw_image.get("type") or ""),
+                "image_url": url,
+                "imageUrl": url,
+                "url": url,
+                "data_url": data_url,
+            }
+        )
+
+    for key in ("image_url", "imageUrl"):
+        if payload.get(key):
+            attachments.append(
+                {
+                    "name": "Uploaded image",
+                    "mime_type": "",
+                    "image_url": payload[key],
+                    "imageUrl": payload[key],
+                    "url": payload[key],
+                    "data_url": "",
+                }
+            )
+
+    for url in payload.get("image_urls") or []:
+        if url:
+            attachments.append(
+                {
+                    "name": "Uploaded image",
+                    "mime_type": "",
+                    "image_url": url,
+                    "imageUrl": url,
+                    "url": url,
+                    "data_url": "",
+                }
+            )
+
+    deduped = []
+    seen = set()
+    for attachment in attachments:
+        key = attachment.get("image_url") or attachment.get("url") or attachment.get("data_url")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(attachment)
+    return deduped
+
+
+def serialize_image_attachments(attachments):
+    return json.dumps(attachments) if attachments else None
+
+
+def deserialize_image_attachments(raw_attachments):
+    if not raw_attachments:
+        return []
+    try:
+        attachments = json.loads(raw_attachments)
+    except (TypeError, ValueError):
+        return []
+    return attachments if isinstance(attachments, list) else []
+
+
+def image_urls_for_attachments(attachments):
+    urls = []
+    for attachment in attachments or []:
+        url = attachment.get("image_url") or attachment.get("imageUrl") or attachment.get("url") or attachment.get("data_url")
+        if url:
+            urls.append(url)
+    return urls
+
+
+def add_image_fields(payload, attachments):
+    urls = image_urls_for_attachments(attachments)
+    payload["images"] = attachments
+    payload["image_urls"] = urls
+    if urls:
+        payload["image_url"] = urls[0]
+        payload["imageUrl"] = urls[0]
+    return payload
+
+
+def append_chat_message(chat, sender_type, content, created_at=None, image_attachments=None):
     timestamp = created_at or utcnow()
+    clean_attachments = image_attachments or []
     message = ChatMessage(
         chat=chat,
         sender_type=sender_type,
-        content=content,
+        content=content or ("[image]" if clean_attachments else ""),
+        image_attachments=serialize_image_attachments(clean_attachments),
         created_at=timestamp,
     )
     db.session.add(message)
     chat.last_activity_at = timestamp
     if sender_type == "user":
-        chat.last_customer_message = content
+        chat.last_customer_message = content or ("[image]" if clean_attachments else "")
     return message
 
 
 def get_chat_preview(chat):
     if chat.messages:
-        return chat.messages[-1].content
+        latest_message = chat.messages[-1]
+        attachments = deserialize_image_attachments(latest_message.image_attachments)
+        if latest_message.content and attachments:
+            return f"{latest_message.content} [image]"
+        if attachments:
+            return "[image]"
+        return latest_message.content
     if chat.last_customer_message:
         return chat.last_customer_message
     if chat.reverted_reason:
@@ -911,22 +1165,24 @@ def import_transcript(chat, transcript, reset_existing=False):
         db.session.flush()
 
     existing_signatures = {
-        (msg.sender_type, msg.content, isoformat_or_none(msg.created_at))
+        (msg.sender_type, msg.content, isoformat_or_none(msg.created_at), msg.image_attachments or "")
         for msg in chat.messages
     }
 
     for item in transcript or []:
         sender_type = normalize_sender_type(item.get("sender"))
         content = (item.get("content") or "").strip()
-        if not content:
+        attachments = normalize_image_attachments(item)
+        if not content and not attachments:
             continue
 
         timestamp = parse_timestamp(item.get("timestamp"))
-        signature = (sender_type, content, isoformat_or_none(timestamp))
+        serialized_attachments = serialize_image_attachments(attachments) or ""
+        signature = (sender_type, content or ("[image]" if attachments else ""), isoformat_or_none(timestamp), serialized_attachments)
         if signature in existing_signatures:
             continue
 
-        append_chat_message(chat, sender_type, content, created_at=timestamp)
+        append_chat_message(chat, sender_type, content, created_at=timestamp, image_attachments=attachments)
         existing_signatures.add(signature)
 
 
@@ -983,12 +1239,16 @@ def serialize_support_user(user, active_chat_count):
 
 
 def serialize_message(message):
-    return {
-        "id": message.id,
-        "sender_type": message.sender_type,
-        "content": message.content,
-        "created_at": isoformat_or_none(message.created_at),
-    }
+    attachments = deserialize_image_attachments(message.image_attachments)
+    return add_image_fields(
+        {
+            "id": message.id,
+            "sender_type": message.sender_type,
+            "content": message.content,
+            "created_at": isoformat_or_none(message.created_at),
+        },
+        attachments,
+    )
 
 
 def serialize_chat(chat, current_user, message_count=None):
@@ -1413,11 +1673,14 @@ def relay_resolution_to_central(chat):
         return {"skipped": True, "reason": "CSR relay key is not configured."}
 
     transcript = [
-        {
-            "sender": message.sender_type,
-            "content": message.content,
-            "timestamp": isoformat_or_none(message.created_at),
-        }
+        add_image_fields(
+            {
+                "sender": message.sender_type,
+                "content": message.content,
+                "timestamp": isoformat_or_none(message.created_at),
+            },
+            deserialize_image_attachments(message.image_attachments),
+        )
         for message in chat.messages
     ]
     summary = f"CSR resolved chat handled by {chat.assigned_csr.display_name if chat.assigned_csr else 'assigned CSR'}."
@@ -1503,6 +1766,42 @@ def ensure_schema():
             if column_name not in assignment_columns:
                 connection.execute(text(statement))
 
+    if "chat_messages" in table_names:
+        message_columns = {column["name"] for column in inspector.get_columns("chat_messages")}
+        if "image_attachments" not in message_columns:
+            with db.engine.begin() as connection:
+                connection.execute(text("ALTER TABLE chat_messages ADD COLUMN image_attachments TEXT"))
+
+    if "tickets" in table_names:
+        ticket_columns = {column["name"] for column in inspector.get_columns("tickets")}
+        if "ticket_number" not in ticket_columns:
+            with db.engine.begin() as connection:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN ticket_number VARCHAR(24)"))
+            for ticket in Ticket.query.filter(
+                (Ticket.ticket_number.is_(None)) | (Ticket.ticket_number == "")
+            ).all():
+                ticket.ticket_number = generate_unique_ticket_number()
+            db.session.commit()
+            with db.engine.begin() as connection:
+                connection.execute(
+                    text("CREATE UNIQUE INDEX IF NOT EXISTS ix_tickets_ticket_number ON tickets (ticket_number)")
+                )
+
+
+def generate_ticket_number():
+    """Build code PREFIX_NUMBER — e.g. TCK_4821, FLT_25656. Prefix is from a fixed pool; digits are random each time."""
+    prefix = random.choice(TICKET_CODE_PREFIXES)
+    digits = random.randint(1000, 999999)
+    return f"{prefix}_{digits}"
+
+
+def generate_unique_ticket_number(max_attempts=30):
+    for _ in range(max_attempts):
+        candidate = generate_ticket_number()
+        if not Ticket.query.filter_by(ticket_number=candidate).first():
+            return candidate
+    return f"TCK_{random.randint(100000, 999999)}"
+
 
 def email_in_use(email):
     normalized_email = (email or "").strip().lower()
@@ -1586,7 +1885,9 @@ def index():
     current_actor = get_current_user()
     if current_actor:
         return redirect(url_for(dashboard_endpoint_for(current_actor)))
-    return render_template("login.html", **auth_context(normalize_role(request.args.get("role"), default="csr")))
+    if get_current_tech_user():
+        return redirect(url_for("tech_dashboard"))
+    return redirect(url_for("login"))
 
 
 @app.route("/csr/dashboard")
@@ -1673,11 +1974,21 @@ def admin_activity():
     )
 
 
+@app.route("/admin/dashboard/tech")
+@admin_required
+def admin_tech():
+    return render_admin_dashboard_page(
+        "tech",
+        "Technical Team Management",
+        "Manage technical team accounts, customize ticket statuses, and view ticket analytics.",
+    )
+
+
 def handle_signup(role=None):
     auth_role = normalize_role(role or request.values.get("role"), default="csr")
     if auth_role != "admin":
         flash("CSR accounts are created by an administrator from the admin dashboard.", "error")
-        return redirect(url_for("login", role="csr"))
+        return redirect(url_for("csr_login"))
 
     if get_current_user():
         return redirect(url_for("index"))
@@ -1733,49 +2044,12 @@ def handle_signup(role=None):
     return render_template("signup.html", **auth_context(auth_role))
 
 
-def handle_login(role=None):
-    auth_role = normalize_role(role or request.values.get("role"), default="csr")
+def portal_login_page():
     if get_current_user():
-        return redirect(url_for("index"))
-
-    if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "")
-
-        if not email or not password:
-            flash("Email and password are required.", "error")
-            return render_template("login.html", **auth_context(auth_role))
-
-        if auth_role == "admin":
-            admin = AdminAccount.query.filter_by(email=email).first()
-            if not admin or not admin.check_password(password):
-                flash("Invalid admin email or password.", "error")
-                return render_template("login.html", **auth_context(auth_role))
-
-            admin.last_seen_at = utcnow()
-            db.session.commit()
-            session.clear()
-            session.permanent = True
-            session["account_type"] = "admin"
-            session["admin_id"] = admin.id
-            session["user_email"] = admin.email
-            return redirect(url_for("admin_dashboard"))
-
-        user = User.query.filter_by(email=email, role="csr").first()
-        if not user or not user.check_password(password):
-            flash("Invalid CSR email or password.", "error")
-            return render_template("login.html", **auth_context(auth_role))
-
-        user.last_seen_at = utcnow()
-        db.session.commit()
-        session.clear()
-        session.permanent = True
-        session["account_type"] = "csr"
-        session["csr_user_id"] = user.id
-        session["user_email"] = user.email
-        return redirect(url_for("csr_dashboard"))
-
-    return render_template("login.html", **auth_context(auth_role))
+        return redirect(url_for(dashboard_endpoint_for(get_current_user())))
+    if get_current_tech_user():
+        return redirect(url_for("tech_dashboard"))
+    return render_template("login.html")
 
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -1791,35 +2065,135 @@ def admin_signup():
 @app.route("/csr/signup", methods=["GET", "POST"])
 def csr_signup():
     flash("CSR accounts are created by an administrator from the admin dashboard.", "error")
-    return redirect(url_for("login", role="csr"))
+    return redirect(url_for("csr_login"))
 
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login", methods=["GET"])
 def login():
-    return handle_login(normalize_role(request.values.get("role"), default="csr"))
+    return portal_login_page()
 
 
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
-    return redirect(url_for("login", role="admin"))
+    if get_current_admin():
+        return redirect(url_for("admin_dashboard"))
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+
+        if not email or not password:
+            flash("Email and password are required.", "error")
+            return render_template("admin_login.html")
+
+        admin = AdminAccount.query.filter_by(email=email).first()
+        if not admin or not admin.check_password(password):
+            flash("Invalid admin email or password.", "error")
+            return render_template("admin_login.html")
+
+        admin.last_seen_at = utcnow()
+        db.session.commit()
+        session.clear()
+        session.permanent = True
+        session["account_type"] = "admin"
+        session["admin_id"] = admin.id
+        session["user_email"] = admin.email
+        return redirect(url_for("admin_dashboard"))
+
+    return render_template("admin_login.html")
 
 
 @app.route("/csr/login", methods=["GET", "POST"])
 def csr_login():
-    return redirect(url_for("login", role="csr"))
+    if get_current_csr_user():
+        return redirect(url_for("csr_dashboard"))
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+
+        if not email or not password:
+            flash("Email and password are required.", "error")
+            return render_template("csr_login.html")
+
+        user = User.query.filter_by(email=email, role="csr").first()
+        if not user or not user.check_password(password):
+            flash("Invalid CSR email or password.", "error")
+            return render_template("csr_login.html")
+
+        user.last_seen_at = utcnow()
+        db.session.commit()
+        session.clear()
+        session.permanent = True
+        session["account_type"] = "csr"
+        session["csr_user_id"] = user.id
+        session["user_email"] = user.email
+        return redirect(url_for("csr_dashboard"))
+
+    return render_template("csr_login.html")
 
 
 @app.route("/logout")
 def logout():
     current_user = get_current_user()
-    next_login_route = url_for("login")
-    if current_user:
-        next_login_route = url_for("admin_login" if current_user.role == "admin" else "csr_login")
+    current_tech = get_current_tech_user()
+
+    if current_tech:
+        current_tech.last_seen_at = None
+        db.session.commit()
+    elif current_user:
         current_user.last_seen_at = None
+        db.session.commit()
+
+    session.clear()
+    flash("You have been logged out.", "success")
+    return redirect(url_for("login"))
+
+
+@app.route("/tech/login", methods=["GET", "POST"])
+def tech_login():
+    if get_current_tech_user():
+        return redirect(url_for("tech_dashboard"))
+    
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        
+        if not email or not password:
+            flash("Email and password are required.", "error")
+            return render_template("tech_login.html")
+        
+        tech = TechTeamAccount.query.filter_by(email=email).first()
+        if not tech or not tech.check_password(password):
+            flash("Invalid technical team email or password.", "error")
+            return render_template("tech_login.html")
+        
+        tech.last_seen_at = utcnow()
+        db.session.commit()
+        session.clear()
+        session.permanent = True
+        session["tech_user_id"] = tech.id
+        session["user_email"] = tech.email
+        return redirect(url_for("tech_dashboard"))
+    
+    return render_template("tech_login.html")
+
+
+@app.route("/tech/logout")
+def tech_logout():
+    tech = get_current_tech_user()
+    if tech:
+        tech.last_seen_at = None
         db.session.commit()
     session.clear()
     flash("You have been logged out.", "success")
-    return redirect(next_login_route)
+    return redirect(url_for("tech_login"))
+
+
+@app.route("/tech/dashboard")
+@tech_required
+def tech_dashboard():
+    return render_template("tech_dashboard.html", user=get_current_tech_user())
 
 
 @app.route("/health")
@@ -1925,15 +2299,16 @@ def external_send():
     payload = get_request_payload()
     visitor_id = (payload.get("visitor_id") or "").strip()
     content = (payload.get("content") or "").strip()
+    attachments = normalize_image_attachments(payload)
 
-    if not visitor_id or not content:
-        return jsonify({"success": False, "message": "visitor_id and content are required"}), 400
+    if not visitor_id or (not content and not attachments):
+        return jsonify({"success": False, "message": "visitor_id and content or image are required"}), 400
 
     chat = find_chat_by_visitor_id(visitor_id)
     if not chat:
         return jsonify({"success": False, "message": "Chat session not found"}), 404
 
-    append_chat_message(chat, "user", content)
+    append_chat_message(chat, "user", content, image_attachments=attachments)
     if chat.status == "assigned":
         chat.status = "in_progress"
     log_assignment_event(
@@ -2355,11 +2730,548 @@ def update_integration_settings():
     )
 
 
+# ─── Ticket API ──────────────────────────────────────────────
+
+def serialize_ticket(ticket, include_messages=False, include_admin_details=False):
+    data = {
+        "id": ticket.id,
+        "ticket_number": ticket.ticket_number or f"TCK_{ticket.id}",
+        "title": ticket.title,
+        "description": ticket.description,
+        "priority": ticket.priority,
+        "status": ticket.status,
+        "created_by_csr_id": ticket.created_by_csr_id,
+        "created_by_csr": serialize_user(ticket.created_by_csr) if ticket.created_by_csr else None,
+        "assigned_tech_id": ticket.assigned_tech_id,
+        "assigned_tech": {"id": ticket.assigned_tech.id, "display_name": ticket.assigned_tech.display_name, "specialty": ticket.assigned_tech.specialty} if ticket.assigned_tech else None,
+        "created_at": isoformat_or_none(ticket.created_at),
+        "updated_at": isoformat_or_none(ticket.updated_at),
+        "resolved_at": isoformat_or_none(ticket.resolved_at),
+    }
+    if include_messages:
+        data["messages"] = [
+            {
+                "id": m.id,
+                "sender_type": m.sender_type,
+                "sender_id": m.sender_id,
+                "sender_name": m.sender_name,
+                "content": m.content,
+                "created_at": isoformat_or_none(m.created_at),
+            }
+            for m in ticket.messages
+        ]
+    if include_admin_details:
+        data["message_count"] = len(ticket.messages) if ticket.messages else 0
+        latest_log = ticket.status_logs[0] if ticket.status_logs else None
+        if latest_log:
+            data["last_status_update"] = {
+                "old_status": latest_log.old_status,
+                "new_status": latest_log.new_status,
+                "notes": latest_log.notes,
+                "changed_by_role": latest_log.changed_by_role,
+                "at": isoformat_or_none(latest_log.created_at),
+            }
+    return data
+
+
+def ticket_query_with_relations():
+    return Ticket.query.options(
+        joinedload(Ticket.created_by_csr),
+        joinedload(Ticket.assigned_tech),
+        joinedload(Ticket.messages),
+        joinedload(Ticket.status_logs),
+    )
+
+
+def build_admin_ticket_stats(tickets, statuses):
+    resolved_statuses = {s.name for s in statuses if s.is_resolved}
+    closed_like = resolved_statuses | {"closed", "resolved"}
+    return {
+        "total": len(tickets),
+        "open": sum(1 for t in tickets if t.status == "open"),
+        "in_progress": sum(1 for t in tickets if t.status == "in_progress"),
+        "waiting_parts": sum(1 for t in tickets if t.status == "waiting_parts"),
+        "closed": sum(1 for t in tickets if t.status in closed_like),
+        "unassigned": sum(1 for t in tickets if not t.assigned_tech_id and t.status not in closed_like),
+    }
+
+
+def build_tech_workload(tickets, tech_accounts):
+    workload = {
+        t.id: {
+            "tech_id": t.id,
+            "display_name": t.display_name or t.email,
+            "email": t.email,
+            "specialty": t.specialty,
+            "is_active": t.is_active,
+            "total_assigned": 0,
+            "open": 0,
+            "in_progress": 0,
+            "active": 0,
+        }
+        for t in tech_accounts
+    }
+    active_statuses = {"open", "in_progress", "waiting_parts"}
+    for ticket in tickets:
+        if not ticket.assigned_tech_id:
+            continue
+        row = workload.get(ticket.assigned_tech_id)
+        if not row:
+            continue
+        row["total_assigned"] += 1
+        if ticket.status == "open":
+            row["open"] += 1
+        if ticket.status == "in_progress":
+            row["in_progress"] += 1
+        if ticket.status in active_statuses:
+            row["active"] += 1
+    return sorted(workload.values(), key=lambda item: (-item["active"], item["display_name"]))
+
+
+def serialize_ticket_status(status):
+    return {
+        "id": status.id,
+        "name": status.name,
+        "label": status.label,
+        "color": status.color,
+        "sort_order": status.sort_order,
+        "is_default": status.is_default,
+        "is_resolved": status.is_resolved,
+    }
+
+
+@app.route("/api/tickets", methods=["GET"])
+@login_required
+def get_tickets():
+    """Get tickets based on user role."""
+    tech_user = get_current_tech_user()
+    admin_user = get_current_admin()
+    csr_user = get_current_csr_user()
+    status_filter = request.args.get("status")
+
+    if tech_user:
+        if status_filter:
+            tickets = ticket_query_with_relations().filter(Ticket.status == status_filter).order_by(Ticket.created_at.desc()).all()
+        else:
+            open_tickets = ticket_query_with_relations().filter(Ticket.status == "open").order_by(Ticket.created_at.desc()).all()
+            my_tickets = ticket_query_with_relations().filter(Ticket.assigned_tech_id == tech_user.id).order_by(Ticket.created_at.desc()).all()
+            all_others = (
+                ticket_query_with_relations()
+                .filter(Ticket.assigned_tech_id != tech_user.id, Ticket.status != "open")
+                .order_by(Ticket.updated_at.desc())
+                .all()
+            )
+            tickets = open_tickets + my_tickets + all_others
+    elif admin_user:
+        query = ticket_query_with_relations()
+        if status_filter and status_filter != "all":
+            query = query.filter(Ticket.status == status_filter)
+        tickets = query.order_by(Ticket.updated_at.desc()).all()
+    elif csr_user:
+        tickets = (
+            ticket_query_with_relations()
+            .filter(Ticket.created_by_csr_id == csr_user.id)
+            .order_by(Ticket.created_at.desc())
+            .all()
+        )
+    else:
+        return jsonify({"error": "Unauthorized."}), 403
+
+    statuses = TicketStatus.query.order_by(TicketStatus.sort_order.asc()).all()
+    include_admin = bool(admin_user)
+
+    return jsonify({
+        "tickets": [serialize_ticket(t, include_admin_details=include_admin) for t in tickets],
+        "statuses": [serialize_ticket_status(s) for s in statuses],
+    })
+
+
+@app.route("/api/admin/tickets", methods=["GET"])
+@admin_required
+def admin_get_tickets():
+    """Admin overview: all tickets, stats, and per-tech workload."""
+    status_filter = (request.args.get("status") or "all").strip()
+    all_tickets = ticket_query_with_relations().order_by(Ticket.updated_at.desc()).all()
+    statuses = TicketStatus.query.order_by(TicketStatus.sort_order.asc()).all()
+    tech_accounts = TechTeamAccount.query.order_by(TechTeamAccount.display_name.asc()).all()
+
+    if status_filter and status_filter != "all":
+        tickets = [t for t in all_tickets if t.status == status_filter]
+    else:
+        tickets = all_tickets
+
+    return jsonify({
+        "tickets": [serialize_ticket(t, include_admin_details=True) for t in tickets],
+        "statuses": [serialize_ticket_status(s) for s in statuses],
+        "stats": build_admin_ticket_stats(all_tickets, statuses),
+        "tech_workload": build_tech_workload(all_tickets, tech_accounts),
+    })
+
+
+@app.route("/api/tickets", methods=["POST"])
+@csr_required
+def create_ticket():
+    """CSR creates a new ticket."""
+    current_user = get_current_csr_user()
+    payload = get_request_payload()
+    
+    title = (payload.get("title") or "").strip()
+    description = (payload.get("description") or "").strip()
+    priority = payload.get("priority", "normal")
+    
+    if not title:
+        return jsonify({"error": "Ticket title is required."}), 400
+    
+    ticket = Ticket(
+        ticket_number=generate_unique_ticket_number(),
+        title=title,
+        description=description,
+        priority=priority,
+        status="open",
+        created_by_csr_id=current_user.id,
+    )
+    db.session.add(ticket)
+    db.session.flush()
+    
+    # Log the creation
+    log = TicketStatusLog(
+        ticket_id=ticket.id,
+        old_status=None,
+        new_status="open",
+        changed_by_user_id=current_user.id,
+        changed_by_role="csr",
+        notes=f"Ticket {ticket.ticket_number} created by CSR.",
+    )
+    db.session.add(log)
+    db.session.commit()
+    
+    return jsonify({
+        "success": True,
+        "message": f"Ticket {ticket.ticket_number} created successfully.",
+        "ticket": serialize_ticket(ticket),
+    })
+
+
+@app.route("/api/tickets/<int:ticket_id>/claim", methods=["POST"])
+@tech_required
+def claim_ticket(ticket_id):
+    """Technical team member claims an open ticket."""
+    tech_user = get_current_tech_user()
+    ticket = db.session.get(Ticket, ticket_id)
+    
+    if not ticket:
+        return jsonify({"error": "Ticket not found."}), 404
+    
+    if ticket.status != "open":
+        return jsonify({"error": "This ticket is no longer open and cannot be claimed."}), 400
+    
+    if ticket.assigned_tech_id:
+        return jsonify({"error": "This ticket has already been claimed."}), 400
+    
+    old_status = ticket.status
+    ticket.assigned_tech_id = tech_user.id
+    ticket.status = "in_progress"
+    
+    log = TicketStatusLog(
+        ticket_id=ticket.id,
+        old_status=old_status,
+        new_status="in_progress",
+        changed_by_user_id=tech_user.id,
+        changed_by_role="tech",
+        notes=f"Claimed by {tech_user.display_name or tech_user.email}",
+    )
+    db.session.add(log)
+    db.session.commit()
+    
+    return jsonify({
+        "success": True,
+        "message": "Ticket claimed successfully.",
+        "ticket": serialize_ticket(ticket),
+    })
+
+
+@app.route("/api/tickets/<int:ticket_id>/status", methods=["POST"])
+@tech_required
+def update_ticket_status(ticket_id):
+    """Update ticket status (tech team only, and only for their claimed tickets)."""
+    tech_user = get_current_tech_user()
+    ticket = db.session.get(Ticket, ticket_id)
+    
+    if not ticket:
+        return jsonify({"error": "Ticket not found."}), 404
+    
+    if ticket.assigned_tech_id != tech_user.id:
+        return jsonify({"error": "You can only update tickets assigned to you."}), 403
+    
+    payload = get_request_payload()
+    new_status = (payload.get("status") or "").strip()
+    notes = (payload.get("notes") or "").strip()
+    
+    if not new_status:
+        return jsonify({"error": "Status is required."}), 400
+    
+    # Verify status exists
+    status_exists = TicketStatus.query.filter_by(name=new_status).first()
+    if not status_exists:
+        return jsonify({"error": f"Invalid status: {new_status}"}), 400
+    
+    old_status = ticket.status
+    ticket.status = new_status
+    
+    if status_exists.is_resolved:
+        ticket.resolved_at = utcnow()
+    
+    log = TicketStatusLog(
+        ticket_id=ticket.id,
+        old_status=old_status,
+        new_status=new_status,
+        changed_by_user_id=tech_user.id,
+        changed_by_role="tech",
+        notes=notes or f"Status changed to {status_exists.label}",
+    )
+    db.session.add(log)
+    db.session.commit()
+    
+    return jsonify({
+        "success": True,
+        "message": f"Ticket status updated to {status_exists.label}.",
+        "ticket": serialize_ticket(ticket),
+    })
+
+
+def serialize_ticket_message(message):
+    return {
+        "id": message.id,
+        "ticket_id": message.ticket_id,
+        "sender_type": message.sender_type,
+        "sender_id": message.sender_id,
+        "sender_name": message.sender_name,
+        "content": message.content,
+        "created_at": isoformat_or_none(message.created_at),
+    }
+
+
+def ticket_chat_actor(ticket):
+    """Return (allowed, actor, sender_type) for ticket CSR↔tech chat."""
+    tech_user = get_current_tech_user()
+    if tech_user:
+        return True, tech_user, "tech"
+    csr_user = get_current_csr_user()
+    if csr_user and ticket.created_by_csr_id == csr_user.id:
+        return True, csr_user, "csr"
+    return False, None, None
+
+
+@app.route("/api/tickets/<int:ticket_id>/messages", methods=["GET"])
+@login_required
+def get_ticket_messages(ticket_id):
+    ticket = db.session.get(Ticket, ticket_id)
+    if not ticket:
+        return jsonify({"error": "Ticket not found."}), 404
+
+    allowed, _, _ = ticket_chat_actor(ticket)
+    if not allowed:
+        return jsonify({"error": "You do not have access to this ticket."}), 403
+
+    messages = (
+        TicketMessage.query.filter_by(ticket_id=ticket.id)
+        .order_by(TicketMessage.created_at.asc())
+        .all()
+    )
+    return jsonify({
+        "ticket": serialize_ticket(ticket),
+        "messages": [serialize_ticket_message(m) for m in messages],
+    })
+
+
+@app.route("/api/tickets/<int:ticket_id>/messages", methods=["POST"])
+@login_required
+def send_ticket_message(ticket_id):
+    ticket = db.session.get(Ticket, ticket_id)
+    if not ticket:
+        return jsonify({"error": "Ticket not found."}), 404
+
+    allowed, actor, sender_type = ticket_chat_actor(ticket)
+    if not allowed:
+        return jsonify({"error": "You do not have access to this ticket."}), 403
+
+    payload = get_request_payload()
+    content = (payload.get("content") or "").strip()
+    if not content:
+        return jsonify({"error": "Message content is required."}), 400
+
+    message = TicketMessage(
+        ticket_id=ticket.id,
+        sender_type=sender_type,
+        sender_id=actor.id,
+        sender_name=actor_display_name(actor),
+        content=content,
+    )
+    db.session.add(message)
+    ticket.updated_at = utcnow()
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": serialize_ticket_message(message),
+    })
+
+
+@app.route("/api/ticket-statuses", methods=["GET"])
+@login_required
+def get_ticket_statuses():
+    """Get all available ticket statuses."""
+    statuses = TicketStatus.query.order_by(TicketStatus.sort_order.asc()).all()
+    return jsonify({
+        "statuses": [serialize_ticket_status(s) for s in statuses],
+    })
+
+
+@app.route("/api/admin/ticket-statuses", methods=["POST"])
+@admin_required
+def create_ticket_status():
+    """Admin creates a new ticket status."""
+    payload = get_request_payload()
+    name = (payload.get("name") or "").strip().lower()
+    label = (payload.get("label") or "").strip()
+    color = (payload.get("color") or "#64748b").strip()
+    sort_order = parse_int(payload.get("sort_order"), 10)
+    is_resolved = parse_bool(payload.get("is_resolved"), default=False)
+    
+    if not name or not label:
+        return jsonify({"error": "Name and label are required."}), 400
+    
+    if TicketStatus.query.filter_by(name=name).first():
+        return jsonify({"error": f"Status '{name}' already exists."}), 400
+    
+    status = TicketStatus(
+        name=name,
+        label=label,
+        color=color,
+        sort_order=sort_order,
+        is_default=False,
+        is_resolved=is_resolved,
+    )
+    db.session.add(status)
+    db.session.commit()
+    
+    return jsonify({
+        "success": True,
+        "message": f"Status '{label}' created successfully.",
+        "status": serialize_ticket_status(status),
+    })
+
+
+@app.route("/api/admin/tech-accounts", methods=["POST"])
+@admin_required
+def create_tech_account():
+    """Admin creates a technical team account."""
+    payload = get_request_payload()
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+    display_name = (payload.get("display_name") or "").strip()
+    specialty = (payload.get("specialty") or "General").strip()
+    
+    if not email or not password:
+        return jsonify({"error": "Email and password are required."}), 400
+    
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters."}), 400
+    
+    if email_in_use(email):
+        return jsonify({"error": "An account with this email already exists."}), 400
+    
+    tech = TechTeamAccount(
+        email=email,
+        display_name=display_name or derive_display_name(email),
+        specialty=specialty,
+        is_active=True,
+    )
+    tech.set_password(password)
+    db.session.add(tech)
+    db.session.commit()
+    
+    return jsonify({
+        "success": True,
+        "message": f"Technical team account created for {tech.display_name or tech.email}.",
+    })
+
+
+@app.route("/api/admin/tech-accounts/<int:tech_id>", methods=["PUT"])
+@admin_required
+def update_tech_account(tech_id):
+    """Admin updates a technical team account."""
+    tech = db.session.get(TechTeamAccount, tech_id)
+    if not tech:
+        return jsonify({"error": "Technical team account not found."}), 404
+    
+    payload = get_request_payload()
+    if "display_name" in payload:
+        tech.display_name = (payload.get("display_name") or "").strip()
+    if "specialty" in payload:
+        tech.specialty = (payload.get("specialty") or "General").strip()
+    if "is_active" in payload:
+        tech.is_active = parse_bool(payload.get("is_active"), default=True)
+    
+    db.session.commit()
+    
+    return jsonify({
+        "success": True,
+        "message": "Technical team account updated.",
+    })
+
+
+@app.route("/api/admin/tech-accounts/<int:tech_id>", methods=["DELETE"])
+@admin_required
+def delete_tech_account(tech_id):
+    """Admin deletes a technical team account."""
+    tech = db.session.get(TechTeamAccount, tech_id)
+    if not tech:
+        return jsonify({"error": "Technical team account not found."}), 404
+    
+    db.session.delete(tech)
+    db.session.commit()
+    
+    return jsonify({
+        "success": True,
+        "message": "Technical team account deleted.",
+    })
+
+
+@app.route("/api/admin/tech-accounts", methods=["GET"])
+@admin_required
+def get_tech_accounts():
+    """Get all technical team accounts."""
+    techs = TechTeamAccount.query.order_by(TechTeamAccount.created_at.desc()).all()
+    return jsonify({
+        "techs": [
+            {
+                "id": t.id,
+                "email": t.email,
+                "display_name": t.display_name,
+                "specialty": t.specialty,
+                "is_active": t.is_active,
+                "last_seen_at": isoformat_or_none(t.last_seen_at),
+                "created_at": isoformat_or_none(t.created_at),
+            }
+            for t in techs
+        ],
+    })
+
+
 # ─── Startup ─────────────────────────────────────────────────
 with app.app_context():
     ensure_schema()
     bootstrap_users()
     sync_integration_settings_artifacts(load_integration_settings())
+    # Initialize default ticket statuses if none exist
+    if TicketStatus.query.count() == 0:
+        for status_data in TicketStatus.get_default_statuses():
+            existing = TicketStatus.query.filter_by(name=status_data["name"]).first()
+            if not existing:
+                status = TicketStatus(**status_data)
+                db.session.add(status)
+        db.session.commit()
 
 
 if __name__ == "__main__":
