@@ -3,1032 +3,1169 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CSR Workspace</title>
+    <title>CSR Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-    tailwind.config = {
-        theme: {
-            extend: {
-                fontFamily: { sans: ['Inter', 'sans-serif'] },
-                colors: {
-                    sf: '#121a2b',
-                    'sf-2': '#182235',
-                    'sf-3': '#0f1728',
-                    bd: 'rgba(148,163,184,0.14)',
-                },
-            },
-        },
-    }
-    </script>
+    <script src="{{ url_for('static', filename='dashboard-theme.js') }}"></script>
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        .col-panel { display: none; }
+        @media (min-width: 1024px) { .col-panel { display: flex !important; } }
+        .col-panel.active { display: flex; }
+        .chat-scroll::-webkit-scrollbar { width: 5px; }
+        .chat-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
+        .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .msg-bubble { animation: slideUp 0.2s ease-out; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+        /* Archive collapse animation */
+        #view-workspace { transition: grid-template-columns 0.3s ease; }
+        #col-archive { transition: opacity 0.25s ease, transform 0.25s ease; transform-origin: right center; }
+        #col-archive.col-hidden { opacity: 0; transform: scaleX(0); width: 0; min-width: 0; overflow: hidden; padding: 0; margin: 0; border: none; }
+        /* Minimized archive strip */
+        #archive-mini { transition: opacity 0.25s ease 0.1s; }
+    </style>
 </head>
-<body class="h-screen overflow-hidden bg-gradient-to-b from-[#09111f] to-[#0b1220] text-gray-200 font-sans"
-      data-user-id="{{ user.id if user else '' }}" data-user-role="{{ user.role if user else '' }}">
+<body class="h-screen overflow-hidden bg-white text-gray-900 antialiased"
+      data-user-id="{{ user.id if user else '' }}"
+      data-user-role="{{ user.role if user else '' }}">
 
-<div class="flex flex-col h-full min-h-0">
+<div id="app" class="flex flex-col h-full">
 
-    <!-- ═══ Topbar ═══ -->
-    <header class="sticky top-0 z-10 backdrop-blur-md bg-[#09111f]/80 border-b border-bd flex items-center justify-between gap-3 px-4 py-3 flex-wrap">
-        <div class="min-w-0 flex-1 basis-[260px]">
-            <h1 class="text-lg lg:text-xl font-extrabold mb-0.5">CSR Workspace</h1>
-            <p class="text-[12px] text-gray-400 leading-relaxed hidden sm:block">All chats are visible. Click any queued chat to claim it.</p>
-        </div>
-        <div class="flex items-center gap-2 flex-wrap">
-            <button onclick="openTicketModal()" class="flex items-center gap-2 px-3 py-2 rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-300 text-xs font-semibold hover:bg-purple-500/20 transition-colors">
-                <i class="fa-solid fa-ticket"></i><span class="hidden sm:inline">Create Ticket</span>
-                <span id="ticket-badge" class="hidden ml-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">0</span>
-            </button>
-            <div id="relay-pill" class="flex items-center gap-2 px-3 py-2 rounded-full border border-bd bg-sf text-xs font-semibold">
-                <i class="fa-solid fa-plug"></i><span class="hidden sm:inline">Checking relay</span>
+    <!-- ═══ TOP HEADER ═══ -->
+    <header class="flex-shrink-0 bg-white border-b border-gray-200">
+        <div class="flex items-center justify-between px-4 py-2.5">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-lg bg-yellow-400 flex items-center justify-center">
+                    <i class="fa-solid fa-headset text-black text-sm"></i>
+                </div>
+                <div>
+                    <h1 class="text-base font-bold text-black leading-tight">CSR Dashboard</h1>
+                    <p class="text-[11px] text-gray-400 hidden sm:block">Customer Support · Tickets · Archive</p>
+                </div>
             </div>
-            <div class="flex items-center gap-2 px-3 py-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 text-emerald-300 text-xs font-semibold">
-                <i class="fa-solid fa-user"></i><span>{{ (user.display_name or user.email) if user else 'CSR User' }}</span>
+            <div class="flex items-center gap-2">
+                <div class="hidden md:flex items-center gap-1.5 text-[11px]">
+                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 text-gray-600">
+                        <i class="fa-solid fa-comments text-[9px]"></i> <span id="stat-total" class="font-semibold">0</span>
+                    </span>
+                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-yellow-50 text-yellow-700 border border-yellow-200">
+                        Mine: <span id="stat-mine" class="font-semibold">0</span>
+                    </span>
+                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-600 border border-orange-200">
+                        Wait: <span id="stat-queued" class="font-semibold">0</span>
+                    </span>
+                </div>
+                <div id="relay-pill" class="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium">
+                    <i class="fa-solid fa-plug"></i><span>Checking</span>
+                </div>
+                <button id="refresh-btn" type="button" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-black transition-colors" title="Refresh">
+                    <i class="fa-solid fa-rotate-right text-xs"></i>
+                </button>
+                <button id="sound-toggle" type="button" class="hidden sm:flex w-8 h-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors" title="Toggle sound">
+                    <i id="sound-toggle-icon" class="fa-solid fa-volume-high text-xs"></i>
+                </button>
+                <button id="account-btn" type="button" onclick="openAccountModal()"
+                    class="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black text-xs font-semibold transition-colors">
+                    <i class="fa-solid fa-circle-user"></i>
+                    <span class="max-w-[80px] truncate hidden sm:inline">{{ (user.display_name or user.email) if user else 'CSR' }}</span>
+                </button>
             </div>
-            <a href="/logout" title="Logout" class="w-10 h-10 flex items-center justify-center rounded-full border border-bd bg-sf text-gray-200 hover:text-white transition-colors">
-                <i class="fa-solid fa-right-from-bracket"></i>
-            </a>
         </div>
     </header>
 
-    <!-- ═══ Flash Banner ═══ -->
-    <div id="flash-banner" class="hidden mx-4 mt-3 px-4 py-3 rounded-2xl text-[13px] font-semibold"></div>
+    <div id="flash-banner" class="hidden flex-shrink-0"></div>
+    <div id="ticket-toast" class="fixed top-16 right-4 z-50 hidden items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm font-semibold">
+        <i class="fa-solid fa-bell"></i><span id="ticket-toast-msg"></span>
+    </div>
 
-    <!-- ═══ Create Ticket Modal ═══ -->
-    <div id="ticket-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-[#0f172a] rounded-2xl border border-bd w-full max-w-md p-6">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-bold flex items-center gap-2">
-                    <i class="fa-solid fa-ticket text-purple-400"></i>
-                    Create Technical Support Ticket
-                </h3>
-                <button onclick="closeTicketModal()" class="w-8 h-8 flex items-center justify-center rounded-lg bg-sf hover:bg-sf-2 text-gray-400 hover:text-white transition-colors">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
+    <!-- ═══ MOBILE TAB BAR ═══ -->
+    <div class="lg:hidden flex-shrink-0 flex bg-white border-b border-gray-200">
+        <button type="button" data-col="user" class="col-tab flex-1 py-2.5 text-xs font-semibold border-b-2 border-yellow-400 text-black">
+            <i class="fa-solid fa-comments mr-1"></i> Customers
+        </button>
+        <button type="button" data-col="tech" class="col-tab flex-1 py-2.5 text-xs font-semibold border-b-2 border-transparent text-gray-400">
+            <i class="fa-solid fa-wrench mr-1"></i> Tickets
+        </button>
+        <button type="button" data-col="archive" class="col-tab flex-1 py-2.5 text-xs font-semibold border-b-2 border-transparent text-gray-400">
+            <i class="fa-solid fa-box-archive mr-1"></i> Archive
+        </button>
+    </div>
+
+    <!-- ═══ MAIN LAYOUT ═══ -->
+    <div id="view-workspace" class="flex-1 flex min-h-0 overflow-hidden bg-gray-50 lg:p-2 lg:gap-2">
+
+        <!-- ──── COLUMN 1: Customer Chats ──── -->
+        <section id="col-user" class="col-panel active flex-col min-h-0 flex-1 bg-white lg:rounded-xl lg:border lg:border-gray-200 overflow-hidden">
+            <div class="flex-shrink-0 px-4 py-2.5 border-b border-gray-100 flex items-center justify-between bg-yellow-50">
+                <div class="flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-md bg-yellow-400 flex items-center justify-center text-black text-[10px] font-bold">1</span>
+                    <h2 class="text-sm font-bold text-black">Customer Chats</h2>
+                </div>
+                <span id="col1-count" class="text-[11px] text-gray-400 font-medium">0 chats</span>
             </div>
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-400 mb-2">Title <span class="text-red-400">*</span></label>
-                <input type="text" id="ticket-title" class="w-full px-4 py-3 rounded-xl bg-sf border border-bd text-white focus:border-purple-500 focus:outline-none" placeholder="Brief description of the issue">
+
+            <!-- Chat List View -->
+            <div id="user-list-view" class="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div class="flex-shrink-0 px-3 py-2 border-b border-gray-100 flex gap-1.5">
+                    <button type="button" id="tab-btn-queued" onclick="setChatBucket('queued')" class="chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
+                        New <span id="bucket-queued-count" class="ml-0.5 opacity-70">0</span>
+                    </button>
+                    <button type="button" id="tab-btn-mine" onclick="setChatBucket('mine')" class="chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
+                        Mine <span id="bucket-mine-count" class="ml-0.5 opacity-70">0</span>
+                    </button>
+                    <button type="button" id="tab-btn-other" onclick="setChatBucket('other')" class="chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
+                        Others <span id="bucket-other-count" class="ml-0.5 opacity-70">0</span>
+                    </button>
+                </div>
+                <div id="chat-list" class="flex-1 overflow-y-auto p-2 space-y-1.5 chat-scroll">
+                    <div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>
+                </div>
             </div>
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-400 mb-2">Description</label>
-                <textarea id="ticket-description" rows="4" class="w-full px-4 py-3 rounded-xl bg-sf border border-bd text-white resize-none focus:border-purple-500 focus:outline-none" placeholder="Detailed information about the problem..."></textarea>
+
+            <!-- Chat Conversation View -->
+            <div id="user-chat-view" class="flex-1 flex-col min-h-0 overflow-hidden" style="display:none;">
+                <div class="flex-shrink-0 px-3 py-2 border-b border-gray-100 flex items-center gap-2 bg-white">
+                    <button type="button" id="back-to-chats" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600 transition-colors">
+                        <i class="fa-solid fa-arrow-left text-sm"></i>
+                    </button>
+                    <div class="flex-1 min-w-0">
+                        <div id="detail-title" class="text-sm font-bold text-black truncate">Customer</div>
+                        <div id="detail-subtitle" class="text-[11px] text-gray-400 truncate">Loading…</div>
+                    </div>
+                    <div id="detail-actions" class="flex gap-1.5 flex-shrink-0"></div>
+                </div>
+                <div id="workspace-body" class="flex-1 flex flex-col min-h-0 overflow-hidden bg-gray-50">
+                    <div class="flex-1 flex items-center justify-center">
+                        <p class="text-sm text-gray-400">Loading messages…</p>
+                    </div>
+                </div>
             </div>
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-400 mb-2">Priority</label>
-                <select id="ticket-priority" class="w-full px-4 py-3 rounded-xl bg-sf border border-bd text-white focus:border-purple-500 focus:outline-none">
+        </section>
+
+        <!-- ──── COLUMN 2: Tickets & Tech Chat ──── -->
+        <section id="col-tech" class="col-panel flex-col min-h-0 flex-1 bg-white lg:rounded-xl lg:border lg:border-gray-200 overflow-hidden">
+            <div class="flex-shrink-0 px-4 py-2.5 border-b border-gray-100 flex items-center justify-between bg-blue-50">
+                <div class="flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-md bg-blue-500 flex items-center justify-center text-white text-[10px] font-bold">2</span>
+                    <h2 class="text-sm font-bold text-black">Tickets & Tech Chat</h2>
+                </div>
+                <span id="tech-col-hint" class="text-[11px] text-gray-400 font-medium truncate max-w-[140px]">All tickets</span>
+            </div>
+
+            <!-- Ticket List View -->
+            <div id="ticket-list-view" class="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <!-- Ticket filter tabs -->
+                <div class="flex-shrink-0 px-3 py-2 border-b border-gray-100 flex gap-1.5 flex-wrap">
+                    <button type="button" onclick="setTicketFilter('all')" id="tkt-tab-all" class="tkt-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
+                        All <span id="tkt-count-all" class="ml-0.5 opacity-70">0</span>
+                    </button>
+                    <button type="button" onclick="setTicketFilter('unclaimed')" id="tkt-tab-unclaimed" class="tkt-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
+                        Unclaimed <span id="tkt-count-unclaimed" class="ml-0.5 opacity-70">0</span>
+                    </button>
+                    <button type="button" onclick="setTicketFilter('in_progress')" id="tkt-tab-in_progress" class="tkt-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
+                        In Progress <span id="tkt-count-in_progress" class="ml-0.5 opacity-70">0</span>
+                    </button>
+                    <button type="button" onclick="setTicketFilter('closed')" id="tkt-tab-closed" class="tkt-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
+                        Closed <span id="tkt-count-closed" class="ml-0.5 opacity-70">0</span>
+                    </button>
+                </div>
+                <div id="ticket-list" class="flex-1 overflow-y-auto p-2 space-y-1.5 chat-scroll">
+                    <div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>
+                </div>
+            </div>
+
+            <!-- Ticket Chat View -->
+            <div id="ticket-chat-view" class="flex-1 flex-col min-h-0 overflow-hidden" style="display:none;">
+                <div class="flex-shrink-0 px-3 py-2 border-b border-gray-100 flex items-center gap-2 bg-white">
+                    <button type="button" id="back-to-tickets" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600 transition-colors">
+                        <i class="fa-solid fa-arrow-left text-sm"></i>
+                    </button>
+                    <div class="flex-1 min-w-0">
+                        <div id="ticket-chat-title" class="text-sm font-bold text-black truncate">Ticket</div>
+                        <div id="ticket-chat-subtitle" class="text-[11px] text-gray-400 truncate"></div>
+                    </div>
+                </div>
+                <div id="ticket-chat-messages" class="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2 bg-gray-50 chat-scroll">
+                    <div class="text-center py-8 text-xs text-gray-400">No messages yet</div>
+                </div>
+                <div class="flex-shrink-0 border-t border-gray-200 bg-white p-2.5">
+                    <div class="flex items-end gap-2">
+                        <textarea id="ticket-chat-input" rows="2" disabled
+                            class="flex-1 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm resize-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 focus:outline-none disabled:opacity-40"
+                            placeholder="Select a ticket first…"></textarea>
+                        <button type="button" id="ticket-chat-send" onclick="sendTicketChatMessage()" disabled
+                            class="h-9 w-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-30 transition-colors">
+                            <i class="fa-solid fa-paper-plane text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ──── ARCHIVE MINI STRIP (shown when collapsed, hidden by default) ──── -->
+        <div id="archive-mini" style="display:none" class="flex-col items-center justify-start py-3 px-1.5 bg-white rounded-xl border border-gray-200 cursor-pointer hover:bg-yellow-50 hover:border-yellow-300 transition-all gap-2 flex-shrink-0" onclick="toggleArchive()">
+            <i class="fa-solid fa-box-archive text-gray-400 text-sm"></i>
+            <span class="text-[10px] text-gray-500 font-semibold [writing-mode:vertical-lr] tracking-wider">ARCHIVE</span>
+            <span id="archive-mini-count" class="text-[10px] font-bold text-yellow-600 bg-yellow-100 rounded px-1 py-0.5 mt-1">0</span>
+            <i class="fa-solid fa-chevron-left text-gray-300 text-[10px] mt-auto"></i>
+        </div>
+
+        <!-- ──── COLUMN 3: Archive ──── -->
+        <section id="col-archive" class="col-panel flex-col min-h-0 flex-1 bg-white lg:rounded-xl lg:border lg:border-gray-200 overflow-hidden">
+            <div class="flex-shrink-0 px-4 py-2.5 border-b border-gray-100 flex items-center justify-between bg-gray-100">
+                <div class="flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-md bg-gray-600 flex items-center justify-center text-white text-[10px] font-bold">3</span>
+                    <h2 class="text-sm font-bold text-black">Archive</h2>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[11px] text-gray-400 font-medium"><span id="tab-closed-count">0</span> resolved</span>
+                    <button type="button" id="archive-collapse-btn" onclick="toggleArchive()" class="hidden lg:flex w-6 h-6 items-center justify-center rounded-md hover:bg-gray-200 text-gray-400 transition-colors" title="Minimize archive">
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Archive List View -->
+            <div id="archive-list-view" class="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div id="archive-list" class="flex-1 overflow-y-auto p-2 space-y-1.5 chat-scroll">
+                    <div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>
+                </div>
+                <div id="closed-pagination" class="flex-shrink-0 border-t border-gray-200 px-3 py-2 flex items-center justify-between bg-white">
+                    <span id="closed-page-info" class="text-[11px] text-gray-400"></span>
+                    <div class="flex gap-1.5">
+                        <button type="button" id="closed-prev" class="px-2.5 py-1 rounded-md border border-gray-200 text-[11px] font-medium hover:bg-gray-50 disabled:opacity-30">Prev</button>
+                        <button type="button" id="closed-next" class="px-2.5 py-1 rounded-md border border-gray-200 text-[11px] font-medium hover:bg-gray-50 disabled:opacity-30">Next</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Archive Chat View -->
+            <div id="archive-chat-view" class="flex-1 flex-col min-h-0 overflow-hidden" style="display:none;">
+                <div class="flex-shrink-0 px-3 py-2 border-b border-gray-100 flex items-center gap-2 bg-white">
+                    <button type="button" id="back-to-archive" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600 transition-colors">
+                        <i class="fa-solid fa-arrow-left text-sm"></i>
+                    </button>
+                    <div class="flex-1 min-w-0">
+                        <div id="archive-title" class="text-sm font-bold text-black truncate">Chat</div>
+                        <div id="archive-subtitle" class="text-[11px] text-gray-400 truncate">Read-only</div>
+                    </div>
+                    <span class="px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 text-[10px] font-semibold">Read Only</span>
+                </div>
+                <div id="archive-messages" class="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2 bg-gray-50 chat-scroll">
+                    <div class="text-center py-8 text-xs text-gray-400">Select a chat to view history</div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- ═══ CREATE TICKET MODAL ═══ -->
+<div id="ticket-modal" class="fixed inset-0 bg-black/40 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden">
+        <div class="px-5 py-3.5 bg-yellow-50 border-b border-yellow-100 flex items-center justify-between">
+            <h3 class="text-sm font-bold text-black flex items-center gap-2">
+                <i class="fa-solid fa-ticket text-yellow-600"></i> Create Ticket
+            </h3>
+            <button onclick="closeTicketModal()" class="w-7 h-7 rounded-md hover:bg-yellow-100 text-gray-500 flex items-center justify-center"><i class="fa-solid fa-xmark text-sm"></i></button>
+        </div>
+        <div class="p-4 space-y-3">
+            <p id="ticket-modal-chat-hint" class="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100"></p>
+            <div>
+                <label class="block text-xs font-semibold text-gray-700 mb-1">Problem Title <span class="text-red-500">*</span></label>
+                <input type="text" id="ticket-title" class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-yellow-400 focus:ring-1 focus:ring-yellow-100 focus:outline-none" placeholder="What is the issue?">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-700 mb-1">Details</label>
+                <textarea id="ticket-description" rows="3" class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm resize-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-100 focus:outline-none" placeholder="More context for the tech team…"></textarea>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-700 mb-1">Priority</label>
+                <select id="ticket-priority" class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-yellow-400 focus:outline-none">
                     <option value="normal">Normal</option>
-                    <option value="high">High</option>
+                    <option value="high">High — urgent</option>
                     <option value="low">Low</option>
                 </select>
             </div>
-            <div class="flex items-center gap-3">
-                <button onclick="createTicket()" class="flex-1 px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors">
-                    <i class="fa-solid fa-paper-plane mr-2"></i>Submit Ticket
-                </button>
-                <button onclick="closeTicketModal()" class="px-4 py-3 rounded-xl bg-sf hover:bg-sf-2 border border-bd text-gray-400 font-semibold transition-colors">
-                    Cancel
-                </button>
+            <div class="flex gap-2 pt-1">
+                <button onclick="createTicket()" class="flex-1 px-4 py-2.5 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-bold transition-colors">Send to Tech Team</button>
+                <button onclick="closeTicketModal()" class="px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium hover:bg-gray-50">Cancel</button>
             </div>
         </div>
     </div>
-
-    <!-- ═══ Ticket Chat Modal (CSR ↔ Technical Team) ═══ -->
-    <div id="ticket-chat-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-[#0f172a] rounded-2xl border border-bd w-full max-w-lg flex flex-col max-h-[85vh] shadow-2xl">
-            <div class="flex items-center justify-between gap-3 px-5 py-4 border-b border-bd flex-shrink-0">
-                <div class="min-w-0">
-                    <h3 class="text-lg font-bold flex items-center gap-2 truncate">
-                        <i class="fa-solid fa-comments text-purple-400"></i>
-                        <span id="ticket-chat-title">Ticket Chat</span>
-                    </h3>
-                    <p id="ticket-chat-subtitle" class="text-xs text-gray-400 mt-0.5">Chat with technical team about updates</p>
-                </div>
-                <button type="button" onclick="closeTicketChat()" class="w-8 h-8 flex items-center justify-center rounded-lg bg-sf hover:bg-sf-2 text-gray-400 hover:text-white transition-colors">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            <div id="ticket-chat-messages" class="flex-1 overflow-y-auto px-5 py-4 space-y-3 min-h-[200px] max-h-[50vh]">
-                <div class="text-xs text-gray-500 text-center py-6">Loading messages...</div>
-            </div>
-            <div class="px-5 py-4 border-t border-bd flex-shrink-0">
-                <div class="flex items-end gap-2">
-                    <textarea id="ticket-chat-input" rows="2" class="flex-1 px-4 py-3 rounded-xl bg-sf border border-bd text-white resize-none focus:border-purple-500 focus:outline-none text-sm" placeholder="Ask technical team about this ticket..."></textarea>
-                    <button type="button" onclick="sendTicketChatMessage()" class="px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors">
-                        <i class="fa-solid fa-paper-plane"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ═══ Ticket Notification Toast ═══ -->
-    <div id="ticket-toast" class="fixed top-20 right-4 z-50 hidden flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl bg-purple-600 text-white font-semibold">
-        <i class="fa-solid fa-bell"></i>
-        <span id="ticket-toast-msg"></span>
-    </div>
-
-    <!-- ═══ Summary Cards (compact) ═══ -->
-    <section class="flex-shrink-0 grid grid-cols-4 gap-2 px-3 py-2">
-        <div class="bg-sf border border-bd rounded-lg px-2.5 py-1.5 min-w-0">
-            <div class="text-[10px] text-gray-500 uppercase tracking-wide">Visible</div>
-            <div id="stat-total" class="text-lg font-bold leading-tight">0</div>
-        </div>
-        <div class="bg-sf border border-bd rounded-lg px-2.5 py-1.5 min-w-0">
-            <div class="text-[10px] text-gray-500 uppercase tracking-wide">Mine</div>
-            <div id="stat-mine" class="text-lg font-bold leading-tight">0</div>
-        </div>
-        <div class="bg-sf border border-bd rounded-lg px-2.5 py-1.5 min-w-0">
-            <div class="text-[10px] text-gray-500 uppercase tracking-wide">Waiting</div>
-            <div id="stat-queued" class="text-lg font-bold leading-tight text-amber-300">0</div>
-        </div>
-        <div class="bg-sf border border-bd rounded-lg px-2.5 py-1.5 min-w-0">
-            <div class="text-[10px] text-gray-500 uppercase tracking-wide">Online</div>
-            <div id="stat-csrs" class="text-lg font-bold leading-tight text-emerald-300">0</div>
-        </div>
-    </section>
-
-    <!-- ═══ Main Workspace: chat gets full height; tickets on left ═══ -->
-    <section class="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(380px,480px)_minmax(0,1fr)] gap-2 px-2 pb-2 min-h-0 overflow-hidden">
-
-        <!-- ═══ LEFT: Open / Closed / Tickets tabs (full-height list) ═══ -->
-        <aside class="flex flex-col min-h-0 min-w-0 overflow-hidden rounded-xl bg-sf border border-bd h-full">
-            <div class="flex-shrink-0 px-3 pt-3 pb-2 border-b border-bd">
-                <div class="flex items-center justify-between gap-2 mb-3">
-                    <div id="sidebar-title" class="font-bold text-base text-white">Chats</div>
-                    <button id="refresh-btn" type="button" class="w-9 h-9 flex items-center justify-center rounded-lg border border-bd bg-sf-2 text-gray-300 hover:border-blue-500/40 hover:text-white transition-colors" title="Refresh">
-                        <i class="fa-solid fa-rotate-right text-sm"></i>
-                    </button>
-                </div>
-                <div class="grid grid-cols-3 gap-2 p-1.5 bg-sf-3 rounded-xl border border-bd">
-                    <button type="button" class="tab-btn text-sm font-bold py-2.5 px-2 rounded-lg border border-transparent text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-all aria-selected:bg-blue-500/20 aria-selected:text-blue-100 aria-selected:border-blue-500/40" data-tab="open" aria-selected="true">
-                        Open<br><span id="tab-open-count" class="text-xs font-semibold opacity-80">0</span>
-                    </button>
-                    <button type="button" class="tab-btn text-sm font-bold py-2.5 px-2 rounded-lg border border-transparent text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-all aria-selected:bg-blue-500/20 aria-selected:text-blue-100 aria-selected:border-blue-500/40" data-tab="closed" aria-selected="false">
-                        Closed<br><span id="tab-closed-count" class="text-xs font-semibold opacity-80">0</span>
-                    </button>
-                    <button type="button" class="tab-btn text-sm font-bold py-2.5 px-2 rounded-lg border border-transparent text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-all aria-selected:bg-purple-500/25 aria-selected:text-purple-100 aria-selected:border-purple-500/50" data-tab="tickets" aria-selected="false">
-                        Tickets<br><span id="tab-ticket-count" class="text-xs font-semibold opacity-80">0</span>
-                    </button>
-                </div>
-            </div>
-
-            <div id="sidebar-chats-view" class="flex-1 flex flex-col min-h-0 overflow-hidden">
-                <div id="chat-list" class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-2.5 text-[15px]">
-                    <div class="text-sm text-gray-500 p-4">Loading chats...</div>
-                </div>
-                <div id="closed-pagination" class="hidden flex-shrink-0 border-t border-bd px-3 py-3 flex items-center justify-between gap-2 text-sm">
-                    <span id="closed-page-info" class="text-gray-400 truncate"></span>
-                    <div class="flex items-center gap-2">
-                        <button type="button" id="closed-prev" class="px-3 py-2 rounded-lg border border-bd bg-sf-2 text-gray-300 hover:text-white disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
-                        <button type="button" id="closed-next" class="px-3 py-2 rounded-lg border border-bd bg-sf-2 text-gray-300 hover:text-white disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
-                    </div>
-                </div>
-            </div>
-
-            <div id="sidebar-tickets-view" class="hidden flex-1 flex flex-col min-h-0 overflow-hidden bg-gradient-to-b from-purple-950/20 to-sf-3/80">
-                <div class="flex-shrink-0 px-4 py-3 border-b border-purple-500/20">
-                    <p class="text-sm text-purple-200/90 leading-relaxed"><i class="fa-solid fa-ticket mr-2"></i>Technical support tickets. Tap a ticket to chat with the tech team.</p>
-                    <p id="ticket-section-count" class="text-base font-bold text-white mt-2">0 tickets</p>
-                </div>
-                <div id="ticket-list" class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 flex flex-col gap-4">
-                    <div class="text-base text-gray-400 text-center py-12">No tickets yet. Use <strong class="text-purple-300">Create Ticket</strong> above.</div>
-                </div>
-            </div>
-        </aside>
-
-        <!-- ═══ RIGHT: Chat workspace (full height) ═══ -->
-        <main class="flex flex-col min-h-0 min-w-0 overflow-hidden rounded-xl bg-sf border border-bd">
-
-            <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-                <div class="flex-shrink-0 flex items-center justify-between gap-2 px-3 py-2 border-b border-bd">
-                    <div class="min-w-0 flex-1">
-                        <div id="detail-title" class="text-base font-bold truncate">Select a chat</div>
-                        <div id="detail-subtitle" class="text-xs text-gray-400 truncate">Click a chat on the left to open it.</div>
-                    </div>
-                    <div id="detail-actions" class="flex flex-wrap justify-end gap-1.5 flex-shrink-0"></div>
-                </div>
-                <div id="workspace-body" class="flex-1 min-h-0 flex flex-col overflow-hidden bg-sf-3">
-                    <div class="m-auto max-w-md text-center p-6">
-                        <i class="fa-solid fa-comments text-3xl text-gray-600 mb-2"></i>
-                        <h2 class="text-base font-bold mb-1">No chat selected</h2>
-                        <p class="text-xs text-gray-400">Pick a chat from the list. The conversation fills this area.</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Team workload: collapsed by default -->
-            <div class="flex-shrink-0 border-t border-bd bg-sf-2/30">
-                <div class="flex items-center justify-between gap-2 px-3 py-2">
-                    <div class="flex items-center gap-2 min-w-0 text-xs">
-                        <i class="fa-solid fa-users text-gray-500"></i>
-                        <span class="font-semibold">Team Workload</span>
-                        <span id="workload-summary" class="text-gray-500 truncate"></span>
-                    </div>
-                    <button id="workload-toggle" type="button" class="text-[10px] text-gray-400 hover:text-white flex items-center gap-1">
-                        <span id="workload-toggle-text">Show</span>
-                        <i id="workload-chevron" class="fa-solid fa-chevron-down text-[9px] transition-transform"></i>
-                    </button>
-                </div>
-                <div id="workload-panel" class="max-h-0 overflow-hidden transition-all duration-200">
-                    <div id="load-list" class="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2 p-2 max-h-24 overflow-y-auto">
-                        <div class="text-xs text-gray-500">Loading CSR workload...</div>
-                    </div>
-                </div>
-            </div>
-        </main>
-    </section>
 </div>
 
+<!-- ═══ ACCOUNT MODAL ═══ -->
+<div id="account-modal" class="fixed inset-0 bg-black/40 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl w-full max-w-sm shadow-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-base font-bold text-black">Your Account</h3>
+            <button onclick="closeAccountModal()" class="w-7 h-7 rounded-md hover:bg-gray-100 text-gray-500 flex items-center justify-center"><i class="fa-solid fa-xmark text-sm"></i></button>
+        </div>
+        <div class="space-y-2 text-sm">
+            <div class="rounded-lg border border-gray-200 p-3">
+                <span class="text-[11px] text-gray-400">Name</span>
+                <div class="font-semibold text-black mt-0.5">{{ (user.display_name or user.email) if user else 'CSR' }}</div>
+            </div>
+            <div class="rounded-lg border border-gray-200 p-3">
+                <span class="text-[11px] text-gray-400">Email</span>
+                <div class="font-semibold text-black mt-0.5">{{ user.email if user else '—' }}</div>
+            </div>
+        </div>
+        <a href="/logout" class="mt-4 flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm font-semibold hover:bg-red-100 transition-colors">
+            <i class="fa-solid fa-right-from-bracket"></i> Log out
+        </a>
+    </div>
+</div>
+
+<span id="tab-ticket-count" class="hidden">0</span>
+<span id="stat-csrs" class="hidden">0</span>
+
 <script>
-    const currentUser = {
-        id: Number(document.body.dataset.userId || 0),
-        role: document.body.dataset.userRole || 'csr'
-    };
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+const currentUser = { id: Number(document.body.dataset.userId || 0), role: document.body.dataset.userRole || 'csr' };
 
-    const state = {
-        dashboard: null,
-        selectedChatId: null,
-        selectedMessages: [],
-        drafts: {},
-        composingChatId: null,
-        workloadOpen: false,
-        tab: 'open',           // 'open' | 'closed' | 'tickets'
-        closedChats: [],
-        closedPagination: { page: 1, per_page: 20, total: 0, total_pages: 1, has_prev: false, has_next: false },
-        closedLoading: false,
-    };
+const state = {
+    chatBucket: 'queued',
+    ticketFilter: 'all',
+    dashboard: null,
+    selectedChatId: null,
+    selectedArchiveChatId: null,
+    selectedMessages: [],
+    archiveMessages: [],
+    drafts: {},
+    composingChatId: null,
+    closedChats: [],
+    closedPagination: { page: 1, per_page: 20, total: 0, total_pages: 1, has_prev: false, has_next: false },
+    closedLoading: false,
+    soundEnabled: localStorage.getItem('csrSoundEnabled') !== 'false',
+    alertsReady: false,
+    ticketsAlertReady: false,
+    chatSnapshots: {},
+    ticketSnapshots: {},
+    unreadChats: {},
+    unreadTickets: {},
+    archiveCollapsed: localStorage.getItem('csrArchiveCollapsed') === 'true',
+};
 
-    const flashBanner = document.getElementById('flash-banner');
-    let flashTimer = null;
-    let refreshInterval = null;
+const WORKSPACE_STORAGE_KEY = 'csrWorkspaceState';
+let allTickets = [];
+let ticketStatuses = [];
+let activeTicketChatId = null;
+let lastTicketChatMessageId = 0;
+let seenTechMessages = JSON.parse(localStorage.getItem('csrSeenTechMessages') || '{}');
+const flashBanner = document.getElementById('flash-banner');
+let flashTimer = null;
 
-    // ── Workload toggle ──
-    const workloadToggle = document.getElementById('workload-toggle');
-    const workloadPanel = document.getElementById('workload-panel');
-    const workloadChevron = document.getElementById('workload-chevron');
-    const workloadToggleText = document.getElementById('workload-toggle-text');
-    workloadToggle.addEventListener('click', () => {
-        state.workloadOpen = !state.workloadOpen;
-        workloadPanel.classList.toggle('max-h-24', state.workloadOpen);
-        workloadPanel.classList.toggle('max-h-0', !state.workloadOpen);
-        workloadChevron.classList.toggle('rotate-180', state.workloadOpen);
-        workloadToggleText.textContent = state.workloadOpen ? 'Hide' : 'Show';
-    });
+// ═══════════════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════════════
+function escapeHtml(v) {
+    return String(v || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
+}
+function formatDateTime(v) {
+    if (!v) return '';
+    const d = new Date(v);
+    return isNaN(d) ? v : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+function formatRelative(v) {
+    if (!v) return 'Just now';
+    const d = new Date(v);
+    if (isNaN(d)) return v;
+    const s = Math.floor((Date.now() - d) / 1000);
+    if (s < 60) return 'Just now';
+    if (s < 3600) return Math.floor(s/60) + 'm ago';
+    if (s < 86400) return Math.floor(s/3600) + 'h ago';
+    return Math.floor(s/86400) + 'd ago';
+}
+function showBanner(msg, tone = 'success') {
+    flashBanner.textContent = msg;
+    flashBanner.className = tone === 'error'
+        ? 'block mx-3 mt-2 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0 bg-red-50 border border-red-200 text-red-700'
+        : 'block mx-3 mt-2 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0 bg-green-50 border border-green-200 text-green-700';
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => { flashBanner.className = 'hidden flex-shrink-0'; }, 3500);
+}
+async function requestJson(url, options = {}) {
+    const res = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload.error || payload.message || 'Request failed');
+    return payload;
+}
 
-    function setSidebarTab(tab, force = false) {
-        if (!force && tab === state.tab) return;
-        state.tab = tab;
-        document.querySelectorAll('.tab-btn').forEach((b) => {
-            b.setAttribute('aria-selected', b.dataset.tab === tab ? 'true' : 'false');
-        });
-        const isTickets = tab === 'tickets';
-        document.getElementById('sidebar-chats-view').classList.toggle('hidden', isTickets);
-        document.getElementById('sidebar-tickets-view').classList.toggle('hidden', !isTickets);
-        document.getElementById('sidebar-title').textContent = isTickets ? 'My Tickets' : 'Chats';
-        document.getElementById('closed-pagination').classList.toggle('hidden', tab !== 'closed' || isTickets);
-        if (tab === 'closed' && !state.closedChats.length && !state.closedLoading) {
-            loadClosedChats(1);
-        } else if (!isTickets) {
-            renderChatList();
-        }
-    }
+// ═══════════════════════════════════════════════════════════
+// PERSISTENCE
+// ═══════════════════════════════════════════════════════════
+function saveWorkspaceState() {
+    try {
+        sessionStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({
+            chatBucket: state.chatBucket,
+            ticketFilter: state.ticketFilter,
+            closedPage: state.closedPagination.page || 1,
+            selectedChatId: state.selectedChatId,
+            selectedArchiveChatId: state.selectedArchiveChatId,
+            activeTicketChatId,
+            mobileCol: document.querySelector('.col-tab.border-yellow-400')?.dataset.col || 'user',
+        }));
+    } catch (e) {}
+}
+function loadWorkspaceState() {
+    try { const r = sessionStorage.getItem(WORKSPACE_STORAGE_KEY); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+}
 
-    document.querySelectorAll('.tab-btn').forEach((btn) => {
-        btn.addEventListener('click', () => setSidebarTab(btn.dataset.tab));
-    });
+// ═══════════════════════════════════════════════════════════
+// MODALS
+// ═══════════════════════════════════════════════════════════
+function openAccountModal() { document.getElementById('account-modal').classList.remove('hidden'); }
+function closeAccountModal() { document.getElementById('account-modal').classList.add('hidden'); }
 
-    function escapeHtml(value) {
-        return String(value || '')
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#39;');
-    }
+// ═══════════════════════════════════════════════════════════
+// ARCHIVE COLLAPSE / EXPAND
+// ═══════════════════════════════════════════════════════════
+function toggleArchive() {
+    state.archiveCollapsed = !state.archiveCollapsed;
+    localStorage.setItem('csrArchiveCollapsed', state.archiveCollapsed ? 'true' : 'false');
+    applyArchiveLayout();
+}
 
-    function formatDateTime(value) {
-        if (!value) return 'Not available';
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return value;
-        return date.toLocaleString();
-    }
+function applyArchiveLayout() {
+    const col = document.getElementById('col-archive');
+    const mini = document.getElementById('archive-mini');
 
-    function getMessageImageSources(message) {
-        const sources = [];
-        const images = Array.isArray(message.images)
-            ? message.images
-            : (Array.isArray(message.attachments) ? message.attachments : []);
-
-        images.forEach((image) => {
-            if (!image) return;
-            const src = image.image_url || image.imageUrl || image.url || image.data_url || image.dataUrl;
-            if (src) sources.push({ src, name: image.name || 'Uploaded image' });
-        });
-
-        (Array.isArray(message.image_urls) ? message.image_urls : []).forEach((url) => {
-            if (url) sources.push({ src: url, name: 'Uploaded image' });
-        });
-        if (message.image_url) sources.push({ src: message.image_url, name: 'Uploaded image' });
-        if (message.imageUrl) sources.push({ src: message.imageUrl, name: 'Uploaded image' });
-
-        const seen = new Set();
-        return sources.filter((image) => {
-            const src = String(image.src || '');
-            if (!src || seen.has(src)) return false;
-            if (!src.startsWith('http') && !src.startsWith('data:image/')) return false;
-            seen.add(src);
-            return true;
-        });
-    }
-
-    function renderMessageAttachments(message) {
-        const images = getMessageImageSources(message);
-        if (!images.length) return '';
-
-        return `<div class="grid gap-2 mt-2">
-            ${images.map((image) => `
-                <a href="${escapeHtml(image.src)}" target="_blank" rel="noopener noreferrer">
-                    <img class="max-w-[min(320px,72vw)] max-h-52 rounded-xl object-cover border border-slate-600/40 bg-white/5" src="${escapeHtml(image.src)}" alt="${escapeHtml(image.name)}">
-                </a>
-            `).join('')}
-        </div>`;
-    }
-
-    function formatRelative(value) {
-        if (!value) return 'Just now';
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return value;
-        const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-        if (seconds < 60) return 'Just now';
-        if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-        if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`;
-        return `${Math.floor(seconds / 86400)} day ago`;
-    }
-
-    function formatPresenceRelative(csr) {
-        const reference = csr.last_seen_at || csr.last_assigned_at;
-        if (csr.is_online) return 'Active now';
-        if (!reference) return 'No heartbeat';
-        return `Seen ${formatRelative(reference)}`;
-    }
-
-    function showBanner(message, tone = 'success') {
-        flashBanner.textContent = message;
-        const toneCls = tone === 'error'
-            ? 'bg-red-500/10 border border-red-500/25 text-red-300'
-            : 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-300';
-        flashBanner.className = `block mx-3 mt-2 px-3 py-2 rounded-xl text-xs font-semibold ${toneCls}`;
-        window.clearTimeout(flashTimer);
-        flashTimer = window.setTimeout(() => { flashBanner.className = 'hidden'; }, 4500);
-    }
-
-    async function requestJson(url, options = {}) {
-        const response = await fetch(url, {
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-            ...options
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || payload.message || 'Request failed');
-        return payload;
-    }
-
-    function getSelectedChat() {
-        if (!state.dashboard) return null;
-        const active = state.dashboard.chats.find((c) => c.id === state.selectedChatId);
-        if (active) return active;
-        return state.closedChats.find((c) => c.id === state.selectedChatId) || null;
-    }
-    function getDraftMessage(id) { return state.drafts[String(id)] || ''; }
-    function setDraftMessage(id, v) { state.drafts[String(id)] = v; }
-
-    function captureActiveDraft() {
-        const chat = getSelectedChat(); if (!chat) return;
-        const ta = document.querySelector('#reply-form textarea[name="message"]');
-        if (ta) setDraftMessage(chat.id, ta.value || '');
-    }
-    function isComposingSelectedChat() {
-        const chat = getSelectedChat(); if (!chat) return false;
-        const ae = document.activeElement;
-        return ae && ae.matches && ae.matches('#reply-form textarea[name="message"]') && state.composingChatId === String(chat.id);
-    }
-
-    function renderSummary() {
-        const s = state.dashboard.summary;
-        document.getElementById('stat-total').textContent = s.total_chats;
-        document.getElementById('stat-mine').textContent = s.my_chats;
-        document.getElementById('stat-queued').textContent = s.queued_chats;
-        document.getElementById('stat-csrs').textContent = s.available_csrs;
-
-        const openCount = state.dashboard.chats.length;
-        const closedCount = s.resolved_chats || 0;
-        document.getElementById('tab-open-count').textContent = openCount;
-        document.getElementById('tab-closed-count').textContent = closedCount;
-        const ticketCountEl = document.getElementById('tab-ticket-count');
-        if (ticketCountEl) ticketCountEl.textContent = myTickets.length;
-
-        const rp = document.getElementById('relay-pill');
-        const on = state.dashboard.integration.relay_enabled;
-        rp.className = `flex items-center gap-2 px-3 py-2 rounded-full border text-xs font-semibold ${on ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/25 bg-amber-500/10 text-amber-300'}`;
-        rp.innerHTML = on
-            ? '<i class="fa-solid fa-plug-circle-check"></i><span class="hidden sm:inline">Relay configured</span>'
-            : '<i class="fa-solid fa-plug-circle-xmark"></i><span class="hidden sm:inline">Relay missing</span>';
-    }
-
-    function chatCardHtml(chat) {
-        const owner = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : 'Waiting queue';
-        const bucket = chat.ownership_bucket || (chat.is_mine ? 'mine' : (chat.assigned_csr_id ? 'other' : 'queued'));
-        const aLabel = bucket === 'mine' ? 'Yours'
-            : bucket === 'other' ? `${owner}`
-            : bucket === 'queued' ? 'CLAIM' : 'Resolved';
-        const aBtnCls = bucket === 'mine' ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25'
-            : bucket === 'queued' ? 'bg-amber-500/15 border-amber-500/40 text-amber-200 hover:bg-amber-500/25'
-            : 'bg-sf-2 border-bd text-gray-400 hover:border-blue-500/30';
-        const aText = bucket === 'mine' ? 'Open' : bucket === 'queued' ? 'Claim' : bucket === 'other' ? 'View' : 'Transcript';
-        const active = state.selectedChatId === chat.id;
-        const borderAccent = bucket === 'mine' ? 'border-l-emerald-500' : bucket === 'queued' ? 'border-l-amber-500' : bucket === 'other' ? 'border-l-blue-500' : 'border-l-slate-500';
-        const pillCls = bucket === 'mine' ? 'text-emerald-300 bg-emerald-500/15'
-            : bucket === 'other' ? 'text-blue-200 bg-blue-500/15'
-            : bucket === 'queued' ? 'text-amber-200 bg-amber-500/15'
-            : 'text-slate-300 bg-slate-500/15';
-        const chipCls = ['assigned','in_progress'].includes(chat.status) ? 'text-blue-300 bg-blue-500/15'
-            : chat.status === 'queued' ? 'text-amber-300 bg-amber-500/15'
-            : ['resolved','closed'].includes(chat.status) ? 'text-emerald-300 bg-emerald-500/15' : 'text-slate-400 bg-slate-500/10';
-
-        return `
-        <article class="chat-card border-l-4 ${borderAccent} border ${active ? 'border-blue-500/60 bg-blue-500/10 ring-1 ring-blue-500/20' : 'border-bd bg-sf-2 hover:border-blue-500/30'} rounded-lg pr-2 py-2 pl-2 cursor-pointer transition-all flex flex-col gap-1.5 min-w-0" data-chat-id="${chat.id}" data-chat-bucket="${bucket}">
-            <div class="flex items-start justify-between gap-1 min-w-0">
-                <div class="min-w-0 flex-1">
-                    <div class="font-semibold text-xs text-white truncate">${escapeHtml(chat.customer_name || chat.visitor_id)}</div>
-                    <div class="text-[10px] text-gray-500 truncate">${escapeHtml(chat.visitor_id)}</div>
-                </div>
-                <span class="inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${pillCls} flex-shrink-0">${escapeHtml(aLabel)}</span>
-            </div>
-            <div class="text-[11px] text-gray-300 line-clamp-2 leading-snug">${escapeHtml(chat.preview) || '<span class="italic text-gray-500">No preview</span>'}</div>
-            <div class="flex items-center justify-between gap-1 text-[10px] text-gray-500">
-                <span>${escapeHtml(formatRelative(chat.last_activity_at))}</span>
-                <span>${chat.message_count} msg</span>
-                <span class="px-1 py-0.5 rounded uppercase font-bold ${chipCls}">${escapeHtml(chat.status.replace('_',' '))}</span>
-            </div>
-            <span class="block w-full text-center border ${aBtnCls} text-[10px] font-bold uppercase py-1.5 rounded-md">${escapeHtml(aText)}</span>
-        </article>`;
-    }
-
-    function renderChatList() {
-        if (state.tab === 'tickets') return;
-        const container = document.getElementById('chat-list');
-        if (!state.dashboard) { container.innerHTML = '<div class="text-xs text-gray-500">Loading...</div>'; return; }
-
-        if (state.tab === 'closed') {
-            if (state.closedLoading) {
-                container.innerHTML = '<div class="text-xs text-gray-500 p-4 text-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading closed chats...</div>';
-                return;
-            }
-            if (!state.closedChats.length) {
-                container.innerHTML = '<div class="text-xs text-gray-500 p-6 text-center"><i class="fa-solid fa-check-double text-2xl block mb-2 text-gray-600"></i>No closed chats on this page.</div>';
-                return;
-            }
-            container.innerHTML = `<section class="flex flex-col gap-2">
-                <div class="flex items-center justify-between gap-2 px-0.5 sticky top-0 bg-sf py-1 z-[1]">
-                    <div class="flex items-center gap-1.5">
-                        <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
-                        <span class="text-[11px] font-extrabold text-gray-400 uppercase tracking-widest">Closed Chats</span>
-                    </div>
-                    <span class="text-[11px] text-gray-500">${state.closedPagination.total} total</span>
-                </div>
-                ${state.closedChats.map(chatCardHtml).join('')}
-            </section>`;
+    if (state.archiveCollapsed) {
+        // Hide archive column completely (override the col-panel !important)
+        col.style.setProperty('display', 'none', 'important');
+        // Show mini strip on desktop
+        if (window.innerWidth >= 1024) {
+            mini.style.display = 'flex';
         } else {
-            const chats = state.dashboard.chats;
-            if (!chats.length) {
-                container.innerHTML = '<div class="text-xs text-gray-500 p-6 text-center"><i class="fa-solid fa-inbox text-2xl block mb-2 text-gray-600"></i>No open chats. Great work!</div>';
-                return;
-            }
-            const groups = [
-                { key: 'mine', title: 'My Chats', icon: 'fa-star' },
-                { key: 'queued', title: 'Waiting Queue · Click to Claim', icon: 'fa-hand-point-up' },
-                { key: 'other', title: 'Other CSR Chats', icon: 'fa-users' }
-            ];
-            container.innerHTML = groups.map((g) => {
-                const gc = chats.filter((c) => (c.ownership_bucket || (c.is_mine ? 'mine' : (c.assigned_csr_id ? 'other' : 'queued'))) === g.key);
-                if (!gc.length) return '';
-                const dotCls = g.key === 'mine' ? 'bg-emerald-500' : g.key === 'queued' ? 'bg-amber-500' : 'bg-blue-500';
-                return `<section class="flex flex-col gap-2">
-                    <div class="flex items-center justify-between gap-2 px-0.5 sticky top-0 bg-sf py-1 z-[1]">
-                        <div class="flex items-center gap-1.5 min-w-0">
-                            <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotCls}"></span>
-                            <span class="text-[11px] font-extrabold text-gray-300 uppercase tracking-wider truncate"><i class="fa-solid ${g.icon} mr-1.5 opacity-60"></i>${escapeHtml(g.title)}</span>
-                        </div>
-                        <span class="text-[11px] text-gray-500 flex-shrink-0">${gc.length}</span>
-                    </div>
-                    ${gc.map(chatCardHtml).join('')}
-                </section>`;
-            }).join('');
+            mini.style.display = 'none';
         }
+    } else {
+        // Restore archive column (let col-panel CSS handle it)
+        col.style.removeProperty('display');
+        // Hide mini strip
+        mini.style.display = 'none';
+    }
+}
 
-        container.querySelectorAll('.chat-card').forEach((el) => {
-            el.addEventListener('click', () => {
-                selectChat(Number(el.dataset.chatId), el.dataset.chatBucket || '').catch((e) => showBanner(e.message, 'error'));
-            });
+// ═══════════════════════════════════════════════════════════
+// MOBILE TABS
+// ═══════════════════════════════════════════════════════════
+document.querySelectorAll('.col-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.col-tab').forEach(b => {
+            b.classList.remove('border-yellow-400', 'text-black');
+            b.classList.add('border-transparent', 'text-gray-400');
+        });
+        btn.classList.add('border-yellow-400', 'text-black');
+        btn.classList.remove('border-transparent', 'text-gray-400');
+        document.querySelectorAll('.col-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById('col-' + btn.dataset.col)?.classList.add('active');
+        saveWorkspaceState();
+    });
+});
+
+// ═══════════════════════════════════════════════════════════
+// SOUND
+// ═══════════════════════════════════════════════════════════
+const soundToggle = document.getElementById('sound-toggle');
+function updateSoundToggle() {
+    if (!soundToggle) return;
+    document.getElementById('sound-toggle-icon').className = `fa-solid ${state.soundEnabled ? 'fa-volume-high' : 'fa-volume-xmark'} text-xs`;
+}
+function playAlertSound() {
+    if (!state.soundEnabled) return;
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const g = ctx.createGain(); g.connect(ctx.destination); g.gain.value = 0.08;
+        const osc = ctx.createOscillator(); osc.frequency.value = 880; osc.connect(g);
+        osc.start(); osc.stop(ctx.currentTime + 0.15);
+        setTimeout(() => ctx.close(), 200);
+    } catch (e) {}
+}
+if (soundToggle) {
+    soundToggle.addEventListener('click', () => {
+        state.soundEnabled = !state.soundEnabled;
+        localStorage.setItem('csrSoundEnabled', state.soundEnabled ? 'true' : 'false');
+        updateSoundToggle();
+        if (state.soundEnabled) playAlertSound();
+    });
+    updateSoundToggle();
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHAT BUCKET TABS
+// ═══════════════════════════════════════════════════════════
+const BUCKET_ACTIVE = { queued: 'bg-yellow-400 text-black', mine: 'bg-green-500 text-white', other: 'bg-blue-500 text-white' };
+const BUCKET_INACTIVE = 'bg-gray-100 text-gray-500 hover:bg-gray-200';
+
+function setChatBucket(bucket) {
+    state.chatBucket = bucket;
+    ['queued', 'mine', 'other'].forEach(b => {
+        const btn = document.getElementById('tab-btn-' + b);
+        if (btn) btn.className = `chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all ${b === bucket ? BUCKET_ACTIVE[b] : BUCKET_INACTIVE}`;
+    });
+    renderChatList();
+    saveWorkspaceState();
+}
+
+// ═══════════════════════════════════════════════════════════
+// TICKET FILTER TABS
+// ═══════════════════════════════════════════════════════════
+const TKT_ACTIVE = { all: 'bg-blue-500 text-white', unclaimed: 'bg-orange-500 text-white', in_progress: 'bg-yellow-400 text-black', closed: 'bg-gray-600 text-white' };
+const TKT_INACTIVE = 'bg-gray-100 text-gray-500 hover:bg-gray-200';
+
+function setTicketFilter(filter) {
+    state.ticketFilter = filter;
+    ['all', 'unclaimed', 'in_progress', 'closed'].forEach(f => {
+        const btn = document.getElementById('tkt-tab-' + f);
+        if (btn) btn.className = `tkt-tab px-3 py-1 rounded-full text-xs font-semibold transition-all ${f === filter ? TKT_ACTIVE[f] : TKT_INACTIVE}`;
+    });
+    renderTicketSection();
+    saveWorkspaceState();
+}
+
+// ═══════════════════════════════════════════════════════════
+// VIEW SWITCHING
+// ═══════════════════════════════════════════════════════════
+function showUserChatView() { document.getElementById('user-list-view').style.display = 'none'; document.getElementById('user-chat-view').style.display = 'flex'; }
+function showUserListView() { document.getElementById('user-chat-view').style.display = 'none'; document.getElementById('user-list-view').style.display = 'flex'; }
+function showTicketChatView() { document.getElementById('ticket-list-view').style.display = 'none'; document.getElementById('ticket-chat-view').style.display = 'flex'; }
+function showTicketListView() { document.getElementById('ticket-chat-view').style.display = 'none'; document.getElementById('ticket-list-view').style.display = 'flex'; }
+function showArchiveChatView() { document.getElementById('archive-list-view').style.display = 'none'; document.getElementById('archive-chat-view').style.display = 'flex'; }
+function showArchiveListView() { document.getElementById('archive-chat-view').style.display = 'none'; document.getElementById('archive-list-view').style.display = 'flex'; }
+
+// Back buttons
+document.getElementById('back-to-chats').addEventListener('click', () => {
+    state.selectedChatId = null;
+    state.selectedMessages = [];
+    activeTicketChatId = null;
+    showUserListView();
+    showTicketListView();
+    // Go back to all tickets
+    loadAllTickets();
+    updateTechColHint();
+    saveWorkspaceState();
+});
+
+document.getElementById('back-to-tickets').addEventListener('click', () => {
+    activeTicketChatId = null;
+    showTicketListView();
+    renderTicketSection();
+    saveWorkspaceState();
+});
+
+document.getElementById('back-to-archive').addEventListener('click', () => {
+    state.selectedArchiveChatId = null;
+    showArchiveListView();
+    saveWorkspaceState();
+});
+
+// ═══════════════════════════════════════════════════════════
+// CHAT HELPERS
+// ═══════════════════════════════════════════════════════════
+function getSelectedChat() {
+    if (!state.dashboard) return null;
+    return state.dashboard.chats.find(c => c.id === state.selectedChatId) || null;
+}
+function getDraftMessage(id) { return state.drafts[String(id)] || ''; }
+function setDraftMessage(id, v) { state.drafts[String(id)] = v; }
+function captureActiveDraft() {
+    const chat = getSelectedChat(); if (!chat) return;
+    const ta = document.querySelector('#reply-form textarea[name="message"]');
+    if (ta) setDraftMessage(chat.id, ta.value || '');
+}
+function isComposingSelectedChat() {
+    const chat = getSelectedChat(); if (!chat) return false;
+    const ae = document.activeElement;
+    return ae?.matches?.('#reply-form textarea[name="message"]') && state.composingChatId === String(chat.id);
+}
+
+function updateTechColHint() {
+    const chat = getSelectedChat();
+    const hint = document.getElementById('tech-col-hint');
+    if (hint) hint.textContent = chat ? `For: ${chat.customer_name || chat.visitor_id}` : 'All tickets';
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER SUMMARY
+// ═══════════════════════════════════════════════════════════
+function renderSummary() {
+    const s = state.dashboard.summary;
+    document.getElementById('stat-total').textContent = s.total_chats;
+    document.getElementById('stat-mine').textContent = s.my_chats;
+    document.getElementById('stat-queued').textContent = s.queued_chats;
+    document.getElementById('stat-csrs').textContent = s.available_csrs;
+    document.getElementById('tab-closed-count').textContent = s.resolved_chats || 0;
+    const rp = document.getElementById('relay-pill');
+    const on = state.dashboard.integration.relay_enabled;
+    rp.className = `hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium ${on ? 'border-green-200 bg-green-50 text-green-700' : 'border-orange-200 bg-orange-50 text-orange-700'}`;
+    rp.innerHTML = on ? '<i class="fa-solid fa-plug-circle-check"></i><span>Connected</span>' : '<i class="fa-solid fa-plug-circle-xmark"></i><span>Offline</span>';
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHAT CARD
+// ═══════════════════════════════════════════════════════════
+function chatCardHtml(chat, { archive = false } = {}) {
+    const bucket = chat.ownership_bucket || (chat.is_mine ? 'mine' : (chat.assigned_csr_id ? 'other' : 'queued'));
+    const owner = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : null;
+    const unread = !archive && Boolean(state.unreadChats[chat.id]);
+    const isActive = archive ? state.selectedArchiveChatId === chat.id : state.selectedChatId === chat.id;
+    let badge = '';
+    if (unread) badge = '<span class="w-2 h-2 rounded-full bg-red-500 pulse-dot flex-shrink-0"></span>';
+    else if (archive) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-200 text-gray-600">Done</span>';
+    else if (bucket === 'mine') badge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700">Yours</span>';
+    else if (bucket === 'queued') badge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-100 text-yellow-700">New</span>';
+    else if (owner) badge = `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 truncate max-w-[60px]">${escapeHtml(owner.split(' ')[0])}</span>`;
+    const ring = isActive ? 'border-yellow-400 bg-yellow-50' : unread ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-yellow-300 hover:bg-yellow-50/50';
+    return `<div class="chat-card cursor-pointer rounded-lg border p-2.5 transition-all ${ring}" data-chat-id="${chat.id}" data-chat-bucket="${bucket}" data-archive="${archive ? '1' : '0'}">
+        <div class="flex items-center justify-between gap-2 mb-1">
+            <span class="font-semibold text-sm text-black truncate">${escapeHtml(chat.customer_name || chat.visitor_id)}</span>
+            ${badge}
+        </div>
+        <div class="flex items-center gap-2 text-[11px] text-gray-400">
+            <span>${escapeHtml(formatRelative(chat.last_activity_at))}</span><span>·</span><span>${chat.message_count} msgs</span>
+        </div>
+        <p class="text-xs text-gray-500 line-clamp-1 mt-1">${escapeHtml(chat.preview) || '<span class="italic text-gray-300">No messages</span>'}</p>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER CHAT LIST
+// ═══════════════════════════════════════════════════════════
+function renderChatList() {
+    const container = document.getElementById('chat-list');
+    if (!state.dashboard) { container.innerHTML = '<div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>'; return; }
+    const chats = state.dashboard.chats || [];
+    const counts = { queued: 0, other: 0, mine: 0 };
+    chats.forEach(c => { const k = c.ownership_bucket || (c.is_mine ? 'mine' : (c.assigned_csr_id ? 'other' : 'queued')); if (counts[k] !== undefined) counts[k]++; });
+    document.getElementById('bucket-queued-count').textContent = counts.queued;
+    document.getElementById('bucket-other-count').textContent = counts.other;
+    document.getElementById('bucket-mine-count').textContent = counts.mine;
+    document.getElementById('col1-count').textContent = `${chats.length} chats`;
+    const filtered = chats.filter(c => { const b = c.ownership_bucket || (c.is_mine ? 'mine' : (c.assigned_csr_id ? 'other' : 'queued')); return b === state.chatBucket; });
+    const emptyMsg = { queued: { icon: 'fa-inbox', title: 'No new chats', sub: 'New customer chats appear here.' }, mine: { icon: 'fa-user-check', title: 'No active chats', sub: 'Claim a chat from "New".' }, other: { icon: 'fa-users', title: 'No other CSR chats', sub: 'Teammate chats show here.' } }[state.chatBucket];
+    container.innerHTML = filtered.length
+        ? filtered.map(c => chatCardHtml(c)).join('')
+        : `<div class="flex flex-col items-center justify-center py-10 text-center"><i class="fa-solid ${emptyMsg.icon} text-gray-200 text-2xl mb-2"></i><p class="text-sm font-medium text-gray-400">${emptyMsg.title}</p><p class="text-xs text-gray-300 mt-1">${emptyMsg.sub}</p></div>`;
+    container.querySelectorAll('.chat-card').forEach(el => {
+        el.addEventListener('click', () => selectChat(Number(el.dataset.chatId), el.dataset.chatBucket).catch(e => showBanner(e.message, 'error')));
+    });
+}
+
+// ═══════════════════════════════════════════════════════════
+// ARCHIVE
+// ═══════════════════════════════════════════════════════════
+function renderArchiveList() {
+    const container = document.getElementById('archive-list');
+    if (state.closedLoading) { container.innerHTML = '<div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>'; return; }
+    if (!state.closedChats.length) { container.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-center"><i class="fa-solid fa-box-archive text-gray-200 text-2xl mb-2"></i><p class="text-sm font-medium text-gray-400">No archived chats</p></div>'; return; }
+    container.innerHTML = state.closedChats.map(c => chatCardHtml(c, { archive: true })).join('');
+    container.querySelectorAll('.chat-card').forEach(el => {
+        el.addEventListener('click', () => selectArchiveChat(Number(el.dataset.chatId)).catch(e => showBanner(e.message, 'error')));
+    });
+}
+
+async function loadClosedChats(page) {
+    state.closedLoading = true; renderArchiveList();
+    try {
+        const payload = await requestJson(`/api/csr/chats/resolved?page=${page}&per_page=20`);
+        state.closedChats = payload.chats || [];
+        state.closedPagination = payload.pagination || state.closedPagination;
+        document.getElementById('tab-closed-count').textContent = state.closedPagination.total || 0;
+        document.getElementById('archive-mini-count').textContent = state.closedPagination.total || 0;
+        document.getElementById('closed-page-info').textContent = state.closedPagination.total ? `Page ${state.closedPagination.page}/${state.closedPagination.total_pages}` : 'No chats';
+        document.getElementById('closed-prev').disabled = !state.closedPagination.has_prev;
+        document.getElementById('closed-next').disabled = !state.closedPagination.has_next;
+    } catch (e) { showBanner(e.message, 'error'); }
+    finally { state.closedLoading = false; renderArchiveList(); saveWorkspaceState(); }
+}
+
+document.getElementById('closed-prev').addEventListener('click', () => { if (state.closedPagination.has_prev) loadClosedChats(state.closedPagination.page - 1); });
+document.getElementById('closed-next').addEventListener('click', () => { if (state.closedPagination.has_next) loadClosedChats(state.closedPagination.page + 1); });
+
+// ═══════════════════════════════════════════════════════════
+// SELECT CHAT
+// ═══════════════════════════════════════════════════════════
+async function selectChat(chatId, bucket) {
+    state.selectedChatId = chatId;
+    delete state.unreadChats[chatId];
+    state.selectedMessages = [];
+    saveWorkspaceState();
+    renderChatList();
+    updateTechColHint();
+    showUserChatView();
+    document.getElementById('workspace-body').innerHTML = '<div class="flex-1 flex items-center justify-center"><p class="text-sm text-gray-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</p></div>';
+
+    // Load tickets for this chat
+    await loadTicketsForChat(chatId);
+
+    if (bucket === 'queued') {
+        try {
+            const payload = await requestJson(`/api/chats/${chatId}/claim`, { method: 'POST', body: '{}' });
+            state.selectedMessages = payload.messages || [];
+            await refreshDashboard(false);
+            renderWorkspace();
+            await loadTicketsForChat(chatId);
+            showBanner('Chat claimed — you can reply now.');
+            return;
+        } catch (err) {
+            showBanner(err.message || 'Could not claim.', 'error');
+            await refreshDashboard(false);
+        }
+    }
+    await loadSelectedMessages();
+}
+
+async function selectArchiveChat(chatId) {
+    state.selectedArchiveChatId = chatId;
+    saveWorkspaceState();
+    showArchiveChatView();
+    const chat = state.closedChats.find(c => c.id === chatId);
+    document.getElementById('archive-title').textContent = chat ? (chat.customer_name || chat.visitor_id) : 'Chat';
+    document.getElementById('archive-subtitle').textContent = chat ? `${chat.message_count} messages · read only` : '';
+    document.getElementById('archive-messages').innerHTML = '<div class="text-center py-8 text-xs text-gray-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>';
+    const payload = await requestJson(`/api/chats/${chatId}/messages`);
+    state.archiveMessages = payload.messages || [];
+    document.getElementById('archive-messages').innerHTML = renderMessages(state.archiveMessages);
+    document.getElementById('archive-messages').scrollTop = 99999;
+}
+
+// ═══════════════════════════════════════════════════════════
+// MESSAGES
+// ═══════════════════════════════════════════════════════════
+function getMessageImageSources(m) {
+    const sources = [];
+    const imgs = Array.isArray(m.images) ? m.images : (Array.isArray(m.attachments) ? m.attachments : []);
+    imgs.forEach(img => { const src = img?.image_url || img?.url || img?.data_url; if (src) sources.push({ src }); });
+    return sources;
+}
+function renderMessageAttachments(m) {
+    const imgs = getMessageImageSources(m);
+    if (!imgs.length) return '';
+    return `<div class="grid gap-1.5 mt-1.5">${imgs.map(img => `<img class="max-w-[200px] max-h-32 rounded-lg border border-gray-200 object-cover" src="${escapeHtml(img.src)}" alt="">`).join('')}</div>`;
+}
+function senderLabel(type) { return type === 'csr' ? 'You (CSR)' : type === 'user' ? 'Customer' : type; }
+
+function renderMessages(messages) {
+    if (!messages.length) return '<div class="text-center py-8 text-xs text-gray-400">No messages in this chat.</div>';
+    return `<div class="flex flex-col gap-2.5">${messages.map(m => {
+        const isCsr = m.sender_type === 'csr', isUser = m.sender_type === 'user';
+        return `<div class="flex ${isCsr ? 'justify-end' : 'justify-start'} msg-bubble">
+            <div class="max-w-[85%]">
+                <div class="text-[10px] font-semibold mb-0.5 ${isCsr ? 'text-right text-yellow-700' : 'text-gray-400'}">${escapeHtml(senderLabel(m.sender_type))}</div>
+                <div class="px-3 py-2 rounded-xl text-sm leading-relaxed whitespace-pre-wrap break-words
+                    ${isCsr ? 'bg-yellow-400 text-black rounded-br-sm' : isUser ? 'bg-white border border-gray-200 text-black rounded-bl-sm' : 'bg-gray-100 text-gray-500 italic'}">
+                    ${escapeHtml(m.content)}${renderMessageAttachments(m)}
+                </div>
+                <div class="text-[10px] text-gray-300 mt-0.5 ${isCsr ? 'text-right' : ''}">${escapeHtml(formatDateTime(m.created_at))}</div>
+            </div>
+        </div>`;
+    }).join('')}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// WORKSPACE (conversation in col 1)
+// ═══════════════════════════════════════════════════════════
+function renderWorkspace() {
+    const chat = getSelectedChat();
+    if (!chat) { showUserListView(); return; }
+    showUserChatView();
+    const ownerLabel = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : null;
+    const statusNote = chat.is_mine ? 'Your chat' : ownerLabel ? `By ${ownerLabel}` : 'Unclaimed';
+    document.getElementById('detail-title').textContent = chat.customer_name || chat.visitor_id;
+    document.getElementById('detail-subtitle').textContent = `${statusNote} · ${chat.message_count} msgs`;
+    document.getElementById('detail-actions').innerHTML = `
+        ${chat.can_reply ? `<button type="button" onclick="openTicketModal()" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-500 hover:bg-blue-600 text-white text-[11px] font-semibold transition-colors"><i class="fa-solid fa-ticket text-[10px]"></i> Ticket</button>` : ''}
+        ${chat.can_resolve ? '<button id="resolve-btn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-red-200 text-red-600 text-[11px] font-semibold hover:bg-red-50 transition-colors"><i class="fa-solid fa-check text-[10px]"></i> Resolve</button>' : ''}`;
+    let readOnlyNote = '';
+    if (!chat.can_reply) {
+        readOnlyNote = chat.is_resolved ? '<i class="fa-solid fa-lock mr-1"></i> Resolved — view only'
+            : ownerLabel ? `<i class="fa-solid fa-eye mr-1"></i> Handled by <strong>${escapeHtml(ownerLabel)}</strong>` : '<i class="fa-solid fa-hand-pointer mr-1"></i> Click to claim';
+    }
+    document.getElementById('workspace-body').innerHTML = `
+        <div id="messages-panel" class="flex-1 min-h-0 overflow-y-auto p-3 bg-gray-50 chat-scroll">${renderMessages(state.selectedMessages)}</div>
+        ${chat.can_reply ? `
+        <div class="flex-shrink-0 border-t border-gray-200 p-2.5 bg-white">
+            <form id="reply-form" class="flex items-end gap-2">
+                <textarea name="message" placeholder="Reply to customer…" rows="2"
+                    class="flex-1 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm resize-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-100 focus:outline-none"></textarea>
+                <button type="submit" class="h-9 px-4 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-bold transition-colors flex items-center gap-1.5">
+                    <i class="fa-solid fa-paper-plane text-xs"></i> Send
+                </button>
+            </form>
+        </div>` : `<div class="flex-shrink-0 border-t border-yellow-200 p-2.5 bg-yellow-50 text-xs text-gray-600">${readOnlyNote}</div>`}`;
+    const mp = document.getElementById('messages-panel'); if (mp) mp.scrollTop = mp.scrollHeight;
+    const rf = document.getElementById('reply-form');
+    if (rf) {
+        const ta = rf.querySelector('textarea');
+        ta.value = getDraftMessage(chat.id);
+        ta.addEventListener('input', e => setDraftMessage(chat.id, e.target.value));
+        ta.addEventListener('focus', () => { state.composingChatId = String(chat.id); });
+        rf.addEventListener('submit', async e => {
+            e.preventDefault();
+            const msg = ta.value.trim();
+            if (!msg) { showBanner('Type a message first.', 'error'); return; }
+            try {
+                const resp = await requestJson(`/api/chats/${chat.id}/reply`, { method: 'POST', body: JSON.stringify({ message: msg }) });
+                setDraftMessage(chat.id, ''); ta.value = '';
+                state.selectedMessages = resp.messages;
+                await refreshDashboard(false);
+                showBanner('Reply sent.');
+            } catch (err) { showBanner(err.message, 'error'); }
         });
     }
-
-    async function loadClosedChats(page) {
-        state.closedLoading = true;
-        renderChatList();
+    document.getElementById('resolve-btn')?.addEventListener('click', async () => {
+        if (!confirm('Mark this chat as resolved?')) return;
         try {
-            const payload = await requestJson(`/api/csr/chats/resolved?page=${page}&per_page=20`, { method: 'GET' });
-            state.closedChats = payload.chats || [];
-            state.closedPagination = payload.pagination || state.closedPagination;
-            updateClosedPagination();
-        } catch (e) {
-            showBanner(e.message, 'error');
-        } finally {
-            state.closedLoading = false;
-            renderChatList();
+            const resp = await requestJson(`/api/chats/${chat.id}/resolve`, { method: 'POST', body: '{}' });
+            state.selectedChatId = null; state.selectedMessages = []; state.dashboard = resp.dashboard;
+            allTickets = []; activeTicketChatId = null;
+            showUserListView(); showTicketListView();
+            renderSummary(); renderChatList(); loadAllTickets();
+            await loadClosedChats(state.closedPagination.page);
+            showBanner('Chat resolved.');
+        } catch (err) { showBanner(err.message, 'error'); }
+    });
+    updateTechColHint();
+}
+
+async function loadSelectedMessages() {
+    const chat = getSelectedChat();
+    if (!chat) { state.selectedMessages = []; showUserListView(); return; }
+    const payload = await requestJson(`/api/chats/${chat.id}/messages`);
+    state.selectedMessages = payload.messages || [];
+    renderWorkspace();
+}
+
+// ═══════════════════════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════════════════════
+function markTechTicketSeen(id, msgId) {
+    if (!msgId) return;
+    const key = String(id);
+    const current = seenTechMessages[key] || 0;
+    if (msgId > current) {
+        seenTechMessages[key] = msgId;
+        localStorage.setItem('csrSeenTechMessages', JSON.stringify(seenTechMessages));
+    }
+}
+
+function detectChatAlerts(chats) {
+    let alert = false;
+    chats.forEach(c => {
+        const msgId = Number(c.latest_message_id || 0);
+        const prevId = Number(state.chatSnapshots[c.id] || 0);
+        state.chatSnapshots[c.id] = msgId;
+        if (state.alertsReady && msgId > prevId && c.latest_sender_type === 'user' && state.selectedChatId !== c.id) {
+            state.unreadChats[c.id] = true;
+            alert = true;
         }
+    });
+    if (alert) { showBanner('New customer message.'); playAlertSound(); }
+    state.alertsReady = true;
+}
+
+// ═══════════════════════════════════════════════════════════
+// TICKET LOADING
+// ═══════════════════════════════════════════════════════════
+
+// Load ALL tickets (no chat filter)
+async function loadAllTickets() {
+    try {
+        const resp = await requestJson('/api/tickets');
+        allTickets = resp.tickets || [];
+        ticketStatuses = resp.statuses || ticketStatuses;
+        detectTicketAlerts(allTickets);
+        renderTicketSection();
+        updateTechColHint();
+    } catch (err) { console.error(err); }
+}
+
+// Load tickets filtered by a specific chat
+async function loadTicketsForChat(chatId) {
+    try {
+        const resp = await requestJson(`/api/chats/${chatId}/tickets`);
+        allTickets = resp.tickets || [];
+        ticketStatuses = resp.statuses || ticketStatuses;
+        detectTicketAlerts(allTickets);
+        renderTicketSection();
+        updateTechColHint();
+    } catch (err) { console.error(err); }
+}
+
+function detectTicketAlerts(tickets) {
+    let alert = false;
+    tickets.forEach(t => {
+        const msgId = Number(t.latest_message_id || 0);
+        const prevId = Number(state.ticketSnapshots[t.id] || 0);
+        state.ticketSnapshots[t.id] = msgId;
+        if (!state.ticketsAlertReady) return;
+        if (t.latest_message_sender_type === 'tech' && msgId > prevId && activeTicketChatId !== t.id) {
+            alert = true;
+        }
+    });
+    if (alert) { showTicketToast('New tech reply', 'info'); playAlertSound(); }
+    state.ticketsAlertReady = true;
+}
+
+// Classify a ticket into a filter bucket
+function ticketBucket(ticket) {
+    const resolvedStatuses = ticketStatuses.filter(s => s.is_resolved).map(s => s.name);
+    if (resolvedStatuses.includes(ticket.status) || ticket.status === 'closed' || ticket.status === 'resolved') return 'closed';
+    if (!ticket.assigned_tech_id) return 'unclaimed';
+    return 'in_progress';
+}
+
+function renderTicketSection() {
+    const list = document.getElementById('ticket-list');
+    const counts = { all: 0, unclaimed: 0, in_progress: 0, closed: 0 };
+    allTickets.forEach(t => { counts.all++; const b = ticketBucket(t); if (counts[b] !== undefined) counts[b]++; });
+
+    document.getElementById('tkt-count-all').textContent = counts.all;
+    document.getElementById('tkt-count-unclaimed').textContent = counts.unclaimed;
+    document.getElementById('tkt-count-in_progress').textContent = counts.in_progress;
+    document.getElementById('tkt-count-closed').textContent = counts.closed;
+
+    const filtered = state.ticketFilter === 'all' ? allTickets : allTickets.filter(t => ticketBucket(t) === state.ticketFilter);
+
+    if (!filtered.length) {
+        const msg = state.ticketFilter === 'all'
+            ? (state.selectedChatId ? 'No tickets for this customer' : 'No tickets yet')
+            : `No ${state.ticketFilter.replace('_', ' ')} tickets`;
+        list.innerHTML = `<div class="flex flex-col items-center justify-center py-10 text-center px-4">
+            <div class="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-3"><i class="fa-solid fa-ticket text-blue-300 text-lg"></i></div>
+            <p class="text-sm font-medium text-gray-500">${msg}</p>
+            <p class="text-xs text-gray-400 mt-1">${state.selectedChatId ? 'Create one using the Ticket button' : 'Select a customer to see their tickets'}</p>
+        </div>`;
+        return;
     }
 
-    function updateClosedPagination() {
-        const p = state.closedPagination;
-        document.getElementById('closed-page-info').textContent = p.total
-            ? `Page ${p.page} of ${p.total_pages} · ${p.total} chats`
-            : 'No closed chats';
-        document.getElementById('closed-prev').disabled = !p.has_prev;
-        document.getElementById('closed-next').disabled = !p.has_next;
+    list.innerHTML = filtered.map(ticket => {
+        const statusObj = ticketStatuses.find(s => s.name === ticket.status);
+        const statusColor = statusObj?.color || '#64748b';
+        const statusLabel = statusObj?.label || ticket.status;
+        const techName = ticket.assigned_tech ? ticket.assigned_tech.display_name : 'Unassigned';
+        const isUnread = ticket.latest_message_sender_type === 'tech' && (!seenTechMessages[ticket.id] || seenTechMessages[ticket.id] < ticket.latest_message_id);
+        const unread = isUnread;
+        const active = Number(activeTicketChatId) === Number(ticket.id);
+        const bucket = ticketBucket(ticket);
+        const bucketBadge = bucket === 'unclaimed'
+            ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">Unclaimed</span>'
+            : bucket === 'closed'
+                ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-200 text-gray-600">Closed</span>'
+                : '';
+
+        return `<button type="button" onclick="openTicketChat(${ticket.id})"
+            class="relative w-full text-left rounded-lg border p-2.5 transition-all ${active ? 'border-blue-400 bg-blue-50' : unread ? 'border-red-500 bg-red-50 border-2' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'}">
+            ${unread ? '<span class="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-sm"></span>' : ''}
+            <div class="flex items-center justify-between gap-2 mb-1">
+                <span class="font-mono text-[11px] font-bold text-gray-700">${escapeHtml(ticket.ticket_number || '#'+ticket.id)}</span>
+                <div class="flex items-center gap-1">
+                    ${bucketBadge}
+                    <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded" style="background:${statusColor}18;color:${statusColor}">${escapeHtml(statusLabel)}</span>
+                </div>
+            </div>
+            <div class="text-sm font-medium text-black line-clamp-1">${escapeHtml(ticket.title)}</div>
+            <div class="flex items-center justify-between mt-1">
+                <span class="text-[11px] text-gray-400"><i class="fa-solid fa-user-gear mr-0.5 text-[9px]"></i>${escapeHtml(techName)}</span>
+                ${ticket.chat ? `<span class="text-[10px] text-gray-300">${escapeHtml(ticket.chat.customer_name || '')}</span>` : ''}
+            </div>
+        </button>`;
+    }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// TICKET CHAT
+// ═══════════════════════════════════════════════════════════
+function openTicketChat(ticketId) {
+    const ticket = allTickets.find(t => t.id === ticketId);
+    activeTicketChatId = Number(ticketId);
+    if (ticket && ticket.latest_message_sender_type === 'tech') {
+        markTechTicketSeen(ticketId, ticket.latest_message_id);
+        state.ticketSnapshots[ticket.id] = Number(ticket.latest_message_id || 0);
+    }
+    lastTicketChatMessageId = 0;
+    showTicketChatView();
+    document.getElementById('ticket-chat-title').textContent = ticket ? ticket.title : `Ticket #${ticketId}`;
+    const statusObj = ticketStatuses.find(s => s.name === ticket?.status);
+    document.getElementById('ticket-chat-subtitle').textContent = ticket
+        ? `${ticket.ticket_number || '#'+ticket.id} · ${statusObj?.label || ticket.status} · ${ticket.assigned_tech ? ticket.assigned_tech.display_name : 'Waiting for tech'}`
+        : '';
+    document.getElementById('ticket-chat-input').disabled = false;
+    document.getElementById('ticket-chat-input').placeholder = 'Message the tech team…';
+    document.getElementById('ticket-chat-send').disabled = false;
+    loadTicketChatMessages();
+    saveWorkspaceState();
+}
+
+function renderTicketChatMessages(messages) {
+    const container = document.getElementById('ticket-chat-messages');
+    if (!messages.length) { container.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-center"><p class="text-xs text-gray-400">No messages yet. Send one below.</p></div>'; return; }
+    container.innerHTML = messages.map(m => {
+        const isMine = m.sender_type === 'csr';
+        return `<div class="flex ${isMine ? 'justify-end' : 'justify-start'} msg-bubble">
+            <div class="max-w-[85%]">
+                <div class="text-[10px] font-semibold mb-0.5 ${isMine ? 'text-right text-yellow-700' : 'text-blue-600'}">${isMine ? 'You' : escapeHtml(m.sender_name || 'Tech Team')}</div>
+                <div class="px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${isMine ? 'bg-yellow-400 text-black rounded-br-sm' : 'bg-white border border-gray-200 rounded-bl-sm'}">${escapeHtml(m.content)}</div>
+                <div class="text-[10px] text-gray-300 mt-0.5 ${isMine ? 'text-right' : ''}">${formatDateTime(m.created_at)}</div>
+            </div>
+        </div>`;
+    }).join('');
+    const latest = messages[messages.length - 1];
+    if (latest && latest.id !== lastTicketChatMessageId) {
+        if (lastTicketChatMessageId && latest.sender_type !== 'csr') playAlertSound();
+        lastTicketChatMessageId = latest.id;
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+async function loadTicketChatMessages() {
+    if (!activeTicketChatId) return;
+    try { const resp = await requestJson(`/api/tickets/${activeTicketChatId}/messages`); renderTicketChatMessages(resp.messages || []); } catch (err) { console.error(err); }
+}
+
+async function sendTicketChatMessage() {
+    if (!activeTicketChatId) return;
+    const input = document.getElementById('ticket-chat-input');
+    const content = input.value.trim();
+    if (!content) return;
+    try {
+        const resp = await requestJson(`/api/tickets/${activeTicketChatId}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
+        if (resp.success) { input.value = ''; await loadTicketChatMessages(); }
+    } catch (err) { showTicketToast('Send failed', 'error'); }
+}
+
+document.getElementById('ticket-chat-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTicketChatMessage(); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// DASHBOARD REFRESH
+// ═══════════════════════════════════════════════════════════
+async function refreshDashboard(loadMessagesAfter = true) {
+    captureActiveDraft();
+    const preserveComposer = isComposingSelectedChat();
+    const payload = await requestJson('/api/dashboard-data');
+    detectChatAlerts(payload.chats || []);
+    state.dashboard = payload;
+    if (state.selectedChatId && !payload.chats.some(c => c.id === state.selectedChatId)) {
+        state.selectedChatId = null; state.selectedMessages = [];
+        allTickets = [];
+        showUserListView(); showTicketListView();
+        loadAllTickets();
+    }
+    renderSummary(); renderChatList();
+    if (!preserveComposer) { renderWorkspace(); captureActiveDraft(); }
+    if (!preserveComposer && loadMessagesAfter && getSelectedChat()) await loadSelectedMessages();
+}
+
+document.getElementById('refresh-btn').addEventListener('click', async () => {
+    try {
+        await refreshDashboard(true);
+        if (state.selectedChatId) await loadTicketsForChat(state.selectedChatId);
+        else await loadAllTickets();
+        await loadClosedChats(state.closedPagination.page);
+        showBanner('Refreshed.');
+    } catch (e) { showBanner(e.message, 'error'); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// TICKET MODAL
+// ═══════════════════════════════════════════════════════════
+function openTicketModal() {
+    const chat = getSelectedChat();
+    if (!chat) { showBanner('Select a customer first.', 'error'); return; }
+    document.getElementById('ticket-title').value = `${chat.customer_name || chat.visitor_id} — `;
+    document.getElementById('ticket-description').value = chat.preview || '';
+    document.getElementById('ticket-priority').value = 'normal';
+    document.getElementById('ticket-modal-chat-hint').innerHTML = `<i class="fa-solid fa-link mr-1 text-yellow-600"></i> Linked to <strong>${escapeHtml(chat.customer_name || chat.visitor_id)}</strong>`;
+    document.getElementById('ticket-modal').classList.remove('hidden');
+    document.getElementById('ticket-title').focus();
+}
+function closeTicketModal() { document.getElementById('ticket-modal').classList.add('hidden'); }
+
+async function createTicket() {
+    const chat = getSelectedChat();
+    if (!chat) { showTicketToast('Select a customer first', 'error'); return; }
+    const title = document.getElementById('ticket-title').value.trim();
+    const description = document.getElementById('ticket-description').value.trim();
+    const priority = document.getElementById('ticket-priority').value;
+    if (!title) { showTicketToast('Enter a problem title', 'error'); return; }
+    try {
+        const resp = await requestJson('/api/tickets', { method: 'POST', body: JSON.stringify({ title, description, priority, chat_id: chat.id }) });
+        if (resp.success) {
+            showTicketToast('Ticket created!', 'success');
+            closeTicketModal();
+            await loadTicketsForChat(chat.id);
+            if (resp.ticket?.id) openTicketChat(resp.ticket.id);
+        } else showTicketToast(resp.error || 'Failed', 'error');
+    } catch (err) { showTicketToast('Could not create ticket', 'error'); }
+}
+
+function showTicketToast(message, type = 'info') {
+    const toast = document.getElementById('ticket-toast');
+    document.getElementById('ticket-toast-msg').textContent = message;
+    toast.className = `fixed top-16 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm font-semibold border ${type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`;
+    setTimeout(() => { toast.classList.add('hidden'); toast.classList.remove('flex'); }, 3500);
+    toast.classList.remove('hidden'); toast.classList.add('flex');
+}
+
+// ═══════════════════════════════════════════════════════════
+// BOOTSTRAP
+// ═══════════════════════════════════════════════════════════
+async function bootstrapWorkspace() {
+    const saved = loadWorkspaceState();
+    if (saved) {
+        if (['queued', 'mine', 'other'].includes(saved.chatBucket)) state.chatBucket = saved.chatBucket;
+        if (['all', 'unclaimed', 'in_progress', 'closed'].includes(saved.ticketFilter)) state.ticketFilter = saved.ticketFilter;
+        state.closedPagination.page = Math.max(1, Number(saved.closedPage) || 1);
+        if (saved.selectedChatId) state.selectedChatId = Number(saved.selectedChatId);
+        if (saved.selectedArchiveChatId) state.selectedArchiveChatId = Number(saved.selectedArchiveChatId);
+        if (saved.activeTicketChatId) activeTicketChatId = Number(saved.activeTicketChatId);
+        if (saved.mobileCol) document.querySelector(`.col-tab[data-col="${saved.mobileCol}"]`)?.click();
     }
 
-    document.getElementById('closed-prev').addEventListener('click', () => {
-        if (state.closedPagination.has_prev) loadClosedChats(state.closedPagination.page - 1);
-    });
-    document.getElementById('closed-next').addEventListener('click', () => {
-        if (state.closedPagination.has_next) loadClosedChats(state.closedPagination.page + 1);
-    });
+    // Apply archive layout
+    applyArchiveLayout();
 
-    async function selectChat(chatId, bucket) {
-        state.selectedChatId = chatId;
-        state.selectedMessages = [];
-        renderChatList();
-        renderWorkspace();
-        if (bucket === 'queued') {
-            try {
-                const payload = await requestJson(`/api/chats/${chatId}/claim`, { method: 'POST', body: JSON.stringify({}) });
-                state.selectedMessages = payload.messages || [];
-                await refreshDashboard(false);
-                renderWorkspace();
-                showBanner('Chat claimed. You are now the assigned CSR.', 'success');
-                return;
-            } catch (error) {
-                showBanner(error.message || 'Chat was just claimed by another CSR.', 'error');
-                await refreshDashboard(false);
-            }
-        }
+    setChatBucket(state.chatBucket);
+    setTicketFilter(state.ticketFilter);
+    await loadClosedChats(state.closedPagination.page);
+    await refreshDashboard(false);
+
+    // Load tickets — either for selected chat or all
+    if (state.selectedChatId) {
+        await loadTicketsForChat(state.selectedChatId);
+    } else {
+        await loadAllTickets();
+    }
+
+    if (state.selectedArchiveChatId) await selectArchiveChat(state.selectedArchiveChatId).catch(() => {});
+    if (state.selectedChatId) {
         await loadSelectedMessages();
+        if (activeTicketChatId) openTicketChat(activeTicketChatId);
     }
+}
 
-    function renderLoadList() {
-        const container = document.getElementById('load-list');
-        const csrs = state.dashboard.csrs;
-        const online = csrs.filter(c => c.is_online).length;
-        const avail = csrs.filter(c => c.is_available && c.is_active).length;
-        document.getElementById('workload-summary').textContent = `· ${online} online · ${avail} available`;
+bootstrapWorkspace().catch(e => showBanner(e.message, 'error'));
 
-        if (!csrs.length) {
-            container.innerHTML = '<div class="text-xs text-gray-500">No CSR users found.</div>';
-            return;
-        }
-        const initials = (csr) => {
-            const n = (csr.display_name || csr.email || '?').trim();
-            const p = n.split(/[\s._@-]+/).filter(Boolean);
-            if (!p.length) return '?';
-            return p.length === 1 ? p[0].slice(0, 2) : (p[0][0] + p[p.length - 1][0]);
-        };
-
-        container.innerHTML = csrs.map((csr) => {
-            const ul = Boolean(csr.unlimited_chats);
-            const loadTxt = ul ? `${csr.active_chat_count} <span class="inline-flex items-center px-1 rounded-full bg-violet-500/20 text-violet-300 text-[9px] font-bold border border-violet-500/30">∞</span>` : `${csr.active_chat_count}/${csr.max_concurrent_chats}`;
-            const bw = ul ? Math.max(4, Math.min(60, csr.active_chat_count * 6)) : Math.max(4, csr.load_pct);
-            const barCls = ul ? 'bg-gradient-to-r from-violet-500 to-purple-400' : 'bg-gradient-to-r from-blue-500 to-indigo-500';
-            const avBg = csr.is_online ? 'bg-gradient-to-br from-indigo-500 to-blue-600' : 'bg-gradient-to-br from-gray-600 to-gray-700';
-            const dotBg = csr.is_online ? 'bg-emerald-500' : 'bg-gray-500';
-            const isMe = csr.id === currentUser.id;
-            return `
-            <div class="grid grid-cols-[32px_1fr] gap-2 items-center p-2 rounded-lg border ${isMe ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-bd bg-white/[0.02]'} min-w-0">
-                <div class="relative w-8 h-8 rounded-full ${avBg} text-white font-extrabold text-[11px] flex items-center justify-center uppercase" title="${escapeHtml(csr.display_name || csr.email)}">
-                    ${escapeHtml(initials(csr))}
-                    <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-sf ${dotBg}"></span>
-                </div>
-                <div class="min-w-0">
-                    <div class="flex items-center justify-between gap-1.5 min-w-0">
-                        <div class="text-[12px] font-bold truncate min-w-0">${escapeHtml(csr.display_name || csr.email)}${isMe ? ' <span class="text-[9px] text-emerald-400">(YOU)</span>' : ''}</div>
-                        <div class="text-[10px] text-gray-400 flex-shrink-0 whitespace-nowrap">${loadTxt}</div>
-                    </div>
-                    <div class="h-1 rounded-full bg-white/10 overflow-hidden my-0.5"><span class="block h-full ${barCls}" style="width:${bw}%"></span></div>
-                    <div class="text-[10px] text-gray-500 truncate">${csr.is_online ? 'Online' : 'Offline'} · ${escapeHtml(formatPresenceRelative(csr))}</div>
-                </div>
-            </div>`;
-        }).join('');
-    }
-
-    function renderEmptyWorkspace() {
-        document.getElementById('detail-title').textContent = 'Select a chat';
-        document.getElementById('detail-subtitle').textContent = 'Click a waiting chat on the left to claim it.';
-        document.getElementById('detail-actions').innerHTML = '';
-        document.getElementById('workspace-body').innerHTML = `
-            <div class="m-auto max-w-lg text-center p-6">
-                <i class="fa-solid fa-comments text-4xl text-gray-600 mb-3"></i>
-                <h2 class="text-lg font-extrabold mb-1.5">No chat selected</h2>
-                <p class="text-sm text-gray-400 leading-relaxed">Pick any chat from the left. Queued chats get claimed automatically.</p>
-            </div>`;
-    }
-
-    function renderMessages(messages) {
-        if (!messages.length) return '<div class="text-xs text-gray-500 p-4">No messages yet.</div>';
-        return messages.map((m) => {
-            const side = m.sender_type === 'csr' ? 'self-end items-end' : 'self-start items-start';
-            const bubCls = m.sender_type === 'csr'
-                ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0'
-                : m.sender_type === 'user'
-                    ? 'bg-sf border border-bd text-gray-100'
-                    : 'bg-white/5 border border-dashed border-slate-600/40 text-slate-400';
-            return `<div class="max-w-[85%] lg:max-w-xl flex flex-col gap-0.5 ${side}">
-                <div class="text-[10px] text-gray-500 uppercase">${escapeHtml(m.sender_type)}</div>
-                <div class="px-3 py-2 rounded-2xl text-sm leading-relaxed break-words whitespace-pre-wrap ${bubCls}">${escapeHtml(m.content)}${renderMessageAttachments(m)}</div>
-                <div class="text-[10px] text-gray-600">${escapeHtml(formatDateTime(m.created_at))}</div>
-            </div>`;
-        }).join('');
-    }
-
-    function renderOpenWorkspace(chat) {
-        const ownerLabel = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : null;
-        let ownershipNote = 'unclaimed';
-        if (chat.is_mine) ownershipNote = 'claimed by you';
-        else if (chat.is_resolved) ownershipNote = 'resolved';
-        else if (ownerLabel) ownershipNote = `read-only · ${ownerLabel}`;
-
-        document.getElementById('detail-title').textContent = chat.customer_name || chat.visitor_id;
-        document.getElementById('detail-subtitle').textContent = `${chat.visitor_id} · ${ownershipNote} · ${chat.message_count} messages`;
-
-        const adminControls = currentUser.role === 'admin' ? `
-            <form id="open-assign-form" class="flex gap-2 items-center">
-                <select name="csr_id" class="min-w-[180px] border border-bd bg-sf-3 text-gray-200 px-3 py-2 rounded-lg text-[12px] outline-none">
-                    <option value="auto">Auto-balance</option>
-                    ${state.dashboard.csrs.map((csr) => `<option value="${csr.id}" ${chat.assigned_csr_id === csr.id ? 'selected' : ''}>${escapeHtml(csr.display_name || csr.email)}</option>`).join('')}
-                </select>
-                <button class="px-3 py-2 rounded-lg border border-bd bg-sf-2 text-gray-200 font-bold text-[12px] cursor-pointer hover:border-blue-500/40 transition-colors" type="submit">Reassign</button>
-            </form>` : '';
-
-        document.getElementById('detail-actions').innerHTML = `
-            ${adminControls}
-            ${chat.can_resolve ? '<button class="px-4 py-2 rounded-lg border border-red-500/30 bg-red-500/15 text-red-300 font-bold text-[12px] cursor-pointer hover:bg-red-500/25 transition-colors" id="resolve-btn" type="button"><i class="fa-solid fa-check mr-1.5"></i>Resolve Chat</button>' : ''}`;
-
-        let readOnlyNote = '';
-        if (!chat.can_reply) {
-            if (chat.is_resolved) readOnlyNote = `This chat is resolved. Read-only transcript${ownerLabel ? ` handled by <strong>${escapeHtml(ownerLabel)}</strong>` : ''}.`;
-            else if (ownerLabel) readOnlyNote = `Claimed by <strong>${escapeHtml(ownerLabel)}</strong>. Read-only for you.`;
-            else readOnlyNote = 'Unclaimed. Click the card to claim and start replying.';
-        }
-
-        document.getElementById('workspace-body').innerHTML = `
-            <div class="flex-1 flex flex-col min-h-0 h-full overflow-hidden">
-                <div id="messages-panel" class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-2">${renderMessages(state.selectedMessages)}</div>
-                ${chat.can_reply ? `
-                <div class="flex-shrink-0 border-t border-bd p-2.5 bg-sf">
-                    <div class="flex justify-between gap-2 items-center mb-1.5">
-                        <div class="text-xs font-semibold truncate">Reply as ${escapeHtml(state.dashboard.current_user.display_name || state.dashboard.current_user.email)}</div>
-                        <div class="text-[10px] text-gray-500 uppercase">${escapeHtml(chat.status.replace('_',' '))}</div>
-                    </div>
-                    <form id="reply-form" class="flex flex-col gap-2">
-                        <textarea name="message" placeholder="Type your response to the customer" class="w-full border border-bd bg-sf-3 text-gray-200 px-3 py-2 rounded-lg text-sm outline-none min-h-[64px] max-h-32 resize-y focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/30"></textarea>
-                        <button type="submit" class="w-full sm:w-auto px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-bold hover:brightness-110 transition"><i class="fa-solid fa-paper-plane mr-1"></i>Send Reply</button>
-                    </form>
-                </div>` : `
-                <div class="flex-shrink-0 border-t border-blue-500/20 p-2.5 bg-blue-500/5 text-gray-400 text-xs leading-relaxed">
-                    ${readOnlyNote}
-                </div>`}
-            </div>`;
-
-        const mp = document.getElementById('messages-panel');
-        if (mp) mp.scrollTop = mp.scrollHeight;
-
-        const rf = document.getElementById('reply-form');
-        if (rf) {
-            const ta = rf.querySelector('textarea[name="message"]');
-            if (ta) {
-                ta.value = getDraftMessage(chat.id);
-                ta.addEventListener('input', (e) => setDraftMessage(chat.id, e.currentTarget.value));
-                ta.addEventListener('focus', () => { state.composingChatId = String(chat.id); });
-                ta.addEventListener('blur', () => { captureActiveDraft(); if (state.composingChatId === String(chat.id)) state.composingChatId = null; });
-            }
-            rf.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const msg = ta.value.trim();
-                if (!msg) { showBanner('Reply message cannot be empty.', 'error'); return; }
-                try {
-                    const resp = await requestJson(`/api/chats/${chat.id}/reply`, { method: 'POST', body: JSON.stringify({ message: msg }) });
-                    setDraftMessage(chat.id, '');
-                    ta.value = '';
-                    state.selectedMessages = resp.messages;
-                    await refreshDashboard(false);
-                    showBanner(resp.relay && resp.relay.skipped ? 'Reply saved locally. Relay not configured.' : 'Reply sent.', resp.relay && resp.relay.skipped ? 'error' : 'success');
-                } catch (err) { showBanner(err.message, 'error'); }
-            });
-        }
-
-        const rb = document.getElementById('resolve-btn');
-        if (rb) {
-            rb.addEventListener('click', async () => {
-                try {
-                    const resp = await requestJson(`/api/chats/${chat.id}/resolve`, { method: 'POST', body: JSON.stringify({}) });
-                    state.selectedChatId = null;
-                    state.selectedMessages = [];
-                    state.dashboard = resp.dashboard;
-                    renderSummary(); renderChatList(); renderLoadList(); renderWorkspace();
-                    showBanner(resp.relay && resp.relay.skipped ? 'Chat resolved locally.' : 'Chat resolved and returned to AI.', resp.relay && resp.relay.skipped ? 'error' : 'success');
-                } catch (err) { showBanner(err.message, 'error'); }
-            });
-        }
-
-        const af = document.getElementById('open-assign-form');
-        if (af) {
-            af.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const csrId = af.querySelector('select[name="csr_id"]').value;
-                try {
-                    const resp = await requestJson(`/api/chats/${chat.id}/assign`, { method: 'POST', body: JSON.stringify({ csr_id: csrId }) });
-                    state.dashboard = resp.dashboard;
-                    renderSummary(); renderChatList(); renderLoadList(); renderWorkspace();
-                    showBanner('Chat reassigned.', 'success');
-                } catch (err) { showBanner(err.message, 'error'); }
-            });
-        }
-    }
-
-    function renderWorkspace() {
-        const chat = getSelectedChat();
-        if (!chat) { renderEmptyWorkspace(); return; }
-        renderOpenWorkspace(chat);
-    }
-
-    async function loadSelectedMessages() {
-        const chat = getSelectedChat();
-        if (!chat) { state.selectedMessages = []; renderWorkspace(); return; }
-        const payload = await requestJson(`/api/chats/${chat.id}/messages`, { method: 'GET' });
-        state.selectedMessages = payload.messages || [];
-        renderWorkspace();
-    }
-
-    async function refreshDashboard(loadMessagesAfter = true) {
-        captureActiveDraft();
-        const preserveComposer = isComposingSelectedChat();
-        const payload = await requestJson('/api/dashboard-data', { method: 'GET' });
-        state.dashboard = payload;
-        if (!state.selectedChatId) {
-            const firstMine = payload.chats.find((c) => c.can_reply);
-            if (firstMine) state.selectedChatId = firstMine.id;
-        }
-        const inActive = payload.chats.some((c) => c.id === state.selectedChatId);
-        const inClosed = state.closedChats.some((c) => c.id === state.selectedChatId);
-        if (state.selectedChatId && !inActive && !inClosed) {
-            state.selectedChatId = null;
-            state.selectedMessages = [];
-        }
-        renderSummary(); renderChatList(); renderLoadList();
-        if (!preserveComposer) { renderWorkspace(); captureActiveDraft(); }
-        if (!preserveComposer && loadMessagesAfter && getSelectedChat()) await loadSelectedMessages();
-    }
-
-    document.getElementById('refresh-btn').addEventListener('click', async () => {
-        try {
-            await refreshDashboard(true);
-            if (state.tab === 'closed') await loadClosedChats(state.closedPagination.page);
-            showBanner('Refreshed.', 'success');
-        } catch (e) { showBanner(e.message, 'error'); }
-    });
-
-    refreshDashboard(true).catch((e) => showBanner(e.message, 'error'));
-    refreshInterval = window.setInterval(() => { refreshDashboard(Boolean(getSelectedChat())).catch(() => {}); }, 5000);
-
-    // ── Ticket System ──
-    let myTickets = [];
-    let ticketStatuses = [];
-    let previousTicketStatuses = {};
-    let activeTicketChatId = null;
-    let ticketChatPollTimer = null;
-    let lastTicketChatMessageId = 0;
-
-    function openTicketModal() {
-        document.getElementById('ticket-title').value = '';
-        document.getElementById('ticket-description').value = '';
-        document.getElementById('ticket-priority').value = 'normal';
-        document.getElementById('ticket-modal').classList.remove('hidden');
-    }
-
-    function closeTicketModal() {
-        document.getElementById('ticket-modal').classList.add('hidden');
-    }
-
-    async function createTicket() {
-        const title = document.getElementById('ticket-title').value.trim();
-        const description = document.getElementById('ticket-description').value.trim();
-        const priority = document.getElementById('ticket-priority').value;
-
-        if (!title) {
-            showTicketToast('Title is required', 'error');
-            return;
-        }
-
-        try {
-            const resp = await requestJson('/api/tickets', {
-                method: 'POST',
-                body: JSON.stringify({ title, description, priority })
-            });
-            if (resp.success) {
-                const num = resp.ticket?.ticket_number || '';
-                showTicketToast(num ? `Ticket ${num} created!` : 'Ticket created successfully!', 'success');
-                closeTicketModal();
-                await loadMyTickets();
-                setSidebarTab('tickets', true);
-            } else {
-                showTicketToast(resp.error || 'Failed to create ticket', 'error');
-            }
-        } catch (err) {
-            showTicketToast('Failed to create ticket', 'error');
-        }
-    }
-
-    async function loadMyTickets() {
-        try {
-            const resp = await requestJson('/api/tickets', { method: 'GET' });
-            myTickets = resp.tickets || [];
-            ticketStatuses = resp.statuses || [];
-            
-            // Check for status updates
-            myTickets.forEach(ticket => {
-                const prevStatus = previousTicketStatuses[ticket.id];
-                if (prevStatus && prevStatus !== ticket.status) {
-                    const statusLabel = ticketStatuses.find(s => s.name === ticket.status)?.label || ticket.status;
-                    showTicketToast(`${ticket.ticket_number || '#' + ticket.id} status updated to ${statusLabel}`, 'info');
-                }
-                previousTicketStatuses[ticket.id] = ticket.status;
-            });
-            
-            renderTicketSection();
-        } catch (err) {
-            console.error('Failed to load tickets:', err);
-        }
-    }
-
-    function renderTicketSection() {
-        const list = document.getElementById('ticket-list');
-        const count = document.getElementById('ticket-section-count');
-        const tabCount = document.getElementById('tab-ticket-count');
-
-        if (tabCount) tabCount.textContent = myTickets.length;
-        if (count) count.textContent = `${myTickets.length} ticket${myTickets.length !== 1 ? 's' : ''}`;
-
-        if (!list) return;
-
-        if (!myTickets.length) {
-            list.innerHTML = '<div class="text-base text-gray-400 text-center py-12 px-2">No tickets yet.<br><span class="text-sm mt-2 block">Click <span class="text-purple-300 font-semibold">Create Ticket</span> in the header.</span></div>';
-            return;
-        }
-
-        list.innerHTML = myTickets.map(ticket => {
-            const statusObj = ticketStatuses.find(s => s.name === ticket.status);
-            const statusColor = statusObj?.color || '#64748b';
-            const statusLabel = statusObj?.label || ticket.status;
-            const techName = ticket.assigned_tech ? (ticket.assigned_tech.display_name || 'Tech') : 'Unassigned';
-            return `
-                <button type="button" onclick="openTicketChat(${ticket.id})" class="w-full text-left rounded-2xl border-2 border-bd/80 bg-sf hover:border-purple-400/60 hover:bg-purple-500/15 hover:shadow-lg hover:shadow-purple-900/20 transition-all px-4 py-4 min-h-[110px] flex flex-col justify-between gap-3 group">
-                    <div class="flex items-start justify-between gap-3">
-                        <span class="font-mono text-lg font-extrabold text-purple-200 tracking-wide leading-none">${escapeHtml(ticket.ticket_number || ('#' + ticket.id))}</span>
-                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold flex-shrink-0" style="background:${statusColor}28;color:${statusColor}">
-                            <span class="w-2.5 h-2.5 rounded-full" style="background:${statusColor}"></span>
-                            ${escapeHtml(statusLabel)}
-                        </span>
-                    </div>
-                    <div class="text-base font-bold text-white leading-snug line-clamp-3">${escapeHtml(ticket.title)}</div>
-                    <div class="flex items-center justify-between gap-3 text-sm text-gray-300">
-                        <span class="truncate font-medium"><i class="fa-solid fa-wrench mr-1.5 text-purple-400"></i>${escapeHtml(techName)}</span>
-                        <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-600/30 text-purple-100 font-bold group-hover:bg-purple-600/50"><i class="fa-solid fa-comments text-base"></i> Open chat</span>
-                    </div>
-                </button>
-            `;
-        }).join('');
-    }
-
-    function showTicketToast(message, type = 'info') {
-        const toast = document.getElementById('ticket-toast');
-        const msgEl = document.getElementById('ticket-toast-msg');
-        msgEl.textContent = message;
-        
-        if (type === 'success') toast.style.background = '#059669';
-        else if (type === 'error') toast.style.background = '#dc2626';
-        else toast.style.background = '#7c3aed';
-        
-        toast.classList.remove('hidden');
-        setTimeout(() => toast.classList.add('hidden'), 4000);
-    }
-
-    function openTicketChat(ticketId) {
-        const ticket = myTickets.find(t => t.id === ticketId);
-        activeTicketChatId = ticketId;
-        lastTicketChatMessageId = 0;
-        document.getElementById('ticket-chat-title').textContent = ticket
-            ? `${ticket.ticket_number || '#' + ticket.id} — ${ticket.title}`
-            : `Ticket #${ticketId}`;
-        const techLabel = ticket?.assigned_tech
-            ? `Assigned: ${ticket.assigned_tech.display_name || 'Technical team'}`
-            : 'Waiting for technical team to claim';
-        document.getElementById('ticket-chat-subtitle').textContent = techLabel;
-        document.getElementById('ticket-chat-input').value = '';
-        document.getElementById('ticket-chat-modal').classList.remove('hidden');
-        loadTicketChatMessages();
-        if (ticketChatPollTimer) clearInterval(ticketChatPollTimer);
-        ticketChatPollTimer = setInterval(loadTicketChatMessages, 4000);
-    }
-
-    function closeTicketChat() {
-        document.getElementById('ticket-chat-modal').classList.add('hidden');
-        activeTicketChatId = null;
-        if (ticketChatPollTimer) {
-            clearInterval(ticketChatPollTimer);
-            ticketChatPollTimer = null;
-        }
-    }
-
-    function renderTicketChatMessages(messages) {
-        const container = document.getElementById('ticket-chat-messages');
-        if (!messages.length) {
-            container.innerHTML = '<div class="text-xs text-gray-500 text-center py-6">No messages yet. Start the conversation with the technical team.</div>';
-            return;
-        }
-        container.innerHTML = messages.map(msg => {
-            const isMine = msg.sender_type === 'csr';
-            const time = new Date(msg.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-            return `
-                <div class="flex ${isMine ? 'justify-end' : 'justify-start'}">
-                    <div class="max-w-[85%] rounded-2xl px-3 py-2 ${isMine ? 'bg-purple-600/30 border border-purple-500/30' : 'bg-sf-2 border border-bd'}">
-                        <div class="text-[10px] text-gray-400 mb-1 flex items-center gap-1.5">
-                            <i class="fa-solid fa-${isMine ? 'headset' : 'wrench'}"></i>
-                            <span class="font-semibold text-gray-300">${escapeHtml(msg.sender_name || (isMine ? 'You' : 'Technical'))}</span>
-                            <span>&bull; ${time}</span>
-                        </div>
-                        <p class="text-sm text-white whitespace-pre-wrap break-words">${escapeHtml(msg.content)}</p>
-                    </div>
-                </div>
-            `;
-        }).join('');
-        const latest = messages[messages.length - 1];
-        if (latest && latest.id !== lastTicketChatMessageId) {
-            lastTicketChatMessageId = latest.id;
-            container.scrollTop = container.scrollHeight;
-        }
-    }
-
-    async function loadTicketChatMessages() {
-        if (!activeTicketChatId) return;
-        try {
-            const resp = await requestJson(`/api/tickets/${activeTicketChatId}/messages`, { method: 'GET' });
-            renderTicketChatMessages(resp.messages || []);
-        } catch (err) {
-            console.error('Failed to load ticket messages:', err);
-        }
-    }
-
-    async function sendTicketChatMessage() {
-        if (!activeTicketChatId) return;
-        const input = document.getElementById('ticket-chat-input');
-        const content = input.value.trim();
-        if (!content) return;
-        try {
-            const resp = await requestJson(`/api/tickets/${activeTicketChatId}/messages`, {
-                method: 'POST',
-                body: JSON.stringify({ content }),
-            });
-            if (resp.success) {
-                input.value = '';
-                await loadTicketChatMessages();
-            } else {
-                showTicketToast(resp.error || 'Failed to send message', 'error');
-            }
-        } catch (err) {
-            showTicketToast('Failed to send message', 'error');
-        }
-    }
-
-    document.getElementById('ticket-chat-input')?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendTicketChatMessage();
-        }
-    });
-
-    // Initialize ticket section
-    loadMyTickets();
-    setInterval(loadMyTickets, 10000); // Poll every 10 seconds
+const DASHBOARD_POLL_MS = 5000;
+setInterval(async () => {
+    try {
+        await refreshDashboard(!isComposingSelectedChat());
+        if (state.selectedChatId) await loadTicketsForChat(state.selectedChatId);
+        else await loadAllTickets();
+        if (activeTicketChatId) await loadTicketChatMessages();
+    } catch (e) { /* background refresh */ }
+}, DASHBOARD_POLL_MS);
 </script>
 </body>
 </html>

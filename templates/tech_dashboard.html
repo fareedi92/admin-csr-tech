@@ -1,311 +1,268 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full bg-gray-50">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Technical Team Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-    tailwind.config = {
-        theme: {
-            extend: {
-                fontFamily: { sans: ['Inter', 'sans-serif'] },
-                colors: {
-                    sf: '#121a2b',
-                    'sf-2': '#182235',
-                    'sf-3': '#0f1728',
-                    bd: 'rgba(148,163,184,0.14)',
-                },
-            },
-        },
-    }
-    </script>
     <style>
-        .scrollbar-thin { scrollbar-width:thin; scrollbar-color:rgba(148,163,184,.22) transparent; }
-        .scrollbar-thin::-webkit-scrollbar { width:6px; height:6px; }
-        .scrollbar-thin::-webkit-scrollbar-thumb { background:rgba(148,163,184,.22); border-radius:10px; }
-        .scrollbar-thin::-webkit-scrollbar-thumb:hover { background:rgba(148,163,184,.4); }
-        .scrollbar-thin::-webkit-scrollbar-track { background:transparent; }
-
-        .ticket-card { transition: all 0.2s ease; }
-        .ticket-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
-        .ticket-card.active-chat { border-color: rgba(139, 92, 246, 0.5); box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.25); }
-
-        .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-        .status-open { background: rgba(245,158,11,0.15); color: #fbbf24; }
-        .status-in_progress { background: rgba(59,130,246,0.15); color: #93c5fd; }
-        .status-waiting_parts { background: rgba(139,92,246,0.15); color: #c4b5fd; }
-        .status-resolved { background: rgba(16,185,129,0.15); color: #86efac; }
-        .status-closed { background: rgba(100,116,139,0.15); color: #94a3b8; }
-
-        .priority-high { border-left: 4px solid #ef4444; }
-        .priority-normal { border-left: 4px solid #3b82f6; }
-        .priority-low { border-left: 4px solid #10b981; }
-
-        .claim-btn { background: linear-gradient(135deg, #8b5cf6, #6366f1); }
-        .claim-btn:hover { background: linear-gradient(135deg, #7c3aed, #4f46e5); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
+        .ticket-card { transition: all 0.2s ease; border-left: 3px solid transparent; }
+        .ticket-card:hover { border-color: #cbd5e1; }
+        .ticket-card.active { background: #fefce8; border-color: #facc15; }
+        .priority-high { color: #ef4444; background: #fef2f2; }
+        .priority-normal { color: #3b82f6; background: #eff6ff; }
+        .priority-low { color: #10b981; background: #ecfdf5; }
+        .status-badge { font-size: 10px; padding: 2px 8px; border-radius: 9999px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .status-open { background: #fef3c7; color: #d97706; }
+        .status-in_progress { background: #dbeafe; color: #2563eb; }
+        .status-closed { background: #f1f5f9; color: #64748b; }
     </style>
 </head>
-<body class="min-h-screen bg-gradient-to-b from-[#09111f] to-[#0b1220] text-gray-200 font-sans"
-      data-user-id="{{ user.id if user else '' }}">
+<body class="h-full flex flex-col font-sans overflow-hidden bg-gray-50" data-user-id="{{ user.id if user else '' }}">
 
-<div class="flex flex-col min-h-screen lg:h-screen">
-
-    <!-- Topbar -->
-    <header class="sticky top-0 z-10 backdrop-blur-md bg-[#09111f]/80 border-b border-bd flex items-center justify-between gap-3 px-4 py-3 flex-wrap">
-        <div class="min-w-0 flex-1 basis-[260px]">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-                    <i class="fa-solid fa-wrench text-white"></i>
-                </div>
-                <div>
-                    <h1 class="text-lg lg:text-xl font-extrabold">Technical Team Dashboard</h1>
-                    <p class="text-[12px] text-gray-400">Handle and track support tickets</p>
-                </div>
+    <!-- Header -->
+    <header class="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center z-10 shadow-sm">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-blue-500 text-white flex items-center justify-center shadow-sm">
+                <i class="fa-solid fa-wrench"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold text-gray-900 leading-tight">Technical Team Dashboard</h1>
+                <p class="text-[11px] text-gray-500">Handle support tickets</p>
             </div>
         </div>
-        <div class="flex items-center gap-2 flex-wrap">
-            <div class="flex items-center gap-2 px-3 py-2 rounded-full border border-purple-500/25 bg-purple-500/10 text-purple-300 text-xs font-semibold">
-                <i class="fa-solid fa-wrench"></i>
-                <span>{{ (user.display_name or user.email) if user else 'Tech User' }}</span>
+        <div class="flex items-center gap-2">
+            <div class="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gray-50 border border-gray-200 text-xs font-semibold text-gray-600 mr-2">
+                <i class="fa-solid fa-circle-user text-gray-400"></i>
+                <span class="max-w-[100px] truncate">{{ (user.display_name or user.email) if user else 'Tech User' }}</span>
             </div>
-            <a href="/tech/logout" title="Logout" class="w-10 h-10 flex items-center justify-center rounded-full border border-bd bg-sf text-gray-200 hover:text-white transition-colors">
-                <i class="fa-solid fa-right-from-bracket"></i>
+            <button onclick="loadTickets()" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-black transition-colors" title="Refresh">
+                <i class="fa-solid fa-rotate-right text-xs"></i>
+            </button>
+            <a href="/tech/logout" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors" title="Logout">
+                <i class="fa-solid fa-right-from-bracket text-xs"></i>
             </a>
         </div>
     </header>
 
-    <!-- Main Content -->
-    <div class="flex-1 overflow-hidden flex flex-col lg:flex-row">
+    <!-- Main 2-Column Workspace -->
+    <div class="flex-1 flex min-h-0 overflow-hidden lg:p-2 lg:gap-2 bg-gray-50 relative">
+        
+        <!-- Notifications Container -->
+        <div id="notifications-container" class="absolute top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-        <!-- Sidebar -->
-        <aside class="w-full lg:w-64 bg-[#0d1525] border-b lg:border-b-0 lg:border-r border-bd p-4 flex-shrink-0">
-            <nav class="space-y-1">
-                <button onclick="showTab('queue')" id="tab-queue" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                    <i class="fa-solid fa-list-check w-5"></i>
-                    <span>Open Queue</span>
-                    <span id="queue-count" class="ml-auto bg-amber-500 text-black text-xs font-bold px-2 py-0.5 rounded-full">0</span>
-                </button>
-                <button onclick="showTab('mine')" id="tab-mine" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all text-gray-400 hover:bg-white/5 hover:text-gray-200">
-                    <i class="fa-solid fa-user-check w-5"></i>
-                    <span>My Tickets</span>
-                    <span id="mine-count" class="ml-auto bg-blue-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">0</span>
-                </button>
-                <button onclick="showTab('all')" id="tab-all" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all text-gray-400 hover:bg-white/5 hover:text-gray-200">
-                    <i class="fa-solid fa-folder-open w-5"></i>
-                    <span>All Tickets</span>
-                </button>
-            </nav>
-
-            <!-- Stats -->
-            <div class="mt-6 p-4 bg-sf rounded-xl border border-bd">
-                <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">My Stats</h3>
-                <div class="space-y-3">
-                    <div class="flex items-center justify-between">
-                        <span class="text-sm text-gray-400">Active</span>
-                        <span id="stat-active" class="text-sm font-semibold text-blue-400">0</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-sm text-gray-400">Resolved Today</span>
-                        <span id="stat-resolved-today" class="text-sm font-semibold text-emerald-400">0</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-sm text-gray-400">Total Claimed</span>
-                        <span id="stat-total" class="text-sm font-semibold text-purple-400">0</span>
-                    </div>
+        <!-- COLUMN 1: Ticket List -->
+        <section id="col-list" class="flex-col min-h-0 w-full lg:w-[380px] xl:w-[420px] flex-shrink-0 bg-white lg:rounded-xl lg:border lg:border-gray-200 overflow-hidden flex transition-all">
+            <div class="flex-shrink-0 px-4 py-2.5 border-b border-gray-100 flex items-center justify-between bg-yellow-50">
+                <div class="flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-md bg-yellow-400 flex items-center justify-center text-black text-[10px] font-bold">1</span>
+                    <h2 class="text-sm font-bold text-black">Tickets</h2>
                 </div>
-            </div>
-        </aside>
-
-        <!-- Ticket List -->
-        <main class="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4">
-            <!-- Queue Tab -->
-            <div id="panel-queue" class="tab-panel">
-                <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
-                    <i class="fa-solid fa-list-check text-amber-400"></i>
-                    Open Tickets
-                    <span class="text-sm font-normal text-gray-400 ml-2">Ready for claim</span>
-                </h2>
-                <div id="queue-tickets" class="space-y-3">
-                    <div class="text-center py-12 text-gray-500">
-                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-3"></i>
-                        <p>Loading open tickets...</p>
-                    </div>
-                </div>
+                <span id="col1-count" class="text-[11px] text-yellow-700 font-semibold bg-yellow-100 px-2 py-0.5 rounded-md">0 tickets</span>
             </div>
 
-            <!-- My Tickets Tab -->
-            <div id="panel-mine" class="tab-panel hidden">
-                <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
-                    <i class="fa-solid fa-user-check text-blue-400"></i>
-                    My Tickets
-                    <span class="text-sm font-normal text-gray-400 ml-2">Assigned to you</span>
-                </h2>
-                <div id="mine-tickets" class="space-y-3">
-                    <div class="text-center py-12 text-gray-500">
-                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-3"></i>
-                        <p>Loading your tickets...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- All Tickets Tab -->
-            <div id="panel-all" class="tab-panel hidden">
-                <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
-                    <i class="fa-solid fa-folder-open text-purple-400"></i>
+            <!-- Tabs -->
+            <div class="flex-shrink-0 px-3 py-2 border-b border-gray-100 flex gap-1.5 overflow-x-auto no-scrollbar bg-white">
+                <button type="button" onclick="showTab('queue')" id="tab-btn-queue" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-yellow-100 text-yellow-800 border border-yellow-200 whitespace-nowrap">
+                    Open Queue <span id="queue-count" class="ml-1 opacity-80 bg-white px-1.5 rounded-full">0</span>
+                </button>
+                <button type="button" onclick="showTab('mine')" id="tab-btn-mine" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-white text-gray-500 border border-transparent hover:bg-gray-50 whitespace-nowrap">
+                    My Tickets <span id="mine-count" class="ml-1 opacity-80 bg-gray-100 text-gray-500 px-1.5 rounded-full">0</span>
+                </button>
+                <button type="button" onclick="showTab('all')" id="tab-btn-all" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-white text-gray-500 border border-transparent hover:bg-gray-50 whitespace-nowrap">
                     All Tickets
-                    <span class="text-sm font-normal text-gray-400 ml-2">Complete overview</span>
-                </h2>
-                <div class="mb-4 flex items-center gap-3 flex-wrap">
-                    <select id="filter-status" onchange="loadTickets()" class="px-3 py-2 rounded-lg bg-sf border border-bd text-sm">
-                        <option value="">All Statuses</option>
+                </button>
+            </div>
+            
+            <div class="flex-shrink-0 px-3 py-2 border-b border-gray-100 hidden bg-gray-50/50" id="all-filters">
+                <select id="filter-status" onchange="loadTickets()" class="w-full px-2 py-1.5 rounded-lg bg-white border border-gray-200 text-xs text-black focus:border-yellow-400 outline-none">
+                    <option value="">All Statuses</option>
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="closed">Closed</option>
+                </select>
+            </div>
+
+            <div id="ticket-list-container" class="flex-1 overflow-y-auto p-2 space-y-1.5 bg-gray-50/50 custom-scroll">
+                <div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading...</div>
+            </div>
+        </section>
+
+        <!-- COLUMN 2: Workspace / Detail View -->
+        <section id="col-detail" class="hidden lg:flex flex-col min-h-0 flex-1 bg-white lg:rounded-xl lg:border lg:border-gray-200 overflow-hidden w-full absolute inset-0 lg:relative z-20">
+            <!-- Blank State -->
+            <div id="detail-blank" class="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50">
+                <div class="w-16 h-16 rounded-2xl bg-white border border-gray-200 flex items-center justify-center mb-4 text-2xl text-blue-300 shadow-sm">
+                    <i class="fa-solid fa-clipboard-list"></i>
+                </div>
+                <p class="text-sm font-semibold text-gray-600">Select a ticket to view details</p>
+                <p class="text-xs mt-1 text-gray-400">Chat with CSRs, view customer info, and update status here.</p>
+            </div>
+
+            <!-- Active Detail State -->
+            <div id="detail-active" class="flex-1 flex flex-col min-h-0 hidden bg-white">
+                <div class="flex-shrink-0 px-4 py-2.5 border-b border-gray-100 flex items-center justify-between bg-blue-50">
+                    <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-blue-500 flex items-center justify-center text-white text-[10px] font-bold">2</span>
+                        <h2 class="text-sm font-bold text-blue-900">Workspace</h2>
+                    </div>
+                    <button onclick="closeTicketDetailMobile()" class="lg:hidden w-7 h-7 rounded-md border border-blue-200 text-blue-600 flex items-center justify-center bg-white hover:bg-blue-50">
+                        <i class="fa-solid fa-arrow-left text-xs"></i>
+                    </button>
+                </div>
+                
+                <!-- Ticket Info Header -->
+                <div class="flex-shrink-0 p-4 lg:p-5 border-b border-gray-200 bg-white shadow-sm z-10" id="detail-header">
+                    <!-- Populated by JS -->
+                </div>
+
+                <!-- Chat & History Scrollable Area -->
+                <div class="flex-1 flex flex-col min-h-0 bg-[#f8fafc] overflow-y-auto custom-scroll" id="detail-scroll-area">
+                    <div class="p-4 lg:p-5 mx-auto w-full max-w-4xl flex flex-col gap-6 min-h-full">
+                        
+                        <!-- History / Assignment -->
+                        <div id="detail-history" class="empty:hidden">
+                        </div>
+                        
+                        <!-- Divider -->
+                        <div class="flex items-center gap-3 opacity-50 my-2">
+                            <div class="h-px bg-gray-300 flex-1"></div>
+                            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider"><i class="fa-solid fa-comments mr-1"></i> Ticket Chat</span>
+                            <div class="h-px bg-gray-300 flex-1"></div>
+                        </div>
+
+                        <!-- Chat Messages -->
+                        <div id="detail-chat-messages" class="flex flex-col gap-3 flex-1 justify-end">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Compose -->
+                <div class="flex-shrink-0 p-3 lg:p-4 bg-white border-t border-gray-200" id="detail-compose">
+                    <div class="max-w-4xl mx-auto flex items-end gap-2">
+                        <textarea id="tech-chat-input" rows="1" class="flex-1 px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 text-black text-sm resize-none focus:border-blue-400 focus:bg-white focus:outline-none transition-colors" placeholder="Message CSR... (Press Enter to send)"></textarea>
+                        <button type="button" id="tech-chat-send-btn" class="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-sm disabled:opacity-50">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Modals overlay -->
+    <div id="modal-overlay" class="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-40 hidden transition-opacity"></div>
+
+    <!-- Status Update Modal -->
+    <div id="status-modal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 hidden w-[90%] max-w-md">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col">
+            <div class="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-black flex items-center gap-2">
+                    <i class="fa-solid fa-pen-to-square text-blue-500"></i>
+                    Update Ticket Status
+                </h3>
+                <button onclick="closeStatusModal()" class="text-gray-400 hover:text-black"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-5">
+                <p id="modal-ticket-number" class="font-mono text-xs font-bold text-blue-600 bg-blue-50 inline-block px-2 py-1 rounded border border-blue-100 mb-4"></p>
+                <input type="hidden" id="modal-ticket-id">
+                
+                <div class="mb-4">
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-2">New Status</label>
+                    <select id="modal-new-status" class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black focus:border-blue-500 outline-none transition-colors">
                         <option value="open">Open</option>
                         <option value="in_progress">In Progress</option>
-                        <option value="waiting_parts">Waiting Parts</option>
-                        <option value="resolved">Resolved</option>
                         <option value="closed">Closed</option>
                     </select>
                 </div>
-                <div id="all-tickets" class="space-y-3">
-                    <div class="text-center py-12 text-gray-500">
-                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-3"></i>
-                        <p>Loading all tickets...</p>
-                    </div>
+                <div class="mb-5">
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Notes <span class="text-red-500">*</span></label>
+                    <textarea id="modal-notes" rows="3" required class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black resize-none focus:border-blue-500 outline-none transition-colors" placeholder="Add notes about this status change..."></textarea>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="updateTicketStatus()" class="flex-1 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold transition-colors shadow-sm">
+                        Update Status
+                    </button>
+                    <button onclick="closeStatusModal()" class="flex-1 py-2.5 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-sm font-semibold transition-colors">
+                        Cancel
+                    </button>
                 </div>
             </div>
-        </main>
+        </div>
+    </div>
 
-        <!-- Ticket Detail Panel (chat) -->
-        <aside id="ticket-detail" class="hidden w-full lg:w-96 bg-[#0d1525] border-t lg:border-t-0 lg:border-l border-bd p-4 overflow-y-auto flex flex-col">
-            <div id="ticket-chat-header" class="flex-shrink-0"></div>
-            <div id="tech-chat-messages" class="flex-1 space-y-3 overflow-y-auto scrollbar-thin my-3 pr-1 min-h-[180px]" style="max-height: calc(100vh - 320px);"></div>
-            <div id="ticket-chat-compose" class="flex-shrink-0 flex items-end gap-2 sticky bottom-0 bg-[#0d1525] pt-2">
-                <textarea id="tech-chat-input" rows="2" class="flex-1 px-3 py-2 rounded-xl bg-sf border border-bd text-white text-sm resize-none focus:border-purple-500 focus:outline-none" placeholder="Message CSR about this ticket..."></textarea>
-                <button type="button" id="tech-chat-send-btn" class="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold">
-                    <i class="fa-solid fa-paper-plane"></i>
-                </button>
+    <!-- Refer Modal -->
+    <div id="refer-modal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 hidden w-[90%] max-w-md">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col">
+            <div class="px-5 py-4 border-b border-gray-100 bg-yellow-50 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-black flex items-center gap-2">
+                    <i class="fa-solid fa-share-nodes text-yellow-600"></i>
+                    Refer Ticket
+                </h3>
+                <button onclick="closeReferModal()" class="text-gray-400 hover:text-black"><i class="fa-solid fa-xmark"></i></button>
             </div>
-        </aside>
-    </div>
-</div>
-
-<!-- Status Update Modal -->
-<div id="status-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-[#0f172a] rounded-2xl border border-bd w-full max-w-md p-6">
-        <h3 class="text-lg font-bold mb-1 flex items-center gap-2">
-            <i class="fa-solid fa-pen-to-square text-purple-400"></i>
-            Update Ticket Status
-        </h3>
-        <p id="modal-ticket-number" class="font-mono text-sm font-semibold text-violet-300 mb-4"></p>
-        <input type="hidden" id="modal-ticket-id">
-        <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-400 mb-2">New Status</label>
-            <select id="modal-new-status" class="w-full px-4 py-3 rounded-xl bg-sf border border-bd text-white">
-                <option value="open">Open</option>
-                <option value="in_progress">In Progress</option>
-                <option value="waiting_parts">Waiting for Parts</option>
-                <option value="resolved">Resolved</option>
-                <option value="closed">Closed</option>
-            </select>
-        </div>
-        <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-400 mb-2">Notes (optional)</label>
-            <textarea id="modal-notes" rows="3" class="w-full px-4 py-3 rounded-xl bg-sf border border-bd text-white resize-none" placeholder="Add notes about this status change..."></textarea>
-        </div>
-        <div class="flex items-center gap-3">
-            <button onclick="updateTicketStatus()" class="flex-1 px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors">
-                <i class="fa-solid fa-check mr-2"></i>Update Status
-            </button>
-            <button onclick="closeStatusModal()" class="px-4 py-3 rounded-xl bg-sf hover:bg-sf-2 border border-bd text-gray-400 font-semibold transition-colors">
-                Cancel
-            </button>
+            <div class="p-5">
+                <p id="refer-ticket-number" class="font-mono text-xs font-bold text-blue-600 bg-blue-50 inline-block px-2 py-1 rounded border border-blue-100 mb-4"></p>
+                <input type="hidden" id="refer-ticket-id">
+                
+                <div class="mb-4">
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Assign To</label>
+                    <select id="refer-target-tech" class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black focus:border-yellow-400 outline-none transition-colors">
+                        <option value="">Loading technical team...</option>
+                    </select>
+                </div>
+                <div class="mb-5">
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Handoff Note <span class="text-gray-400 font-normal lowercase">(optional)</span></label>
+                    <textarea id="refer-notes" rows="3" class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black resize-none focus:border-yellow-400 outline-none transition-colors" placeholder="Why are you referring this ticket?"></textarea>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="referTicket()" class="flex-1 py-2.5 rounded-xl bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-semibold transition-colors shadow-sm">
+                        Refer Ticket
+                    </button>
+                    <button onclick="closeReferModal()" class="flex-1 py-2.5 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-sm font-semibold transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
-</div>
 
 <script>
 let currentTab = 'queue';
 let tickets = [];
 let statuses = [];
+let techAccounts = [];
 let activeChatTicketId = null;
-let ticketChatPollTimer = null;
-let lastTicketChatMessageId = 0;
 
-function showTab(tab) {
-    currentTab = tab;
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
-    document.getElementById(`panel-${tab}`).classList.remove('hidden');
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('bg-purple-500/15', 'text-purple-300', 'border-purple-500/30');
-        btn.classList.add('text-gray-400');
-    });
-    const activeBtn = document.getElementById(`tab-${tab}`);
-    activeBtn.classList.add('bg-purple-500/15', 'text-purple-300', 'border-purple-500/30');
-    activeBtn.classList.remove('text-gray-400');
+let seenMessages = JSON.parse(localStorage.getItem('techSeenMessagesV2') || '{}');
+let ticketPollBaselines = {};
+let techAlertsReady = false;
+
+function playAlertSound() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const g = ctx.createGain(); g.connect(ctx.destination); g.gain.value = 0.08;
+        const osc = ctx.createOscillator(); osc.frequency.value = 880; osc.connect(g);
+        osc.start(); osc.stop(ctx.currentTime + 0.15);
+        setTimeout(() => ctx.close(), 200);
+    } catch (e) {}
 }
 
-function renderTicketCard(ticket) {
-    const priorityClass = ticket.priority === 'high' ? 'priority-high' : ticket.priority === 'low' ? 'priority-low' : 'priority-normal';
-    const statusClass = `status-${ticket.status}`;
-    const createdDate = new Date(ticket.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    
-    let actionBtn = '';
-    if (ticket.status === 'open' && !ticket.assigned_tech_id) {
-        actionBtn = `<button onclick="claimTicket(${ticket.id})" class="claim-btn px-4 py-2 rounded-lg text-white text-sm font-semibold">
-            <i class="fa-solid fa-hand-pointer mr-1"></i>Claim Ticket
-        </button>`;
-    } else if (ticket.assigned_tech_id) {
-        actionBtn = `<button onclick="openStatusModal(${ticket.id})" class="px-4 py-2 rounded-lg bg-sf-2 hover:bg-sf-3 border border-bd text-white text-sm font-semibold transition-colors">
-            <i class="fa-solid fa-pen-to-square mr-1"></i>Update Status
-        </button>`;
+function markTicketSeen(id, msgId) {
+    if (!msgId) return;
+    const current = seenMessages[id] || 0;
+    if (msgId > current) {
+        seenMessages[id] = msgId;
+        localStorage.setItem('techSeenMessagesV2', JSON.stringify(seenMessages));
     }
-
-    const chatActive = activeChatTicketId === ticket.id ? ' active-chat' : '';
-
-    const num = ticketNum(ticket);
-    return `
-    <div class="ticket-card bg-sf rounded-xl border border-bd p-4 ${priorityClass}${chatActive}" data-ticket-id="${ticket.id}" data-ticket-number="${escapeHtml(num)}">
-        <div class="flex items-start justify-between gap-3 mb-3">
-            <div class="flex-1 min-w-0">
-                <span class="inline-flex items-center gap-1.5 font-mono text-sm font-bold text-violet-300 bg-violet-500/15 border border-violet-500/25 px-2.5 py-1 rounded-lg mb-2">
-                    <i class="fa-solid fa-hashtag text-[10px] text-violet-400"></i>${escapeHtml(num)}
-                </span>
-                <h4 class="font-semibold text-white truncate">${escapeHtml(ticket.title)}</h4>
-                <p class="text-xs text-gray-400 mt-1">Created ${createdDate}</p>
-            </div>
-            <span class="status-badge ${statusClass}">${getStatusLabel(ticket.status)}</span>
-        </div>
-        ${ticket.description ? `<p class="text-sm text-gray-400 mb-3 line-clamp-2">${escapeHtml(ticket.description)}</p>` : ''}
-        <div class="flex items-center justify-between gap-3">
-            <div class="flex items-center gap-2">
-                <span class="text-xs ${ticket.priority === 'high' ? 'text-red-400' : ticket.priority === 'low' ? 'text-emerald-400' : 'text-blue-400'}">
-                    <i class="fa-solid fa-flag mr-1"></i>${ticket.priority}
-                </span>
-                <span class="text-xs text-gray-500">&bull;</span>
-                <span class="text-xs text-gray-400">
-                    <i class="fa-solid fa-user mr-1"></i>${ticket.created_by_csr ? ticket.created_by_csr.display_name : 'Unknown'}
-                </span>
-            </div>
-            <div class="flex items-center gap-2">
-                <button onclick="openTicketChat(${ticket.id})" class="px-3 py-2 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 text-sm font-semibold transition-colors" title="Chat with CSR">
-                    <i class="fa-solid fa-comments mr-1"></i>Chat
-                </button>
-                ${actionBtn}
-            </div>
-        </div>
-    </div>`;
-}
-
-function getStatusLabel(status) {
-    const statusObj = statuses.find(s => s.name === status);
-    return statusObj ? statusObj.label : status;
-}
-
-function ticketNum(ticket) {
-    if (!ticket) return '';
-    return ticket.ticket_number || ('#' + ticket.id);
 }
 
 function escapeHtml(text) {
@@ -315,292 +272,495 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function loadTickets() {
-    const statusFilter = document.getElementById('filter-status')?.value || '';
-    let url = '/api/tickets';
-    if (statusFilter) url += `?status=${statusFilter}`;
+function ticketNum(ticket) {
+    if (!ticket) return '';
+    return ticket.ticket_number || ('#' + ticket.id);
+}
+
+function getStatusLabel(status) {
+    const s = statuses.find(x => x.name === status);
+    return s ? s.label : status;
+}
+
+function showNotification(msg, type='success') {
+    const id = Date.now();
+    const isErr = type === 'error';
+    const html = `
+        <div id="notif-${id}" class="pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-semibold transform transition-all translate-x-full ${isErr ? 'bg-red-500 text-white' : 'bg-gray-900 text-white'}">
+            <i class="fa-solid ${isErr ? 'fa-circle-exclamation' : 'fa-circle-check'}"></i>
+            <span>${escapeHtml(msg)}</span>
+        </div>
+    `;
+    const container = document.getElementById('notifications-container');
+    container.insertAdjacentHTML('beforeend', html);
+    const el = document.getElementById(`notif-${id}`);
+    requestAnimationFrame(() => {
+        el.classList.remove('translate-x-full');
+    });
+    setTimeout(() => {
+        el.classList.add('opacity-0');
+        setTimeout(() => el.remove(), 300);
+    }, 4000);
+}
+
+function showTab(tab) {
+    currentTab = tab;
     
-    fetch(url, { credentials: 'same-origin' })
+    // Style tabs
+    const tabs = ['queue', 'mine', 'all'];
+    tabs.forEach(t => {
+        const btn = document.getElementById(`tab-btn-${t}`);
+        const badge = document.getElementById(`${t}-count`);
+        if (t === tab) {
+            btn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-yellow-100 text-yellow-800 border border-yellow-200 whitespace-nowrap';
+            if(badge) badge.className = 'ml-1 opacity-80 bg-white px-1.5 rounded-full';
+        } else {
+            btn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-white text-gray-500 border border-transparent hover:bg-gray-50 whitespace-nowrap';
+            if(badge) badge.className = 'ml-1 opacity-80 bg-gray-100 text-gray-500 px-1.5 rounded-full';
+        }
+    });
+
+    document.getElementById('all-filters').style.display = tab === 'all' ? 'block' : 'none';
+    renderTicketList();
+}
+
+function loadTickets() {
+    const statusFilter = document.getElementById('filter-status').value;
+    let url = '/api/tickets';
+    if (statusFilter && currentTab === 'all') {
+        url += `?status=${statusFilter}`;
+    }
+    
+    fetch(url)
         .then(r => r.json())
         .then(data => {
+            let playedSound = false;
+            (data.tickets || []).forEach(t => {
+                const msgId = Number(t.latest_message_id || 0);
+                const prevId = Number(ticketPollBaselines[t.id] || 0);
+                ticketPollBaselines[t.id] = msgId;
+                if (!techAlertsReady) return;
+                if (t.latest_message_sender_type === 'csr' && msgId > prevId && activeChatTicketId !== t.id) {
+                    if (!playedSound) {
+                        playAlertSound();
+                        playedSound = true;
+                    }
+                }
+            });
+            techAlertsReady = true;
             tickets = data.tickets || [];
             statuses = data.statuses || [];
-            updateTicketLists();
+            updateCounts();
+            renderTicketList();
+            
             if (activeChatTicketId) {
-                const ticket = tickets.find(t => Number(t.id) === Number(activeChatTicketId));
-                if (ticket) renderTicketChatHeader(ticket);
+                const updated = tickets.find(t => t.id === activeChatTicketId);
+                if (updated) {
+                    renderTicketDetail(updated);
+                } else {
+                    closeTicketDetail();
+                }
             }
-        })
-        .catch(err => {
-            console.error('Failed to load tickets:', err);
         });
 }
 
-function updateTicketLists() {
-    const queueTickets = tickets.filter(t => t.status === 'open' && !t.assigned_tech_id);
+function updateCounts() {
     const myId = Number(document.body.dataset.userId || 0);
-    const myTickets = tickets.filter(t => Number(t.assigned_tech_id) === myId);
-    const allTickets = tickets;
-
-    document.getElementById('queue-tickets').innerHTML = queueTickets.length ? 
-        queueTickets.map(renderTicketCard).join('') :
-        '<div class="text-center py-12 text-gray-500"><i class="fa-solid fa-check-circle text-3xl mb-3"></i><p>No open tickets in queue</p></div>';
+    const qCount = tickets.filter(t => t.status === 'open' && !t.assigned_tech_id).length;
+    const mCount = tickets.filter(t => Number(t.assigned_tech_id) === myId).length;
     
-    document.getElementById('mine-tickets').innerHTML = myTickets.length ?
-        myTickets.map(renderTicketCard).join('') :
-        '<div class="text-center py-12 text-gray-500"><i class="fa-solid fa-inbox text-3xl mb-3"></i><p>No tickets assigned to you</p></div>';
+    document.getElementById('queue-count').textContent = qCount;
+    document.getElementById('mine-count').textContent = mCount;
+}
+
+function renderTicketList() {
+    const myId = Number(document.body.dataset.userId || 0);
+    let list = [];
     
-    document.getElementById('all-tickets').innerHTML = allTickets.length ?
-        allTickets.map(renderTicketCard).join('') :
-        '<div class="text-center py-12 text-gray-500"><i class="fa-solid fa-folder-open text-3xl mb-3"></i><p>No tickets found</p></div>';
-
-    document.getElementById('queue-count').textContent = queueTickets.length;
-    document.getElementById('mine-count').textContent = myTickets.length;
-
-    // Update stats
-    const activeTickets = myTickets.filter(t => t.status !== 'resolved' && t.status !== 'closed');
-    const resolvedToday = myTickets.filter(t => {
-        if (!t.resolved_at) return false;
-        const today = new Date().toDateString();
-        return new Date(t.resolved_at).toDateString() === today;
-    });
-
-    document.getElementById('stat-active').textContent = activeTickets.length;
-    document.getElementById('stat-resolved-today').textContent = resolvedToday.length;
-    document.getElementById('stat-total').textContent = myTickets.length;
-
-    // Update modal status options
-    const statusSelect = document.getElementById('modal-new-status');
-    statusSelect.innerHTML = statuses.map(s => `<option value="${s.name}">${s.label}</option>`).join('');
-}
-
-function claimTicket(ticketId) {
-    fetch(`/api/tickets/${ticketId}/claim`, { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                const num = data.ticket?.ticket_number || ticketNum(tickets.find(t => Number(t.id) === Number(ticketId)));
-                showNotification(num ? `${num} claimed successfully!` : 'Ticket claimed successfully!', 'success');
-                loadTickets();
-                if (Number(activeChatTicketId) === Number(ticketId)) loadTicketChatMessages();
-            } else {
-                showNotification(data.error || 'Failed to claim ticket', 'error');
-            }
-        })
-        .catch(err => {
-            showNotification('Failed to claim ticket', 'error');
-        });
-}
-
-function openStatusModal(ticketId) {
-    document.getElementById('modal-ticket-id').value = ticketId;
-    const ticket = tickets.find(t => Number(t.id) === Number(ticketId));
-    document.getElementById('modal-ticket-number').textContent = ticket ? ticketNum(ticket) : '';
-    document.getElementById('status-modal').classList.remove('hidden');
-}
-
-function closeStatusModal() {
-    document.getElementById('status-modal').classList.add('hidden');
-    document.getElementById('modal-notes').value = '';
-}
-
-function updateTicketStatus() {
-    const ticketId = document.getElementById('modal-ticket-id').value;
-    const newStatus = document.getElementById('modal-new-status').value;
-    const notes = document.getElementById('modal-notes').value;
-
-    fetch(`/api/tickets/${ticketId}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, notes: notes })
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            const num = data.ticket?.ticket_number || '';
-            showNotification(num ? `${num} status updated!` : 'Ticket status updated!', 'success');
-            closeStatusModal();
-            loadTickets();
-        } else {
-            showNotification(data.error || 'Failed to update status', 'error');
-        }
-    })
-    .catch(err => {
-        showNotification('Failed to update ticket status', 'error');
-    });
-}
-
-function showNotification(message, type) {
-    const notification = document.createElement('div');
-    notification.className = `fixed bottom-4 right-4 px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3 ${
-        type === 'success' ? 'bg-emerald-600' : 'bg-red-600'
-    } text-white font-semibold`;
-    notification.innerHTML = `<i class="fa-solid fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>${message}`;
-    document.body.appendChild(notification);
-    setTimeout(() => notification.remove(), 4000);
-}
-
-function closeTicketChat() {
-    activeChatTicketId = null;
-    document.getElementById('ticket-detail').classList.add('hidden');
-    if (ticketChatPollTimer) {
-        clearInterval(ticketChatPollTimer);
-        ticketChatPollTimer = null;
+    if (currentTab === 'queue') {
+        list = tickets.filter(t => t.status === 'open' && !t.assigned_tech_id);
+    } else if (currentTab === 'mine') {
+        list = tickets.filter(t => Number(t.assigned_tech_id) === myId);
+    } else {
+        const filter = document.getElementById('filter-status').value;
+        list = tickets.filter(t => !filter || t.status === filter);
     }
-    updateTicketLists();
-}
 
-function renderTicketChatHeader(ticket) {
-    const csrName = ticket.created_by_csr ? (ticket.created_by_csr.display_name || ticket.created_by_csr.email) : 'CSR';
-    const statusLabel = getStatusLabel(ticket.status);
-    const myId = Number(document.body.dataset.userId || 0);
-    document.getElementById('ticket-chat-header').innerHTML = `
-        <div class="flex items-start justify-between gap-2 mb-3">
-            <div class="min-w-0">
-                <span class="inline-flex items-center gap-1.5 font-mono text-sm font-bold text-violet-300 bg-violet-500/15 border border-violet-500/25 px-2.5 py-1 rounded-lg mb-2">
-                    <i class="fa-solid fa-hashtag text-[10px] text-violet-400"></i>${escapeHtml(ticketNum(ticket))}
-                </span>
-                <h3 class="font-bold text-white truncate">${escapeHtml(ticket.title)}</h3>
-                <p class="text-xs text-gray-400 mt-1">${statusLabel} &bull; CSR: ${escapeHtml(csrName)}</p>
-            </div>
-            <button type="button" onclick="closeTicketChat()" class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-sf hover:bg-sf-2 text-gray-400 hover:text-white">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        </div>
-        ${ticket.description ? `<p class="text-sm text-gray-400 mb-3 line-clamp-3">${escapeHtml(ticket.description)}</p>` : ''}
-        <div class="flex items-center gap-2 mb-2">
-            ${ticket.status === 'open' && !ticket.assigned_tech_id ? `<button onclick="claimTicket(${ticket.id})" class="claim-btn flex-1 px-3 py-2 rounded-lg text-white text-sm font-semibold"><i class="fa-solid fa-hand-pointer mr-1"></i>Claim</button>` : ''}
-            ${Number(ticket.assigned_tech_id) === myId ? `<button onclick="openStatusModal(${ticket.id})" class="flex-1 px-3 py-2 rounded-lg bg-sf-2 border border-bd text-white text-sm font-semibold"><i class="fa-solid fa-pen-to-square mr-1"></i>Status</button>` : ''}
-        </div>
-        <p class="text-xs font-semibold text-purple-300 flex items-center gap-1.5"><i class="fa-solid fa-comments"></i> Chat with CSR</p>
-    `;
-}
+    const container = document.getElementById('ticket-list-container');
+    document.getElementById('col1-count').textContent = `${list.length} tickets`;
 
-function renderTicketChatMessages(messages) {
-    const container = document.getElementById('tech-chat-messages');
-    if (!container) return;
-
-    if (!messages.length) {
-        container.innerHTML = '<div class="text-xs text-gray-500 text-center py-6">No messages yet. Reply to the CSR about this ticket.</div>';
+    if (!list.length) {
+        container.innerHTML = `<div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-inbox text-3xl mb-3 text-gray-200 block"></i> No tickets found</div>`;
         return;
     }
 
-    container.innerHTML = messages.map(msg => {
-        const isMine = msg.sender_type === 'tech';
-        const time = new Date(msg.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    container.innerHTML = list.map(ticket => {
+        const pClass = ticket.priority === 'high' ? 'priority-high' : ticket.priority === 'low' ? 'priority-low' : 'priority-normal';
+        const sClass = `status-${ticket.status}`;
+        const activeClass = ticket.id === activeChatTicketId ? 'active' : 'bg-white';
+        const date = new Date(ticket.created_at).toLocaleDateString(undefined, {month:'short', day:'numeric'});
+        
+        const isUnread = ticket.latest_message_sender_type === 'csr' && (!seenMessages[ticket.id] || seenMessages[ticket.id] < ticket.latest_message_id);
+        const unreadIndicator = isUnread ? `<span class="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-sm"></span>` : '';
+        const borderClass = isUnread ? 'border-red-500 border-2 bg-red-50' : 'border-gray-200 border';
+        
+        let metaHtml = '';
+        if (ticket.assigned_tech_id) {
+            const name = ticket.assigned_tech ? (ticket.assigned_tech.display_name || 'Tech') : 'Tech';
+            metaHtml = `<span class="flex items-center gap-1"><i class="fa-solid fa-user-gear text-[9px]"></i> ${escapeHtml(name)}</span>`;
+        } else {
+            metaHtml = `<span class="flex items-center gap-1 text-yellow-600"><i class="fa-solid fa-hand-pointer text-[9px]"></i> Unassigned</span>`;
+        }
+
         return `
-            <div class="flex ${isMine ? 'justify-end' : 'justify-start'}">
-                <div class="max-w-[90%] rounded-2xl px-3 py-2 ${isMine ? 'bg-purple-600/30 border border-purple-500/30' : 'bg-sf-2 border border-bd'}">
-                    <div class="text-[10px] text-gray-400 mb-1 flex items-center gap-1.5">
-                        <i class="fa-solid fa-${isMine ? 'wrench' : 'headset'}"></i>
-                        <span class="font-semibold text-gray-300">${escapeHtml(msg.sender_name || (isMine ? 'You' : 'CSR'))}</span>
-                        <span>&bull; ${time}</span>
-                    </div>
-                    <p class="text-sm text-white whitespace-pre-wrap break-words">${escapeHtml(msg.content)}</p>
+        <div onclick="openTicketDetail(${ticket.id})" class="ticket-card ${activeClass} rounded-xl ${borderClass} p-3 cursor-pointer shadow-sm relative overflow-hidden group">
+            ${unreadIndicator}
+            <div class="absolute left-0 top-0 bottom-0 w-1 ${pClass}"></div>
+            <div class="flex justify-between items-start mb-2 pl-2">
+                <span class="font-mono text-[11px] font-bold text-gray-500">${escapeHtml(ticketNum(ticket))}</span>
+                <span class="status-badge ${sClass}">${getStatusLabel(ticket.status)}</span>
+            </div>
+            <h3 class="text-sm font-bold text-gray-900 mb-1 pl-2 truncate" title="${escapeHtml(ticket.title)}">${escapeHtml(ticket.title)}</h3>
+            <div class="flex items-center justify-between pl-2 mt-3 text-[10px] text-gray-500 font-semibold uppercase tracking-wider">
+                ${metaHtml}
+                <span class="text-gray-400">${date}</span>
+            </div>
+        </div>
+        `;
+    }).join('');
+}
+
+function openTicketDetail(id) {
+    activeChatTicketId = id;
+    renderTicketList();
+    
+    // UI mobile switch
+    document.getElementById('col-list').classList.add('hidden', 'lg:flex');
+    document.getElementById('col-detail').classList.remove('hidden');
+    document.getElementById('detail-blank').classList.add('hidden');
+    document.getElementById('detail-active').classList.remove('hidden');
+    
+    const ticket = tickets.find(t => t.id === id);
+    if(ticket) {
+        if (ticket.latest_message_sender_type === 'csr') {
+            markTicketSeen(id, ticket.latest_message_id);
+            ticketPollBaselines[id] = Number(ticket.latest_message_id || 0);
+        }
+        renderTicketDetail(ticket);
+        loadTicketMessages(id);
+    }
+}
+
+function closeTicketDetailMobile() {
+    document.getElementById('col-list').classList.remove('hidden');
+    document.getElementById('col-detail').classList.add('hidden', 'lg:flex');
+}
+
+function closeTicketDetail() {
+    activeChatTicketId = null;
+    document.getElementById('detail-blank').classList.remove('hidden');
+    document.getElementById('detail-active').classList.add('hidden');
+    renderTicketList();
+}
+
+function renderTicketDetail(ticket) {
+    const header = document.getElementById('detail-header');
+    const myId = Number(document.body.dataset.userId || 0);
+    const isMine = Number(ticket.assigned_tech_id) === myId;
+    
+    const csrName = ticket.created_by_csr ? (ticket.created_by_csr.display_name || ticket.created_by_csr.email) : 'Unknown CSR';
+    const customerName = ticket.chat && ticket.chat.visitor_name ? ticket.chat.visitor_name : 'Customer';
+    const customerId = ticket.chat && ticket.chat.visitor_id ? ticket.chat.visitor_id : 'No ID';
+
+    let actions = '';
+    if (ticket.status === 'open' && !ticket.assigned_tech_id) {
+        actions = `<button onclick="claimTicket(${ticket.id})" class="px-4 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-bold shadow-sm transition-colors"><i class="fa-solid fa-hand-pointer mr-1.5"></i>Claim Ticket</button>`;
+    } else if (isMine) {
+        actions = `
+            <button onclick="openStatusModal(${ticket.id})" class="px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold transition-colors shadow-sm"><i class="fa-solid fa-pen-to-square mr-1.5 text-blue-500"></i>Update Status</button>
+            <button onclick="openReferModal(${ticket.id})" class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"><i class="fa-solid fa-share-nodes mr-1.5"></i>Refer</button>
+        `;
+    }
+
+    header.innerHTML = `
+        <div class="flex flex-col md:flex-row md:items-start justify-between gap-4">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="status-badge status-${ticket.status}">${getStatusLabel(ticket.status)}</span>
+                    <span class="font-mono text-xs font-bold text-gray-400">${escapeHtml(ticketNum(ticket))}</span>
                 </div>
+                <h1 class="text-xl font-extrabold text-gray-900 mb-2 leading-tight">${escapeHtml(ticket.title)}</h1>
+                ${ticket.description ? `<p class="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-xl border border-gray-100">${escapeHtml(ticket.description)}</p>` : ''}
+                
+                <div class="flex flex-wrap gap-4 text-xs">
+                    <div class="bg-blue-50 border border-blue-100 px-3 py-2 rounded-lg flex items-center gap-2 text-blue-800">
+                        <i class="fa-solid fa-user-circle text-blue-400 text-sm"></i>
+                        <div>
+                            <div class="font-bold uppercase tracking-wider text-[9px] text-blue-500 mb-0.5">Associated Customer</div>
+                            <div class="font-semibold">${escapeHtml(customerName)} <span class="text-blue-400 font-normal ml-1">(${escapeHtml(customerId)})</span></div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 border border-gray-100 px-3 py-2 rounded-lg flex items-center gap-2 text-gray-700">
+                        <i class="fa-solid fa-headset text-gray-400 text-sm"></i>
+                        <div>
+                            <div class="font-bold uppercase tracking-wider text-[9px] text-gray-500 mb-0.5">Created By CSR</div>
+                            <div class="font-semibold">${escapeHtml(csrName)}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                ${actions}
+            </div>
+        </div>
+    `;
+
+    renderHistory(ticket);
+}
+
+function renderHistory(ticket) {
+    const histDiv = document.getElementById('detail-history');
+    const hist = ticket.assignment_history || [];
+    if (!hist.length) {
+        histDiv.innerHTML = '';
+        return;
+    }
+
+    const items = hist.map(item => {
+        const time = new Date(item.created_at).toLocaleString(undefined, {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+        const note = item.notes ? `<div class="mt-1.5 text-xs text-gray-600 bg-white border border-gray-100 p-2 rounded-lg italic">"${escapeHtml(item.notes)}"</div>` : '';
+        const by = item.changed_by_name ? `by <span class="font-semibold">${escapeHtml(item.changed_by_name)}</span>` : '';
+        
+        let actionTxt = '';
+        if (!item.old_assigned_tech && item.new_assigned_tech) {
+            actionTxt = `Claimed by <span class="font-semibold text-gray-900">${escapeHtml(item.new_assigned_tech.display_name||'Tech')}</span>`;
+        } else if (item.old_assigned_tech && item.new_assigned_tech) {
+            actionTxt = `Referred from ${escapeHtml(item.old_assigned_tech.display_name||'Tech')} to <span class="font-semibold text-gray-900">${escapeHtml(item.new_assigned_tech.display_name||'Tech')}</span>`;
+        } else {
+            actionTxt = `Updated`;
+        }
+
+        return `
+            <div class="relative pl-6 pb-4 border-l-2 border-gray-200 last:border-l-0 last:pb-0">
+                <div class="absolute w-2.5 h-2.5 bg-gray-300 rounded-full left-[-5px] top-1.5 ring-4 ring-gray-50"></div>
+                <div class="text-xs text-gray-400 mb-0.5">${time} ${by}</div>
+                <div class="text-sm text-gray-700">${actionTxt}</div>
+                ${note}
             </div>
         `;
     }).join('');
 
-    const latest = messages[messages.length - 1];
-    if (latest && latest.id !== lastTicketChatMessageId) {
-        lastTicketChatMessageId = latest.id;
-        container.scrollTop = container.scrollHeight;
+    histDiv.innerHTML = `
+        <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 shadow-sm mb-4">
+            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Ticket History</h4>
+            <div class="ml-2">${items}</div>
+        </div>
+    `;
+}
+
+function loadTicketMessages(id) {
+    if (activeChatTicketId !== id) return;
+    fetch(`/api/tickets/${id}/messages`)
+        .then(r => r.json())
+        .then(data => {
+            if (activeChatTicketId === id && data.messages) {
+                renderMessages(data.messages);
+                const latest = data.messages[data.messages.length - 1];
+                if (latest && latest.sender_type === 'csr') {
+                    const prevSeen = seenMessages[id] || 0;
+                    if (latest.id > prevSeen) {
+                        markTicketSeen(id, latest.id);
+                        renderTicketList(); // remove unread indicator
+                    }
+                }
+            }
+        });
+}
+
+function renderMessages(messages) {
+    const container = document.getElementById('detail-chat-messages');
+    if (!messages.length) {
+        container.innerHTML = `<div class="text-center text-sm text-gray-400 italic py-4">No messages yet. Say hello to the CSR!</div>`;
+        return;
+    }
+
+    let html = '';
+    messages.forEach(msg => {
+        const isMine = msg.sender_type === 'tech';
+        const time = new Date(msg.created_at).toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
+        
+        if (isMine) {
+            html += `
+            <div class="flex justify-end ml-10">
+                <div class="bg-blue-500 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 shadow-sm max-w-[85%]">
+                    <p class="text-sm whitespace-pre-wrap break-words">${escapeHtml(msg.content)}</p>
+                    <div class="text-[10px] text-blue-200 text-right mt-1 font-medium">${time}</div>
+                </div>
+            </div>`;
+        } else {
+            const name = msg.sender_name || 'CSR';
+            html += `
+            <div class="flex justify-start mr-10">
+                <div class="bg-white border border-gray-200 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm max-w-[85%]">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1.5"><i class="fa-solid fa-headset text-gray-400"></i> ${escapeHtml(name)}</div>
+                    <p class="text-sm whitespace-pre-wrap break-words leading-relaxed">${escapeHtml(msg.content)}</p>
+                    <div class="text-[10px] text-gray-400 mt-1 font-medium">${time}</div>
+                </div>
+            </div>`;
+        }
+    });
+    
+    container.innerHTML = html;
+    
+    // Auto scroll to bottom
+    const scrollArea = document.getElementById('detail-scroll-area');
+    if (scrollArea) {
+        scrollArea.scrollTop = scrollArea.scrollHeight;
     }
 }
 
-function openTicketChat(ticketId) {
-    activeChatTicketId = Number(ticketId);
-    lastTicketChatMessageId = 0;
-    document.getElementById('ticket-detail').classList.remove('hidden');
-    const ticket = tickets.find(t => Number(t.id) === activeChatTicketId);
-    if (ticket) renderTicketChatHeader(ticket);
-    document.getElementById('tech-chat-messages').innerHTML = '<div class="text-xs text-gray-500 text-center py-6">Loading messages...</div>';
-    loadTicketChatMessages();
-    if (ticketChatPollTimer) clearInterval(ticketChatPollTimer);
-    ticketChatPollTimer = setInterval(loadTicketChatMessages, 4000);
-    updateTicketLists();
-}
-
-function loadTicketChatMessages() {
-    if (!activeChatTicketId) return;
-    const input = document.getElementById('tech-chat-input');
-    const draft = input ? input.value : '';
-    const hadFocus = document.activeElement === input;
-
-    fetch(`/api/tickets/${activeChatTicketId}/messages`, { credentials: 'same-origin' })
+function claimTicket(id) {
+    fetch(`/api/tickets/${id}/claim`, { method: 'POST' })
         .then(r => r.json())
         .then(data => {
-            if (data.error) {
-                showNotification(data.error, 'error');
-                return;
+            if (data.success) {
+                showNotification('Ticket claimed!');
+                loadTickets();
+            } else {
+                showNotification(data.error || 'Failed to claim', 'error');
             }
-            const ticket = data.ticket || tickets.find(t => Number(t.id) === Number(activeChatTicketId));
-            if (ticket) {
-                renderTicketChatHeader(ticket);
-                renderTicketChatMessages(data.messages || []);
-            }
-            if (input && draft) {
-                input.value = draft;
-                if (hadFocus) input.focus();
-            }
-        })
-        .catch(() => showNotification('Failed to load messages', 'error'));
+        });
 }
 
 function sendTicketChatMessage() {
     if (!activeChatTicketId) return;
     const input = document.getElementById('tech-chat-input');
-    if (!input) return;
     const content = input.value.trim();
     if (!content) return;
-
-    const sendBtn = document.getElementById('tech-chat-send-btn');
-    if (sendBtn) sendBtn.disabled = true;
-
+    
+    const btn = document.getElementById('tech-chat-send-btn');
+    btn.disabled = true;
+    
     fetch(`/api/tickets/${activeChatTicketId}/messages`, {
         method: 'POST',
-        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-    })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                input.value = '';
-                loadTicketChatMessages();
-            } else {
-                showNotification(data.error || 'Failed to send', 'error');
-            }
-        })
-        .catch(() => showNotification('Failed to send message', 'error'))
-        .finally(() => {
-            if (sendBtn) sendBtn.disabled = false;
-            input.focus();
-        });
-}
-
-function initTicketChatCompose() {
-    const input = document.getElementById('tech-chat-input');
-    const sendBtn = document.getElementById('tech-chat-send-btn');
-    if (!input || !sendBtn) return;
-    sendBtn.addEventListener('click', sendTicketChatMessage);
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendTicketChatMessage();
+        body: JSON.stringify({ content })
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            input.value = '';
+            loadTicketMessages(activeChatTicketId);
+        } else {
+            showNotification(data.error || 'Failed to send', 'error');
         }
+    }).finally(() => {
+        btn.disabled = false;
+        input.focus();
     });
 }
 
-initTicketChatCompose();
+document.getElementById('tech-chat-send-btn').addEventListener('click', sendTicketChatMessage);
+document.getElementById('tech-chat-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendTicketChatMessage();
+    }
+});
 
-// Initial load
+// Modals
+function openStatusModal(id) {
+    document.getElementById('modal-ticket-id').value = id;
+    const ticket = tickets.find(t => t.id === id);
+    document.getElementById('modal-ticket-number').textContent = ticket ? ticketNum(ticket) : '';
+    document.getElementById('modal-new-status').value = ticket ? ticket.status : 'open';
+    document.getElementById('modal-notes').value = '';
+    
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    document.getElementById('status-modal').classList.remove('hidden');
+}
+
+function closeStatusModal() {
+    document.getElementById('modal-overlay').classList.add('hidden');
+    document.getElementById('status-modal').classList.add('hidden');
+}
+
+function updateTicketStatus() {
+    const id = document.getElementById('modal-ticket-id').value;
+    const status = document.getElementById('modal-new-status').value;
+    const notes = document.getElementById('modal-notes').value.trim();
+    if(!notes) { showNotification('Notes required', 'error'); return; }
+    
+    fetch(`/api/tickets/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, notes })
+    }).then(r => r.json()).then(data => {
+        if(data.success) {
+            showNotification('Status updated');
+            closeStatusModal();
+            loadTickets();
+        } else showNotification(data.error||'Error', 'error');
+    });
+}
+
+function loadTechAccounts() {
+    fetch('/api/tech/tech-accounts')
+    .then(r => r.json())
+    .then(data => { techAccounts = data.techs || []; });
+}
+
+function openReferModal(id) {
+    document.getElementById('refer-ticket-id').value = id;
+    const ticket = tickets.find(t => t.id === id);
+    document.getElementById('refer-ticket-number').textContent = ticket ? ticketNum(ticket) : '';
+    document.getElementById('refer-notes').value = '';
+    
+    const select = document.getElementById('refer-target-tech');
+    const myId = Number(document.body.dataset.userId || 0);
+    const options = techAccounts.filter(t => Number(t.id) !== myId && t.is_active !== false);
+    
+    if(options.length) {
+        select.innerHTML = '<option value="">Select tech person...</option>' + options.map(t => `<option value="${t.id}">${escapeHtml(t.display_name||t.email)}</option>`).join('');
+    } else {
+        select.innerHTML = '<option value="">No other active techs</option>';
+    }
+
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    document.getElementById('refer-modal').classList.remove('hidden');
+}
+
+function closeReferModal() {
+    document.getElementById('modal-overlay').classList.add('hidden');
+    document.getElementById('refer-modal').classList.add('hidden');
+}
+
+function referTicket() {
+    const id = document.getElementById('refer-ticket-id').value;
+    const techId = document.getElementById('refer-target-tech').value;
+    const notes = document.getElementById('refer-notes').value.trim();
+    
+    if(!techId) { showNotification('Select a tech', 'error'); return; }
+    
+    fetch(`/api/tickets/${id}/refer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_tech_id: techId, notes })
+    }).then(r => r.json()).then(data => {
+        if(data.success) {
+            showNotification('Ticket referred');
+            closeReferModal();
+            closeTicketDetail(); // no longer ours
+        } else showNotification(data.error||'Error', 'error');
+    });
+}
+
+// Polling and Init
+loadTechAccounts();
 loadTickets();
+setInterval(() => {
+    loadTickets();
+    if(activeChatTicketId) loadTicketMessages(activeChatTicketId);
+}, 5000);
 
-// Poll for updates every 5 seconds
-setInterval(loadTickets, 5000);
 </script>
-
 </body>
 </html>

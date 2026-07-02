@@ -11,8 +11,9 @@ from urllib.request import Request, urlopen
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import and_, func, inspect, text, update
-from sqlalchemy.orm import joinedload
+from sqlalchemy import and_, func, inspect, or_, text, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
@@ -577,12 +578,14 @@ class Ticket(db.Model):
     priority = db.Column(db.String(20), nullable=False, default="normal")
     status = db.Column(db.String(50), nullable=False, default="open", index=True)
     created_by_csr_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    chat_id = db.Column(db.Integer, db.ForeignKey("chat_conversations.id"), index=True)
     assigned_tech_id = db.Column(db.Integer, db.ForeignKey("tech_team_accounts.id"), index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
     resolved_at = db.Column(db.DateTime)
 
     created_by_csr = db.relationship("User", foreign_keys=[created_by_csr_id])
+    chat_conversation = db.relationship("ChatConversation", foreign_keys=[chat_id])
     assigned_tech = db.relationship("TechTeamAccount", back_populates="claimed_tickets")
     status_logs = db.relationship(
         "TicketStatusLog",
@@ -605,6 +608,8 @@ class TicketStatusLog(db.Model):
     ticket_id = db.Column(db.Integer, db.ForeignKey("tickets.id"), nullable=False, index=True)
     old_status = db.Column(db.String(50))
     new_status = db.Column(db.String(50), nullable=False)
+    old_assigned_tech_id = db.Column(db.Integer)
+    new_assigned_tech_id = db.Column(db.Integer)
     changed_by_user_id = db.Column(db.Integer)
     changed_by_role = db.Column(db.String(20))
     notes = db.Column(db.Text)
@@ -1143,9 +1148,8 @@ def append_chat_message(chat, sender_type, content, created_at=None, image_attac
     return message
 
 
-def get_chat_preview(chat):
-    if chat.messages:
-        latest_message = chat.messages[-1]
+def get_chat_preview(chat, latest_message=None):
+    if latest_message is not None:
         attachments = deserialize_image_attachments(latest_message.image_attachments)
         if latest_message.content and attachments:
             return f"{latest_message.content} [image]"
@@ -1251,11 +1255,13 @@ def serialize_message(message):
     )
 
 
-def serialize_chat(chat, current_user, message_count=None):
+def serialize_chat(chat, current_user, message_count=None, latest_message=None):
     assigned_name = chat.assigned_csr.display_name or chat.assigned_csr.email if chat.assigned_csr else None
     is_csr_actor = isinstance(current_user, User) and getattr(current_user, "role", None) in ASSIGNABLE_ROLES
     is_mine = bool(is_csr_actor and chat.assigned_csr_id == current_user.id)
     is_resolved = chat.status in RESOLVED_CHAT_STATUSES
+    if message_count is None:
+        message_count = ChatMessage.query.filter_by(chat_id=chat.id).count()
 
     if is_resolved:
         ownership_bucket = "resolved"
@@ -1287,7 +1293,7 @@ def serialize_chat(chat, current_user, message_count=None):
         "source": chat.source,
         "reverted_reason": chat.reverted_reason,
         "last_customer_message": chat.last_customer_message,
-        "preview": get_chat_preview(chat),
+        "preview": get_chat_preview(chat, latest_message=latest_message),
         "assigned_csr_id": chat.assigned_csr_id,
         "assigned_csr": serialize_user(chat.assigned_csr) if chat.assigned_csr else None,
         "assigned_label": assigned_name,
@@ -1295,7 +1301,9 @@ def serialize_chat(chat, current_user, message_count=None):
         "reverted_at": isoformat_or_none(chat.reverted_at),
         "last_activity_at": isoformat_or_none(chat.last_activity_at),
         "resolved_at": isoformat_or_none(chat.resolved_at),
-        "message_count": message_count if message_count is not None else len(chat.messages),
+        "message_count": message_count,
+        "latest_message_id": latest_message.id if latest_message else None,
+        "latest_sender_type": latest_message.sender_type if latest_message else None,
         "ownership_bucket": ownership_bucket,
         "is_active": chat.status in ACTIVE_CHAT_STATUSES,
         "is_resolved": is_resolved,
@@ -1391,16 +1399,20 @@ def build_resolution_report(csr_users):
 
 ADMIN_DASHBOARD_PAGE_SCOPES = {
     "overview": {"summary", "csr_users", "available_csr_users", "reports"},
-    "credentials": {"integration"},
+    # "credentials": {"integration"},  # Credentials tab temporarily disabled
     "knowledge-base": set(),
     "team": {"csr_users", "available_csr_users", "reports"},
+    "tech": set(),
     "chats": {"chats"},
-    "activity": {"recent_activity"},
+    "activity": set(),
+    "account": set(),
 }
 
 
 ADMIN_CHATS_DEFAULT_PER_PAGE = 20
 ADMIN_CHATS_MAX_PER_PAGE = 100
+ADMIN_ACTIVITY_DEFAULT_BATCH = 5
+ADMIN_ACTIVITY_MAX_BATCH = 50
 
 
 def get_message_counts_for_chats(chat_ids):
@@ -1418,6 +1430,24 @@ def get_message_counts_for_chats(chat_ids):
         .all()
     )
     return {chat_id: count for chat_id, count in rows}
+
+
+def get_latest_messages_for_chats(chat_ids):
+    """Return {chat_id: latest_message} without loading full transcripts."""
+    if not chat_ids:
+        return {}
+    latest_ids = (
+        db.session.query(ChatMessage.chat_id, func.max(ChatMessage.id).label("latest_id"))
+        .filter(ChatMessage.chat_id.in_(list(chat_ids)))
+        .group_by(ChatMessage.chat_id)
+        .subquery()
+    )
+    rows = (
+        db.session.query(ChatMessage)
+        .join(latest_ids, ChatMessage.id == latest_ids.c.latest_id)
+        .all()
+    )
+    return {message.chat_id: message for message in rows}
 
 
 def build_admin_dashboard_payload(current_admin, page=None, chat_page=1, chat_per_page=ADMIN_CHATS_DEFAULT_PER_PAGE):
@@ -1539,9 +1569,16 @@ def build_admin_dashboard_payload(current_admin, page=None, chat_page=1, chat_pe
             .limit(per_page)
             .all()
         )
-        counts = get_message_counts_for_chats([chat.id for chat in chats])
+        chat_ids = [chat.id for chat in chats]
+        counts = get_message_counts_for_chats(chat_ids)
+        latest_messages = get_latest_messages_for_chats(chat_ids)
         payload["chats"] = [
-            serialize_chat(chat, current_admin, message_count=counts.get(chat.id, 0))
+            serialize_chat(
+                chat,
+                current_admin,
+                message_count=counts.get(chat.id, 0),
+                latest_message=latest_messages.get(chat.id),
+            )
             for chat in chats
         ]
         payload["chats_pagination"] = {
@@ -1554,23 +1591,52 @@ def build_admin_dashboard_payload(current_admin, page=None, chat_page=1, chat_pe
         }
 
     if include_all or "recent_activity" in scope:
-        recent_events = (
-            ChatAssignmentEvent.query
-            .options(
-                joinedload(ChatAssignmentEvent.from_csr),
-                joinedload(ChatAssignmentEvent.to_csr),
-                joinedload(ChatAssignmentEvent.acted_by),
-            )
-            .order_by(
-                ChatAssignmentEvent.created_at.desc(),
-                ChatAssignmentEvent.id.desc(),
-            )
-            .limit(120)
-            .all()
-        )
-        payload["recent_activity"] = [serialize_assignment_event(event) for event in recent_events]
+        payload["recent_activity"] = get_admin_activity_events(
+            limit=ADMIN_ACTIVITY_DEFAULT_BATCH,
+            offset=0,
+        )["events"]
 
     return payload
+
+
+def get_admin_activity_events(limit=None, offset=0):
+    try:
+        batch_limit = int(limit or ADMIN_ACTIVITY_DEFAULT_BATCH)
+    except (TypeError, ValueError):
+        batch_limit = ADMIN_ACTIVITY_DEFAULT_BATCH
+    try:
+        batch_offset = max(0, int(offset or 0))
+    except (TypeError, ValueError):
+        batch_offset = 0
+    batch_limit = max(1, min(ADMIN_ACTIVITY_MAX_BATCH, batch_limit))
+
+    total = ChatAssignmentEvent.query.count()
+    events = (
+        ChatAssignmentEvent.query
+        .options(
+            joinedload(ChatAssignmentEvent.from_csr),
+            joinedload(ChatAssignmentEvent.to_csr),
+            joinedload(ChatAssignmentEvent.acted_by),
+        )
+        .order_by(
+            ChatAssignmentEvent.created_at.desc(),
+            ChatAssignmentEvent.id.desc(),
+        )
+        .offset(batch_offset)
+        .limit(batch_limit)
+        .all()
+    )
+    loaded = batch_offset + len(events)
+    return {
+        "events": [serialize_assignment_event(event) for event in events],
+        "pagination": {
+            "total": total,
+            "offset": batch_offset,
+            "limit": batch_limit,
+            "loaded": loaded,
+            "has_more": loaded < total,
+        },
+    }
 
 
 CSR_ACTIVE_CHATS_LIMIT = 120
@@ -1592,7 +1658,9 @@ def build_csr_dashboard_payload(current_user):
         .limit(CSR_ACTIVE_CHATS_LIMIT)
         .all()
     )
-    chat_counts = get_message_counts_for_chats([chat.id for chat in chats])
+    chat_ids = [chat.id for chat in chats]
+    chat_counts = get_message_counts_for_chats(chat_ids)
+    latest_messages = get_latest_messages_for_chats(chat_ids)
 
     support_user_rows = sorted(
         get_support_user_rows(available_only=False),
@@ -1625,13 +1693,28 @@ def build_csr_dashboard_payload(current_user):
             ).count(),
         },
         "csrs": support_users,
-        "chats": [serialize_chat(chat, current_user, message_count=chat_counts.get(chat.id, 0)) for chat in chats],
+        "chats": [
+            serialize_chat(
+                chat,
+                current_user,
+                message_count=chat_counts.get(chat.id, 0),
+                latest_message=latest_messages.get(chat.id),
+            )
+            for chat in chats
+        ],
     }
 
 
-def build_dashboard_payload(current_actor):
+def get_request_dashboard_page():
+    page = (request.args.get("page") or request.headers.get("X-Admin-Page") or "").strip()
+    if page in ADMIN_DASHBOARD_PAGE_SCOPES:
+        return page
+    return None
+
+
+def build_dashboard_payload(current_actor, page=None):
     if isinstance(current_actor, AdminAccount):
-        return build_admin_dashboard_payload(current_actor)
+        return build_admin_dashboard_payload(current_actor, page=page)
     return build_csr_dashboard_payload(current_actor)
 
 
@@ -1786,6 +1869,24 @@ def ensure_schema():
                 connection.execute(
                     text("CREATE UNIQUE INDEX IF NOT EXISTS ix_tickets_ticket_number ON tickets (ticket_number)")
                 )
+        ticket_columns = {column["name"] for column in inspector.get_columns("tickets")}
+        if "chat_id" not in ticket_columns:
+            with db.engine.begin() as connection:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN chat_id INTEGER"))
+                connection.execute(
+                    text("CREATE INDEX IF NOT EXISTS ix_tickets_chat_id ON tickets (chat_id)")
+                )
+
+    if "ticket_status_logs" in table_names:
+        log_columns = {column["name"] for column in inspector.get_columns("ticket_status_logs")}
+        log_column_updates = {
+            "old_assigned_tech_id": "ALTER TABLE ticket_status_logs ADD COLUMN old_assigned_tech_id INTEGER",
+            "new_assigned_tech_id": "ALTER TABLE ticket_status_logs ADD COLUMN new_assigned_tech_id INTEGER",
+        }
+        with db.engine.begin() as connection:
+            for column_name, statement in log_column_updates.items():
+                if column_name not in log_columns:
+                    connection.execute(text(statement))
 
 
 def generate_ticket_number():
@@ -1803,12 +1904,44 @@ def generate_unique_ticket_number(max_attempts=30):
     return f"TCK_{random.randint(100000, 999999)}"
 
 
-def email_in_use(email):
+def find_email_owner(email):
     normalized_email = (email or "").strip().lower()
-    return bool(
-        AdminAccount.query.filter_by(email=normalized_email).first()
-        or User.query.filter_by(email=normalized_email).first()
-    )
+    if not normalized_email:
+        return None
+
+    admin = AdminAccount.query.filter_by(email=normalized_email).first()
+    if admin:
+        return {
+            "type": "admin",
+            "label": "Admin",
+            "id": admin.id,
+            "display_name": admin.display_name or admin.email,
+        }
+
+    user = User.query.filter_by(email=normalized_email).first()
+    if user:
+        role_label = "CSR" if normalize_role(user.role) == "csr" else normalize_role(user.role).replace("_", " ").title()
+        return {
+            "type": "user",
+            "label": role_label,
+            "id": user.id,
+            "display_name": user.display_name or user.email,
+        }
+
+    tech = TechTeamAccount.query.filter_by(email=normalized_email).first()
+    if tech:
+        return {
+            "type": "tech",
+            "label": "Technical Team",
+            "id": tech.id,
+            "display_name": tech.display_name or tech.email,
+        }
+
+    return None
+
+
+def email_in_use(email):
+    return bool(find_email_owner(email))
 
 
 def migrate_legacy_admins():
@@ -1903,7 +2036,7 @@ def render_admin_dashboard_page(page, title, copy):
         admin_page=page,
         admin_page_title=title,
         admin_page_copy=copy,
-        dashboard_enabled=page != "knowledge-base",
+        dashboard_enabled=page not in {"knowledge-base", "tech", "activity", "account"},
         knowledge_base_updater_url=KNOWLEDGE_BASE_UPDATER_URL,
     )
 
@@ -1924,14 +2057,15 @@ def admin_overview():
     )
 
 
-@app.route("/admin/dashboard/credentials")
-@admin_required
-def admin_credentials():
-    return render_admin_dashboard_page(
-        "credentials",
-        "Integration Credentials",
-        "Manage widget settings, embed configuration, and generated CSR preview output.",
-    )
+# Credentials tab temporarily disabled
+# @app.route("/admin/dashboard/credentials")
+# @admin_required
+# def admin_credentials():
+#     return render_admin_dashboard_page(
+#         "credentials",
+#         "Integration Credentials",
+#         "Manage widget settings, embed configuration, and generated CSR preview output.",
+#     )
 
 
 @app.route("/admin/dashboard/knowledge-base")
@@ -1939,8 +2073,8 @@ def admin_credentials():
 def admin_knowledge_base():
     return render_admin_dashboard_page(
         "knowledge-base",
-        "Knowledge Base Updater",
-        "Open and use the hosted uploader for buyer, organizer, and event policy knowledge files.",
+        "Knowledge Base",
+        "Upload buyer, organizer, and policy knowledge files using the hosted uploader form.",
     )
 
 
@@ -1970,7 +2104,28 @@ def admin_activity():
     return render_admin_dashboard_page(
         "activity",
         "Activity Timeline",
-        "Audit recent queue, assignment, response, and resolution events across the support workflow.",
+        "Load the latest workflow events in small batches to keep the page fast.",
+    )
+
+
+@app.route("/api/admin/activity-events")
+@admin_required
+def admin_activity_events():
+    return jsonify(
+        get_admin_activity_events(
+            limit=request.args.get("limit", ADMIN_ACTIVITY_DEFAULT_BATCH),
+            offset=request.args.get("offset", 0),
+        )
+    )
+
+
+@app.route("/admin/dashboard/account")
+@admin_required
+def admin_account():
+    return render_admin_dashboard_page(
+        "account",
+        "Account Settings",
+        "View your administrator profile and manage your session.",
     )
 
 
@@ -2410,10 +2565,16 @@ def csr_resolved_chats():
         .all()
     )
     chat_counts = get_message_counts_for_chats([chat.id for chat in chats])
+    latest_messages = get_latest_messages_for_chats([chat.id for chat in chats])
 
     return jsonify({
         "chats": [
-            serialize_chat(chat, current_user, message_count=chat_counts.get(chat.id, 0))
+            serialize_chat(
+                chat,
+                current_user,
+                message_count=chat_counts.get(chat.id, 0),
+                latest_message=latest_messages.get(chat.id),
+            )
             for chat in chats
         ],
         "pagination": {
@@ -2431,15 +2592,32 @@ def csr_resolved_chats():
 @login_required
 def chat_messages(chat_id):
     current_user = get_current_user()
-    chat = db.session.get(ChatConversation, chat_id)
+    chat = (
+        ChatConversation.query
+        .options(
+            joinedload(ChatConversation.assigned_csr),
+            selectinload(ChatConversation.messages),
+            selectinload(ChatConversation.assignment_events).joinedload(ChatAssignmentEvent.from_csr),
+            selectinload(ChatConversation.assignment_events).joinedload(ChatAssignmentEvent.to_csr),
+            selectinload(ChatConversation.assignment_events).joinedload(ChatAssignmentEvent.acted_by),
+        )
+        .filter_by(id=chat_id)
+        .first()
+    )
     if not chat:
         return jsonify({"error": "Chat not found."}), 404
 
     # Super-CSR viewing: any authenticated CSR or admin can read the transcript.
     # Ownership still gates replying and resolving on the write endpoints.
+    latest_message = chat.messages[-1] if chat.messages else None
     return jsonify(
         {
-            "chat": serialize_chat(chat, current_user),
+            "chat": serialize_chat(
+                chat,
+                current_user,
+                message_count=len(chat.messages),
+                latest_message=latest_message,
+            ),
             "messages": [serialize_message(message) for message in chat.messages],
             "events": [serialize_assignment_event(event) for event in chat.assignment_events],
         }
@@ -2565,7 +2743,7 @@ def resolve_chat(chat_id):
     )
     db.session.commit()
 
-    return jsonify({"success": True, "relay": relay_result, "dashboard": build_dashboard_payload(current_user)})
+    return jsonify({"success": True, "relay": relay_result, "dashboard": build_dashboard_payload(current_user, page=get_request_dashboard_page())})
 
 
 @app.route("/api/chats/<int:chat_id>/delete", methods=["POST"])
@@ -2584,7 +2762,7 @@ def delete_chat(chat_id):
         {
             "success": True,
             "message": f"Deleted chat {external_chat_id} from the CSR database.",
-            "dashboard": build_dashboard_payload(current_user),
+            "dashboard": build_dashboard_payload(current_user, page=get_request_dashboard_page()),
         }
     )
 
@@ -2614,7 +2792,7 @@ def reassign_chat(chat_id):
     )
     db.session.commit()
 
-    return jsonify({"success": True, "dashboard": build_dashboard_payload(current_user)})
+    return jsonify({"success": True, "dashboard": build_dashboard_payload(current_user, page=get_request_dashboard_page())})
 
 
 @app.route("/api/chats/rebalance", methods=["POST"])
@@ -2622,7 +2800,7 @@ def reassign_chat(chat_id):
 def rebalance_chats():
     current_user = get_current_admin()
     assigned_count = rebalance_queued_chats(actor=current_user)
-    return jsonify({"success": True, "assigned_count": assigned_count, "dashboard": build_dashboard_payload(current_user)})
+    return jsonify({"success": True, "assigned_count": assigned_count, "dashboard": build_dashboard_payload(current_user, page=get_request_dashboard_page())})
 
 
 @app.route("/api/csrs/<int:user_id>/settings", methods=["POST"])
@@ -2643,7 +2821,7 @@ def update_csr_settings(user_id):
     )
     db.session.commit()
 
-    return jsonify({"success": True, "dashboard": build_dashboard_payload(current_user)})
+    return jsonify({"success": True, "dashboard": build_dashboard_payload(current_user, page=get_request_dashboard_page())})
 
 
 @app.route("/api/admin/csrs/create", methods=["POST"])
@@ -2664,8 +2842,14 @@ def create_csr_account():
     if len(password) < 6:
         return jsonify({"error": "CSR password must be at least 6 characters."}), 400
 
-    if email_in_use(email):
-        return jsonify({"error": "An account with this email already exists."}), 400
+    owner = find_email_owner(email)
+    if owner:
+        return jsonify({
+            "error": (
+                f"This email is already used by a {owner['label']} account"
+                f" ({owner['display_name']}). Use a different email."
+            )
+        }), 400
 
     csr_user = User(
         email=email,
@@ -2684,55 +2868,136 @@ def create_csr_account():
         {
             "success": True,
             "message": f"CSR account created for {csr_user.display_name or csr_user.email}.",
-            "dashboard": build_dashboard_payload(current_admin),
+            "dashboard": build_dashboard_payload(current_admin, page=get_request_dashboard_page()),
         }
     )
 
 
-@app.route("/api/admin/integration-settings", methods=["POST"])
-@admin_required
-def update_integration_settings():
-    current_admin = get_current_admin()
-    payload = get_request_payload()
-
-    settings = normalize_integration_settings(
-        {
-            "page_title": payload.get("page_title"),
-            "base_url": payload.get("base_url"),
-            "container_id": payload.get("container_id"),
-            "csr_key": payload.get("csr_key"),
-            "widget_title": payload.get("widget_title"),
-            "primary_color": payload.get("primary_color"),
-            "auto_activate": payload.get("auto_activate"),
-            "chat_list_poll": payload.get("chat_list_poll"),
-            "message_poll": payload.get("message_poll"),
-            "script_src": payload.get("script_src"),
-            "relay_api_url": payload.get("relay_api_url"),
-            "relay_api_key": payload.get("relay_api_key"),
-        }
-    )
-
-    if not settings["base_url"]:
-        return jsonify({"error": "Base URL is required."}), 400
-    if not settings["csr_key"]:
-        return jsonify({"error": "CSR key is required."}), 400
-    if not settings["script_src"]:
-        return jsonify({"error": "Script source is required."}), 400
-
-    sync_integration_settings_artifacts(settings)
-
-    return jsonify(
-        {
-            "success": True,
-            "message": "CSR integration settings saved to the server file.",
-            "dashboard": build_dashboard_payload(current_admin),
-        }
-    )
+# Credentials tab temporarily disabled
+# @app.route("/api/admin/integration-settings", methods=["POST"])
+# @admin_required
+# def update_integration_settings():
+#     current_admin = get_current_admin()
+#     payload = get_request_payload()
+#
+#     settings = normalize_integration_settings(
+#         {
+#             "page_title": payload.get("page_title"),
+#             "base_url": payload.get("base_url"),
+#             "container_id": payload.get("container_id"),
+#             "csr_key": payload.get("csr_key"),
+#             "widget_title": payload.get("widget_title"),
+#             "primary_color": payload.get("primary_color"),
+#             "auto_activate": payload.get("auto_activate"),
+#             "chat_list_poll": payload.get("chat_list_poll"),
+#             "message_poll": payload.get("message_poll"),
+#             "script_src": payload.get("script_src"),
+#             "relay_api_url": payload.get("relay_api_url"),
+#             "relay_api_key": payload.get("relay_api_key"),
+#         }
+#     )
+#
+#     if not settings["base_url"]:
+#         return jsonify({"error": "Base URL is required."}), 400
+#     if not settings["csr_key"]:
+#         return jsonify({"error": "CSR key is required."}), 400
+#     if not settings["script_src"]:
+#         return jsonify({"error": "Script source is required."}), 400
+#
+#     sync_integration_settings_artifacts(settings)
+#
+#     return jsonify(
+#         {
+#             "success": True,
+#             "message": "CSR integration settings saved to the server file.",
+#             "dashboard": build_dashboard_payload(current_admin, page=get_request_dashboard_page()),
+#         }
+#     )
 
 
 # ─── Ticket API ──────────────────────────────────────────────
 
+def serialize_tech_account_brief(tech):
+    if not tech:
+        return None
+    return {
+        "id": tech.id,
+        "email": tech.email,
+        "display_name": tech.display_name or tech.email,
+        "specialty": tech.specialty,
+        "is_active": tech.is_active,
+    }
+
+
+def serialize_ticket_log(log, tech_lookup=None):
+    tech_lookup = tech_lookup or {}
+    old_tech = tech_lookup.get(log.old_assigned_tech_id) if log.old_assigned_tech_id else None
+    new_tech = tech_lookup.get(log.new_assigned_tech_id) if log.new_assigned_tech_id else None
+    changed_by_tech = (
+        tech_lookup.get(log.changed_by_user_id)
+        if log.changed_by_role == "tech" and log.changed_by_user_id
+        else None
+    )
+    is_assignment_change = log.old_assigned_tech_id != log.new_assigned_tech_id and (
+        log.old_assigned_tech_id is not None or log.new_assigned_tech_id is not None
+    )
+    return {
+        "id": log.id,
+        "old_status": log.old_status,
+        "new_status": log.new_status,
+        "old_assigned_tech_id": log.old_assigned_tech_id,
+        "new_assigned_tech_id": log.new_assigned_tech_id,
+        "old_assigned_tech": serialize_tech_account_brief(old_tech),
+        "new_assigned_tech": serialize_tech_account_brief(new_tech),
+        "changed_by_user_id": log.changed_by_user_id,
+        "changed_by_role": log.changed_by_role,
+        "changed_by_name": (
+            (changed_by_tech.display_name or changed_by_tech.email)
+            if changed_by_tech else None
+        ),
+        "notes": log.notes,
+        "created_at": isoformat_or_none(log.created_at),
+        "is_assignment_change": is_assignment_change,
+    }
+
+
+def serialize_chat_ticket_ref(chat):
+    if not chat:
+        return None
+    return {
+        "id": chat.id,
+        "external_chat_id": chat.external_chat_id,
+        "customer_name": chat.customer_name,
+        "status": chat.status,
+    }
+
+
 def serialize_ticket(ticket, include_messages=False, include_admin_details=False):
+    tech_ids = {
+        tech_id
+        for log in (ticket.status_logs or [])
+        for tech_id in (
+            log.old_assigned_tech_id,
+            log.new_assigned_tech_id,
+            log.changed_by_user_id if log.changed_by_role == "tech" else None,
+        )
+        if tech_id
+    }
+    tech_lookup = {
+        tech.id: tech
+        for tech in TechTeamAccount.query.filter(TechTeamAccount.id.in_(tech_ids)).all()
+    } if tech_ids else {}
+    assignment_history = [
+        serialize_ticket_log(log, tech_lookup)
+        for log in (ticket.status_logs or [])
+        if log.old_assigned_tech_id != log.new_assigned_tech_id
+        and (log.old_assigned_tech_id is not None or log.new_assigned_tech_id is not None)
+    ]
+    latest_message = max(
+        ticket.messages or [],
+        key=lambda message: (message.created_at, message.id),
+        default=None,
+    )
     data = {
         "id": ticket.id,
         "ticket_number": ticket.ticket_number or f"TCK_{ticket.id}",
@@ -2742,11 +3007,18 @@ def serialize_ticket(ticket, include_messages=False, include_admin_details=False
         "status": ticket.status,
         "created_by_csr_id": ticket.created_by_csr_id,
         "created_by_csr": serialize_user(ticket.created_by_csr) if ticket.created_by_csr else None,
+        "chat_id": ticket.chat_id,
+        "chat": serialize_chat_ticket_ref(ticket.chat_conversation),
         "assigned_tech_id": ticket.assigned_tech_id,
-        "assigned_tech": {"id": ticket.assigned_tech.id, "display_name": ticket.assigned_tech.display_name, "specialty": ticket.assigned_tech.specialty} if ticket.assigned_tech else None,
+        "assigned_tech": serialize_tech_account_brief(ticket.assigned_tech),
+        "assignment_history": assignment_history,
+        "last_assignment_update": assignment_history[0] if assignment_history else None,
         "created_at": isoformat_or_none(ticket.created_at),
         "updated_at": isoformat_or_none(ticket.updated_at),
         "resolved_at": isoformat_or_none(ticket.resolved_at),
+        "message_count": len(ticket.messages) if ticket.messages else 0,
+        "latest_message_id": latest_message.id if latest_message else None,
+        "latest_message_sender_type": latest_message.sender_type if latest_message else None,
     }
     if include_messages:
         data["messages"] = [
@@ -2761,22 +3033,116 @@ def serialize_ticket(ticket, include_messages=False, include_admin_details=False
             for m in ticket.messages
         ]
     if include_admin_details:
-        data["message_count"] = len(ticket.messages) if ticket.messages else 0
         latest_log = ticket.status_logs[0] if ticket.status_logs else None
         if latest_log:
-            data["last_status_update"] = {
-                "old_status": latest_log.old_status,
-                "new_status": latest_log.new_status,
-                "notes": latest_log.notes,
-                "changed_by_role": latest_log.changed_by_role,
-                "at": isoformat_or_none(latest_log.created_at),
-            }
+            latest_serialized_log = serialize_ticket_log(latest_log, tech_lookup)
+            latest_serialized_log["at"] = latest_serialized_log["created_at"]
+            data["last_status_update"] = latest_serialized_log
+    return data
+
+
+def get_ticket_message_counts(ticket_ids):
+    if not ticket_ids:
+        return {}
+    rows = (
+        db.session.query(TicketMessage.ticket_id, func.count(TicketMessage.id))
+        .filter(TicketMessage.ticket_id.in_(list(ticket_ids)))
+        .group_by(TicketMessage.ticket_id)
+        .all()
+    )
+    return {ticket_id: count for ticket_id, count in rows}
+
+
+def get_latest_ticket_messages(ticket_ids):
+    if not ticket_ids:
+        return {}
+    latest_ids = (
+        db.session.query(TicketMessage.ticket_id, func.max(TicketMessage.id).label("latest_id"))
+        .filter(TicketMessage.ticket_id.in_(list(ticket_ids)))
+        .group_by(TicketMessage.ticket_id)
+        .subquery()
+    )
+    rows = (
+        db.session.query(TicketMessage)
+        .join(latest_ids, TicketMessage.id == latest_ids.c.latest_id)
+        .all()
+    )
+    return {message.ticket_id: message for message in rows}
+
+
+def get_latest_ticket_logs(ticket_ids, assignment_only=False):
+    if not ticket_ids:
+        return {}
+    base_query = db.session.query(TicketStatusLog.ticket_id, func.max(TicketStatusLog.id).label("latest_id")).filter(
+        TicketStatusLog.ticket_id.in_(list(ticket_ids))
+    )
+    if assignment_only:
+        base_query = base_query.filter(
+            TicketStatusLog.old_assigned_tech_id.is_distinct_from(TicketStatusLog.new_assigned_tech_id),
+            or_(
+                TicketStatusLog.old_assigned_tech_id.is_not(None),
+                TicketStatusLog.new_assigned_tech_id.is_not(None),
+            ),
+        )
+    latest_ids = base_query.group_by(TicketStatusLog.ticket_id).subquery()
+    rows = (
+        db.session.query(TicketStatusLog)
+        .join(latest_ids, TicketStatusLog.id == latest_ids.c.latest_id)
+        .all()
+    )
+    return {log.ticket_id: log for log in rows}
+
+
+def serialize_ticket_summary(ticket, message_count=0, latest_message=None, latest_log=None, assignment_log=None):
+    logs = [log for log in (latest_log, assignment_log) if log is not None]
+    tech_ids = {
+        tech_id
+        for log in logs
+        for tech_id in (
+            log.old_assigned_tech_id,
+            log.new_assigned_tech_id,
+            log.changed_by_user_id if log.changed_by_role == "tech" else None,
+        )
+        if tech_id
+    }
+    tech_lookup = {
+        tech.id: tech
+        for tech in TechTeamAccount.query.filter(TechTeamAccount.id.in_(tech_ids)).all()
+    } if tech_ids else {}
+    assignment_history = [serialize_ticket_log(assignment_log, tech_lookup)] if assignment_log else []
+    data = {
+        "id": ticket.id,
+        "ticket_number": ticket.ticket_number or f"TCK_{ticket.id}",
+        "title": ticket.title,
+        "description": ticket.description,
+        "priority": ticket.priority,
+        "status": ticket.status,
+        "created_by_csr_id": ticket.created_by_csr_id,
+        "created_by_csr": serialize_user(ticket.created_by_csr) if ticket.created_by_csr else None,
+        "chat_id": ticket.chat_id,
+        "chat": serialize_chat_ticket_ref(ticket.chat_conversation),
+        "assigned_tech_id": ticket.assigned_tech_id,
+        "assigned_tech": serialize_tech_account_brief(ticket.assigned_tech),
+        "assignment_history": assignment_history,
+        "last_assignment_update": assignment_history[0] if assignment_history else None,
+        "created_at": isoformat_or_none(ticket.created_at),
+        "updated_at": isoformat_or_none(ticket.updated_at),
+        "resolved_at": isoformat_or_none(ticket.resolved_at),
+        "message_count": message_count,
+        "latest_message_id": latest_message.id if latest_message else None,
+        "latest_message_sender_type": latest_message.sender_type if latest_message else None,
+    }
+    if latest_log:
+        latest_serialized_log = serialize_ticket_log(latest_log, tech_lookup)
+        latest_serialized_log["at"] = latest_serialized_log["created_at"]
+        data["last_status_update"] = latest_serialized_log
     return data
 
 
 def ticket_query_with_relations():
     return Ticket.query.options(
         joinedload(Ticket.created_by_csr),
+        joinedload(Ticket.chat_conversation),
         joinedload(Ticket.assigned_tech),
         joinedload(Ticket.messages),
         joinedload(Ticket.status_logs),
@@ -2848,6 +3214,7 @@ def get_tickets():
     admin_user = get_current_admin()
     csr_user = get_current_csr_user()
     status_filter = request.args.get("status")
+    chat_id_filter = request.args.get("chat_id", type=int)
 
     if tech_user:
         if status_filter:
@@ -2868,12 +3235,10 @@ def get_tickets():
             query = query.filter(Ticket.status == status_filter)
         tickets = query.order_by(Ticket.updated_at.desc()).all()
     elif csr_user:
-        tickets = (
-            ticket_query_with_relations()
-            .filter(Ticket.created_by_csr_id == csr_user.id)
-            .order_by(Ticket.created_at.desc())
-            .all()
-        )
+        query = ticket_query_with_relations()
+        if chat_id_filter:
+            query = query.filter(Ticket.chat_id == chat_id_filter)
+        tickets = query.order_by(Ticket.updated_at.desc()).all()
     else:
         return jsonify({"error": "Unauthorized."}), 403
 
@@ -2886,12 +3251,39 @@ def get_tickets():
     })
 
 
+@app.route("/api/chats/<int:chat_id>/tickets", methods=["GET"])
+@csr_required
+def get_chat_tickets(chat_id):
+    """Return technical tickets linked to a customer chat."""
+    chat = db.session.get(ChatConversation, chat_id)
+    if not chat:
+        return jsonify({"error": "Chat not found."}), 404
+
+    tickets = (
+        ticket_query_with_relations()
+        .filter(Ticket.chat_id == chat_id)
+        .order_by(Ticket.updated_at.desc())
+        .all()
+    )
+    statuses = TicketStatus.query.order_by(TicketStatus.sort_order.asc()).all()
+    return jsonify({
+        "chat": serialize_chat_ticket_ref(chat),
+        "tickets": [serialize_ticket(t) for t in tickets],
+        "statuses": [serialize_ticket_status(s) for s in statuses],
+    })
+
+
 @app.route("/api/admin/tickets", methods=["GET"])
 @admin_required
 def admin_get_tickets():
     """Admin overview: all tickets, stats, and per-tech workload."""
     status_filter = (request.args.get("status") or "all").strip()
-    all_tickets = ticket_query_with_relations().order_by(Ticket.updated_at.desc()).all()
+    all_tickets = (
+        Ticket.query
+        .options(joinedload(Ticket.created_by_csr), joinedload(Ticket.assigned_tech))
+        .order_by(Ticket.updated_at.desc())
+        .all()
+    )
     statuses = TicketStatus.query.order_by(TicketStatus.sort_order.asc()).all()
     tech_accounts = TechTeamAccount.query.order_by(TechTeamAccount.display_name.asc()).all()
 
@@ -2900,12 +3292,40 @@ def admin_get_tickets():
     else:
         tickets = all_tickets
 
+    ticket_ids = [ticket.id for ticket in tickets]
+    message_counts = get_ticket_message_counts(ticket_ids)
+    latest_messages = get_latest_ticket_messages(ticket_ids)
+    latest_logs = get_latest_ticket_logs(ticket_ids)
+    latest_assignment_logs = get_latest_ticket_logs(ticket_ids, assignment_only=True)
+
     return jsonify({
-        "tickets": [serialize_ticket(t, include_admin_details=True) for t in tickets],
+        "tickets": [
+            serialize_ticket_summary(
+                ticket,
+                message_count=message_counts.get(ticket.id, 0),
+                latest_message=latest_messages.get(ticket.id),
+                latest_log=latest_logs.get(ticket.id),
+                assignment_log=latest_assignment_logs.get(ticket.id),
+            )
+            for ticket in tickets
+        ],
         "statuses": [serialize_ticket_status(s) for s in statuses],
         "stats": build_admin_ticket_stats(all_tickets, statuses),
         "tech_workload": build_tech_workload(all_tickets, tech_accounts),
     })
+
+
+@app.route("/api/tech/tech-accounts", methods=["GET"])
+@tech_required
+def get_active_tech_accounts_for_handoff():
+    """Return active technical team accounts for ticket referral."""
+    techs = (
+        TechTeamAccount.query
+        .filter_by(is_active=True)
+        .order_by(TechTeamAccount.display_name.asc(), TechTeamAccount.email.asc())
+        .all()
+    )
+    return jsonify({"techs": [serialize_tech_account_brief(t) for t in techs]})
 
 
 @app.route("/api/tickets", methods=["POST"])
@@ -2918,9 +3338,20 @@ def create_ticket():
     title = (payload.get("title") or "").strip()
     description = (payload.get("description") or "").strip()
     priority = payload.get("priority", "normal")
+    chat_id = payload.get("chat_id")
     
     if not title:
         return jsonify({"error": "Ticket title is required."}), 400
+
+    chat = None
+    if chat_id is not None:
+        try:
+            chat_id = int(chat_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid chat_id."}), 400
+        chat = db.session.get(ChatConversation, chat_id)
+        if not chat:
+            return jsonify({"error": "Linked chat not found."}), 404
     
     ticket = Ticket(
         ticket_number=generate_unique_ticket_number(),
@@ -2929,6 +3360,7 @@ def create_ticket():
         priority=priority,
         status="open",
         created_by_csr_id=current_user.id,
+        chat_id=chat.id if chat else None,
     )
     db.session.add(ticket)
     db.session.flush()
@@ -2976,6 +3408,8 @@ def claim_ticket(ticket_id):
         ticket_id=ticket.id,
         old_status=old_status,
         new_status="in_progress",
+        old_assigned_tech_id=None,
+        new_assigned_tech_id=tech_user.id,
         changed_by_user_id=tech_user.id,
         changed_by_role="tech",
         notes=f"Claimed by {tech_user.display_name or tech_user.email}",
@@ -2986,6 +3420,65 @@ def claim_ticket(ticket_id):
     return jsonify({
         "success": True,
         "message": "Ticket claimed successfully.",
+        "ticket": serialize_ticket(ticket),
+    })
+
+
+@app.route("/api/tickets/<int:ticket_id>/refer", methods=["POST"])
+@tech_required
+def refer_ticket(ticket_id):
+    """Refer a ticket from the assigned tech to another active tech."""
+    tech_user = get_current_tech_user()
+    ticket = db.session.get(Ticket, ticket_id)
+
+    if not ticket:
+        return jsonify({"error": "Ticket not found."}), 404
+
+    if ticket.assigned_tech_id != tech_user.id:
+        return jsonify({"error": "You can only refer tickets assigned to you."}), 403
+
+    payload = get_request_payload()
+    target_tech_id = payload.get("target_tech_id")
+    notes = (payload.get("notes") or "").strip()
+
+    try:
+        target_tech_id = int(target_tech_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Select the technical person to refer this ticket to."}), 400
+
+    if target_tech_id == tech_user.id:
+        return jsonify({"error": "Choose a different technical person."}), 400
+
+    target_tech = db.session.get(TechTeamAccount, target_tech_id)
+    if not target_tech or not target_tech.is_active:
+        return jsonify({"error": "Selected technical person is not active."}), 400
+
+    status_obj = TicketStatus.query.filter_by(name=ticket.status).first()
+    if status_obj and status_obj.is_resolved:
+        return jsonify({"error": "Resolved tickets cannot be referred."}), 400
+
+    previous_tech_id = ticket.assigned_tech_id
+    previous_name = tech_user.display_name or tech_user.email
+    target_name = target_tech.display_name or target_tech.email
+    ticket.assigned_tech_id = target_tech.id
+    ticket.updated_at = utcnow()
+
+    log = TicketStatusLog(
+        ticket_id=ticket.id,
+        old_status=ticket.status,
+        new_status=ticket.status,
+        old_assigned_tech_id=previous_tech_id,
+        new_assigned_tech_id=target_tech.id,
+        changed_by_user_id=tech_user.id,
+        changed_by_role="tech",
+        notes=notes or f"Ticket referred from {previous_name} to {target_name}.",
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": f"Ticket referred to {target_name}.",
         "ticket": serialize_ticket(ticket),
     })
 
@@ -3009,6 +3502,9 @@ def update_ticket_status(ticket_id):
     
     if not new_status:
         return jsonify({"error": "Status is required."}), 400
+
+    if not notes:
+        return jsonify({"error": "Notes are required when updating ticket status."}), 400
     
     # Verify status exists
     status_exists = TicketStatus.query.filter_by(name=new_status).first()
@@ -3027,7 +3523,7 @@ def update_ticket_status(ticket_id):
         new_status=new_status,
         changed_by_user_id=tech_user.id,
         changed_by_role="tech",
-        notes=notes or f"Status changed to {status_exists.label}",
+        notes=notes,
     )
     db.session.add(log)
     db.session.commit()
@@ -3057,7 +3553,7 @@ def ticket_chat_actor(ticket):
     if tech_user:
         return True, tech_user, "tech"
     csr_user = get_current_csr_user()
-    if csr_user and ticket.created_by_csr_id == csr_user.id:
+    if csr_user:
         return True, csr_user, "csr"
     return False, None, None
 
@@ -3178,8 +3674,14 @@ def create_tech_account():
     if len(password) < 6:
         return jsonify({"error": "Password must be at least 6 characters."}), 400
     
-    if email_in_use(email):
-        return jsonify({"error": "An account with this email already exists."}), 400
+    owner = find_email_owner(email)
+    if owner:
+        return jsonify({
+            "error": (
+                f"This email is already used by a {owner['label']} account"
+                f" ({owner['display_name']}). Use a different email."
+            )
+        }), 400
     
     tech = TechTeamAccount(
         email=email,
@@ -3189,7 +3691,11 @@ def create_tech_account():
     )
     tech.set_password(password)
     db.session.add(tech)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "This email is already used by another technical team account."}), 400
     
     return jsonify({
         "success": True,
