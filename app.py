@@ -3254,6 +3254,9 @@ def serialize_chat_ticket_ref(chat):
         "customer_name": chat.customer_name,
         "visitor_name": chat.customer_name,
         "status": chat.status,
+        "customer_external_user_id": chat.customer_external_user_id,
+        "auth_mode": chat.auth_mode,
+        "authenticated_user_data": chat.authenticated_user_data,
     }
 
 
