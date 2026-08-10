@@ -2,27 +2,44 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Admin Operations Dashboard</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"></noscript>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="{{ url_for('static', filename='dashboard-theme.js') }}"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='admin-dashboard.css') }}">
+    <script>
+        tailwind.config = {
+            corePlugins: { preflight: false },
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] }
+                }
+            }
+        };
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin-dashboard.css') }}?v=20260730s">
 </head>
 <body
     data-admin-name="{{ (user.display_name or user.email) if user else 'Admin' }}"
     data-admin-page="{{ admin_page or 'overview' }}"
     data-dashboard-enabled="{{ 'true' if dashboard_enabled else 'false' }}"
 >
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
     <div class="app-shell">
-        <aside class="sidebar">
+        <aside class="sidebar" id="admin-sidebar">
             <div class="brand">
                 <div class="brand-icon"><i class="fa-solid fa-user-shield"></i></div>
-                <div>
+                <div class="brand-text">
                     <div class="brand-title">Admin Control Center</div>
-                    <div class="brand-copy">Separate admin portal for CSR operations, reporting, and chat governance.</div>
+                    <div class="brand-copy">CSR operations, reporting, and chat governance.</div>
                 </div>
+                <button class="sidebar-close" id="sidebar-close" type="button" aria-label="Close menu">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
 
             <div class="nav-group">
@@ -33,8 +50,30 @@
                 #}
                 <a class="nav-btn {% if admin_page == 'knowledge-base' %}active{% endif %}" href="{{ url_for('admin_knowledge_base') }}"><i class="fa-solid fa-book-open-reader"></i><span>Knowledge Base</span></a>
                 <a class="nav-btn {% if admin_page == 'team' %}active{% endif %}" href="{{ url_for('admin_team') }}"><i class="fa-solid fa-users-gear"></i><span>CSR Management</span></a>
-                                <a class="nav-btn {% if admin_page == 'tech' %}active{% endif %}" href="{{ url_for('admin_tech') }}"><i class="fa-solid fa-wrench"></i><span>Technical Team</span></a>
-                <a class="nav-btn {% if admin_page == 'chats' %}active{% endif %}" href="{{ url_for('admin_chats') }}"><i class="fa-solid fa-comments"></i><span>Chat Ledger</span></a>
+                <a class="nav-btn {% if admin_page == 'tech' %}active{% endif %}" href="{{ url_for('admin_tech') }}"><i class="fa-solid fa-wrench"></i><span>Technical Team</span></a>
+
+                <div class="nav-dropdown {% if admin_page in ('chats', 'chats-active') %}open{% endif %}">
+                    <button class="nav-btn nav-dropdown-toggle {% if admin_page in ('chats', 'chats-active') %}active{% endif %}" type="button" aria-expanded="{{ 'true' if admin_page in ('chats', 'chats-active') else 'false' }}">
+                        <i class="fa-solid fa-comments"></i><span>Chats</span>
+                        <i class="fa-solid fa-chevron-down nav-caret"></i>
+                    </button>
+                    <div class="nav-submenu">
+                        <a class="nav-subbtn {% if admin_page == 'chats' %}active{% endif %}" href="{{ url_for('admin_chats') }}"><i class="fa-solid fa-clock-rotate-left"></i><span>Chat History</span></a>
+                        <a class="nav-subbtn {% if admin_page == 'chats-active' %}active{% endif %}" href="{{ url_for('admin_chats_active') }}"><i class="fa-solid fa-bolt"></i><span>Active Chats</span></a>
+                    </div>
+                </div>
+
+                <div class="nav-dropdown {% if admin_page in ('tickets-current', 'tickets-old') %}open{% endif %}">
+                    <button class="nav-btn nav-dropdown-toggle {% if admin_page in ('tickets-current', 'tickets-old') %}active{% endif %}" type="button" aria-expanded="{{ 'true' if admin_page in ('tickets-current', 'tickets-old') else 'false' }}">
+                        <i class="fa-solid fa-ticket"></i><span>Technical Tickets</span>
+                        <i class="fa-solid fa-chevron-down nav-caret"></i>
+                    </button>
+                    <div class="nav-submenu">
+                        <a class="nav-subbtn {% if admin_page == 'tickets-current' %}active{% endif %}" href="{{ url_for('admin_tickets_current') }}"><i class="fa-solid fa-list-check"></i><span>Current Tickets</span></a>
+                        <a class="nav-subbtn {% if admin_page == 'tickets-old' %}active{% endif %}" href="{{ url_for('admin_tickets_old') }}"><i class="fa-solid fa-box-archive"></i><span>Old Tickets</span></a>
+                    </div>
+                </div>
+
                 <a class="nav-btn {% if admin_page == 'activity' %}active{% endif %}" href="{{ url_for('admin_activity') }}"><i class="fa-solid fa-clock-rotate-left"></i><span>Activity Timeline</span></a>
             </div>
 
@@ -57,10 +96,19 @@
 
         <main class="content">
             <header class="topbar">
-                <div>
-                    <h1>{{ admin_page_title or 'Admin Operations Dashboard' }}</h1>
-                    <p>{{ admin_page_copy or 'Complete control of CSR registration, online presence, chat ownership, resolution tracking, and transcript history.' }}</p>
+                <div class="topbar-main">
+                    <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Open menu" aria-controls="admin-sidebar" aria-expanded="false">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div class="topbar-copy">
+                        <h1>{{ admin_page_title or 'Admin Operations Dashboard' }}</h1>
+                        <p>{{ admin_page_copy or 'Complete control of CSR registration, online presence, chat ownership, resolution tracking, and transcript history.' }}</p>
+                    </div>
                 </div>
+                <button class="btn topbar-refresh" id="topbar-refresh-btn" type="button" title="Refresh">
+                    <i class="fa-solid fa-rotate-right"></i>
+                    <span>Refresh</span>
+                </button>
             </header>
 
             <div class="workspace">
@@ -152,7 +200,7 @@
                                     <div class="panel-title">CSR coverage snapshot</div>
                                     <span class="tiny-note">Live roster and workload</span>
                                 </div>
-                                <div class="panel-copy">Quick view of who is online and current remaining capacity.</div>
+                                <div class="panel-copy">Quick view of who is online and their open chat load.</div>
                                 <div class="panel-body">
                                     <div class="coverage-list" id="coverage-list">
                                         <div class="tiny-note">Loading CSR coverage...</div>
@@ -302,7 +350,7 @@
                     <div class="section-head">
                         <div>
                             <div class="section-title">CSR Management</div>
-                            <div class="section-copy">Add CSR login accounts, control each CSR’s max concurrent chat limit, and see exactly who is online, offline, paused, or overloaded.</div>
+                            <div class="section-copy">Add CSR login accounts and see exactly who is online, offline, paused, or busy. All CSRs handle unlimited concurrent chats.</div>
                         </div>
                     </div>
 
@@ -325,33 +373,6 @@
                                     <label>
                                         <span>Password</span>
                                         <input class="input" type="password" name="password" placeholder="Minimum 6 characters" required minlength="6">
-                                    </label>
-                                    <label>
-                                        <span>Max Concurrent Chats</span>
-                                        <select class="input" name="max_concurrent_chats_sel" id="create-max-sel">
-                                            <option value="1">1</option>
-                                            <option value="2">2</option>
-                                            <option value="3">3</option>
-                                            <option value="4" selected>4</option>
-                                            <option value="5">5</option>
-                                            <option value="10">10</option>
-                                            <option value="20">20</option>
-                                            <option value="30">30</option>
-                                            <option value="40">40</option>
-                                            <option value="50">50</option>
-                                            <option value="75">75</option>
-                                            <option value="100">100</option>
-                                            <option value="200">200</option>
-                                            <option value="500">500</option>
-                                            <option value="1000">1000</option>
-                                            <option value="custom">Custom...</option>
-                                            <option value="unlimited">∞ Unlimited</option>
-                                        </select>
-                                        <input class="input" type="number" min="1" name="max_concurrent_chats" id="create-max-custom" value="4" style="display:none;margin-top:6px;" placeholder="Enter number">
-                                    </label>
-                                    <label class="checkbox-row unlimited-row">
-                                        <input type="checkbox" name="unlimited_chats" id="create-unlimited-chk">
-                                        <span><strong>Unlimited chat handling</strong> &mdash; this CSR can be assigned any number of concurrent chats (ignores the cap above).</span>
                                     </label>
                                     <label class="checkbox-row">
                                         <input type="checkbox" name="is_available" checked>
@@ -376,23 +397,11 @@
                                 <div class="panel-title">CSR Roster & Control</div>
                                 <span class="tiny-note" id="roster-count">0 CSRs</span>
                             </div>
-                            <div class="panel-copy">Track each CSR’s open workload, online/offline presence, resolution output, and assignment availability. Save changes without leaving the dashboard.</div>
-                            <div class="panel-body csr-table-wrap">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>CSR</th>
-                                            <th>Presence</th>
-                                            <th>Load</th>
-                                            <th>Resolved Today</th>
-                                            <th>Resolved Yesterday</th>
-                                            <th>Controls</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="csr-table-body">
-                                        <tr><td colspan="6" class="tiny-note" style="padding:24px;">Loading CSR roster...</td></tr>
-                                    </tbody>
-                                </table>
+                            <div class="panel-copy">Track each CSR’s open workload, online/offline presence, resolution output, and assignment availability. All CSRs handle unlimited concurrent chats.</div>
+                            <div class="panel-body csr-roster-wrap">
+                                <div id="csr-roster-list" class="csr-roster-list flex flex-col gap-3">
+                                    <div class="tiny-note p-6">Loading CSR roster...</div>
+                                </div>
                             </div>
                         </section>
                     </div>
@@ -403,52 +412,51 @@
                     <div class="section-head">
                         <div>
                             <div class="section-title">Technical Team Management</div>
-                            <div class="section-copy">Manage technical team accounts, customize ticket statuses, and view ticket analytics.</div>
+                            <div class="section-copy">Manage technical team accounts and live workload. Create tickets under Technical Tickets → Current Tickets.</div>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
-                        <div class="rounded-xl border border-slate-700/60 bg-white/60 p-4">
-                            <p class="text-xs text-gray-500">Tech Members</p>
-                            <p class="text-2xl font-bold text-black mt-1" id="stat-tech-count">0</p>
-                            <p class="text-[11px] text-gray-500 mt-1">Active accounts</p>
+                    <div class="card-grid" style="margin-bottom:18px;">
+                        <div class="summary-card">
+                            <div class="summary-label">Online Tech</div>
+                            <div class="summary-value" id="stat-tech-count">0</div>
+                            <div class="summary-sub">Seen in last 45 seconds</div>
                         </div>
-                        <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-                            <p class="text-xs text-amber-300/80">Open Tickets</p>
-                            <p class="text-2xl font-bold text-amber-200 mt-1" id="stat-open-tickets">0</p>
-                            <p class="text-[11px] text-gray-500 mt-1">Awaiting claim</p>
+                        <div class="summary-card">
+                            <div class="summary-label">Open Tickets</div>
+                            <div class="summary-value" id="stat-open-tickets">0</div>
+                            <div class="summary-sub">Awaiting claim</div>
                         </div>
-                        <div class="rounded-xl border border-teal-500/20 bg-teal-500/5 p-4">
-                            <p class="text-xs text-blue-600/80">In Progress</p>
-                            <p class="text-2xl font-bold text-teal-200 mt-1" id="stat-progress-tickets">0</p>
-                            <p class="text-[11px] text-gray-500 mt-1">Being handled</p>
+                        <div class="summary-card">
+                            <div class="summary-label">In Progress</div>
+                            <div class="summary-value" id="stat-progress-tickets">0</div>
+                            <div class="summary-sub">Being handled</div>
                         </div>
-                        <div class="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-                            <p class="text-xs text-emerald-300/80">Resolved / Closed</p>
-                            <p class="text-2xl font-bold text-emerald-200 mt-1" id="stat-closed-tickets">0</p>
-                            <p class="text-[11px] text-gray-500 mt-1">Finished tickets</p>
+                        <div class="summary-card">
+                            <div class="summary-label">Resolved / Closed</div>
+                            <div class="summary-value" id="stat-closed-tickets">0</div>
+                            <div class="summary-sub">Finished tickets</div>
                         </div>
-                        <div class="rounded-xl border border-slate-700/60 bg-white/60 p-4">
-                            <p class="text-xs text-gray-500">Total Tickets</p>
-                            <p class="text-2xl font-bold text-black mt-1" id="stat-total-tickets">0</p>
-                            <p class="text-[11px] text-gray-500 mt-1">All time</p>
+                        <div class="summary-card">
+                            <div class="summary-label">Total Tickets</div>
+                            <div class="summary-value" id="stat-total-tickets">0</div>
+                            <div class="summary-sub">All time</div>
                         </div>
-                        <div class="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
-                            <p class="text-xs text-blue-600/80">Unassigned</p>
-                            <p class="text-2xl font-bold text-cyan-200 mt-1" id="stat-unassigned-tickets">0</p>
-                            <p class="text-[11px] text-gray-500 mt-1">No tech owner yet</p>
+                        <div class="summary-card">
+                            <div class="summary-label">Unassigned</div>
+                            <div class="summary-value" id="stat-unassigned-tickets">0</div>
+                            <div class="summary-sub">No tech owner yet</div>
                         </div>
                     </div>
 
-                    <div class="tech-grid grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <!-- Add Tech Member Panel -->
-                        <section class="panel">
-                            <div class="panel-head">
-                                <div class="panel-title">Add Technical Team Member</div>
-                            </div>
-                            <div class="panel-copy">Admins can register technical team accounts here. Members can then log in at <a href="/tech/login" style="color:#a78bfa">/tech/login</a> to claim and manage tickets.</div>
-                            <div class="panel-body">
-                                <form class="stack-form" id="create-tech-form">
+                    <section class="panel">
+                        <div class="panel-head">
+                            <div class="panel-title">Add Technical Team Member</div>
+                        </div>
+                        <div class="panel-copy">Register accounts here. Members log in at <a href="/tech/login" style="color:#0d9488;font-weight:700;">/tech/login</a>.</div>
+                        <div class="panel-body">
+                            <form class="stack-form" id="create-tech-form">
+                                <div class="form-grid">
                                     <label>
                                         <span>Display Name</span>
                                         <input class="input" type="text" name="display_name" placeholder="Tech member name">
@@ -473,165 +481,180 @@
                                             <option value="Infrastructure">Infrastructure</option>
                                         </select>
                                     </label>
-                                    <button class="btn primary" type="submit">Create Technical Team Account</button>
-                                </form>
-                            </div>
-                        </section>
+                                </div>
+                                <button class="btn primary" type="submit" style="margin-top:12px;">Create Technical Team Account</button>
+                            </form>
+                        </div>
+                    </section>
 
-                        <!-- Existing Tech Members Panel -->
-                        <section class="panel">
-                            <div class="panel-head">
-                                <div class="panel-title">Technical Team Members</div>
-                                <span class="tiny-note" id="tech-count">0 members</span>
-                            </div>
-                            <div class="panel-body">
-                                <table>
+                    <section class="panel" style="margin-top:16px;">
+                        <div class="panel-head">
+                            <div class="panel-title">Technical Team &amp; Workload</div>
+                            <span class="tiny-note" id="tech-count">0 members</span>
+                        </div>
+                        <div class="panel-copy">Member details, live online status, ticket workload, and account actions in one place.</div>
+                        <div class="panel-body">
+                            <div class="admin-soft-table-wrap">
+                                <table class="tech-team-table">
                                     <thead>
                                         <tr>
-                                            <th>Name</th>
-                                            <th>Email</th>
+                                            <th>Technician</th>
                                             <th>Specialty</th>
-                                            <th>Status</th>
-                                            <th>Last Seen</th>
+                                            <th>Online</th>
+                                            <th>Account</th>
+                                            <th>Active</th>
+                                            <th>In Progress</th>
+                                            <th>Open</th>
+                                            <th>Total</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="tech-table-body">
-                                        <tr><td colspan="6" class="tiny-note" style="padding:24px;">No technical team members yet.</td></tr>
+                                    <tbody id="tech-team-body">
+                                        <tr><td colspan="9" class="tiny-note" style="padding:24px;">Loading technical team...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
-                        </section>
+                        </div>
+                    </section>
 
-                        <!-- Add Ticket Status Panel -->
-                        <section class="panel">
-                            <div class="panel-head">
-                                <div class="panel-title">Add Ticket Status</div>
+                    <section class="panel" style="margin-top:16px;">
+                        <div class="panel-head">
+                            <div class="panel-title">Tickets &amp; Admin Creation</div>
+                            <span class="tiny-note">Technical Tickets menu</span>
+                        </div>
+                        <div class="panel-copy">Create admin tickets on <strong>Current Tickets</strong>. Old Tickets is for completed history only.</div>
+                        <div class="panel-body">
+                            <div class="action-row">
+                                <a class="btn primary" href="{{ url_for('admin_tickets_current') }}">
+                                    <i class="fa-solid fa-plus"></i> Create / Current Tickets
+                                </a>
+                                <a class="btn" href="{{ url_for('admin_tickets_old') }}">
+                                    <i class="fa-solid fa-box-archive"></i> Old Tickets
+                                </a>
                             </div>
-                            <div class="panel-copy">Create custom statuses for your ticket workflow. Default statuses (open, in_progress, waiting_parts, resolved, closed) are already configured.</div>
-                            <div class="panel-body">
-                                <form class="stack-form" id="create-status-form">
-                                    <label>
-                                        <span>Status Name (lowercase, no spaces)</span>
-                                        <input class="input" type="text" name="name" placeholder="e.g. on_hold" required pattern="^[a-z][a-z0-9_]*$">
-                                    </label>
-                                    <label>
-                                        <span>Display Label</span>
-                                        <input class="input" type="text" name="label" placeholder="e.g. On Hold" required>
-                                    </label>
-                                    <label>
-                                        <span>Color (hex)</span>
-                                        <input class="input" type="color" name="color" value="#8b5cf6" style="height:40px;padding:4px;">
-                                    </label>
-                                    <label>
-                                        <span>Sort Order</span>
-                                        <input class="input" type="number" name="sort_order" value="10" min="0">
-                                    </label>
-                                    <label class="checkbox-row">
-                                        <input type="checkbox" name="is_resolved">
-                                        <span><strong>Mark as resolved status</strong> &mdash; tickets in this status are considered complete.</span>
-                                    </label>
-                                    <button class="btn primary" type="submit">Add Ticket Status</button>
-                                </form>
-                            </div>
-                        </section>
+                        </div>
+                    </section>
+                </section>
 
-                        <!-- Ticket Statuses List Panel -->
-                        <section class="panel">
-                            <div class="panel-head">
-                                <div class="panel-title">Ticket Statuses</div>
+                {% elif admin_page in ('tickets-current', 'tickets-old') %}
+                <section class="section" id="tickets-section" data-ticket-lifecycle="{{ 'current' if admin_page == 'tickets-current' else 'old' }}">
+                    <div class="section-head">
+                        <div>
+                            <div class="section-title">{% if admin_page == 'tickets-current' %}Current Tickets{% else %}Old Tickets{% endif %}</div>
+                            <div class="section-copy">
+                                {% if admin_page == 'tickets-current' %}
+                                Open and in-progress tickets. Create new tickets here as super admin — they appear in the tech queue immediately.
+                                {% else %}
+                                Resolved and closed tickets kept for audit history. This page loads once and does not auto-refresh.
+                                {% endif %}
                             </div>
-                            <div class="panel-body">
-                                <div id="status-list" class="status-list"></div>
-                            </div>
-                        </section>
+                        </div>
+                    </div>
 
-                        <!-- Tech workload (Tailwind) -->
-                        <section class="col-span-full rounded-2xl border border-slate-700/60 bg-white/70 p-5">
-                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-                                <h3 class="text-lg font-bold text-black">Technical Team Workload</h3>
-                                <span class="text-xs text-gray-500">Who is handling which tickets</span>
-                            </div>
-                            <p class="text-sm text-gray-500 mb-4">See how many tickets each technical person has claimed and what is still active.</p>
-                            <div class="overflow-x-auto rounded-xl border border-slate-700/50">
-                                <table class="min-w-full text-sm text-left">
-                                    <thead class="bg-slate-800/80 text-gray-500 uppercase text-xs">
-                                        <tr>
-                                            <th class="px-4 py-3">Technician</th>
-                                            <th class="px-4 py-3">Specialty</th>
-                                            <th class="px-4 py-3">Status</th>
-                                            <th class="px-4 py-3">Active</th>
-                                            <th class="px-4 py-3">In Progress</th>
-                                            <th class="px-4 py-3">Open</th>
-                                            <th class="px-4 py-3">Total Assigned</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="tech-workload-body" class="divide-y divide-slate-700/50 text-slate-200">
-                                        <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Loading workload...</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </section>
+                    {% if admin_page == 'tickets-current' %}
+                    <section class="panel" style="margin-bottom:16px;">
+                        <div class="panel-head">
+                            <div class="panel-title">Create Ticket</div>
+                            <span class="tiny-note">Admin / super admin</span>
+                        </div>
+                        <div class="panel-copy">Create an independent technical ticket (not tied to a CSR chat). Tech team can claim, work, and refer it with full history.</div>
+                        <div class="panel-body">
+                            <form class="stack-form" id="admin-create-ticket-form">
+                                <div class="form-grid">
+                                    <label>
+                                        <span>Title</span>
+                                        <input class="input" type="text" name="title" placeholder="Short summary of the issue" required maxlength="255">
+                                    </label>
+                                    <label>
+                                        <span>Priority</span>
+                                        <select class="input" name="priority">
+                                            <option value="low">Low</option>
+                                            <option value="normal" selected>Normal</option>
+                                            <option value="high">High</option>
+                                            <option value="urgent">Urgent</option>
+                                        </select>
+                                    </label>
+                                    <label class="form-grid-span">
+                                        <span>Description</span>
+                                        <textarea class="textarea" name="description" rows="3" placeholder="What needs technical attention?"></textarea>
+                                    </label>
+                                </div>
+                                <button class="btn primary" type="submit" style="margin-top:12px;">Create Ticket</button>
+                            </form>
+                        </div>
+                    </section>
+                    {% endif %}
 
-                        <!-- All tickets (Tailwind) -->
-                        <section class="col-span-full rounded-2xl border border-slate-700/60 bg-white/70 p-5">
-                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-                                <h3 class="text-lg font-bold text-black">All Support Tickets</h3>
-                                <span class="text-xs font-semibold text-blue-600" id="admin-ticket-count">0 tickets</span>
-                            </div>
-                            <p class="text-sm text-gray-500 mb-4">Full ticket ledger: open, in progress, closed, CSR creator, assigned technician, handoff history, and last update.</p>
-                            <div class="flex flex-wrap items-center gap-3 mb-4">
-                                <label class="flex items-center gap-2 text-sm text-gray-500">
-                                    Filter by status
-                                    <select id="admin-ticket-status-filter" class="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-black focus:border-yellow-400 focus:outline-none">
+                    <section class="panel">
+                        <div class="panel-head">
+                            <div class="panel-title">{% if admin_page == 'tickets-current' %}Working Tickets{% else %}Completed Tickets{% endif %}</div>
+                            <span class="tiny-note" id="admin-ticket-count">0 tickets</span>
+                        </div>
+                        <div class="panel-body">
+                            <div class="action-row" style="margin-bottom:12px;">
+                                <label class="ticket-filter-bar" style="display:flex;align-items:center;gap:8px;">
+                                    <span class="tiny-note">Filter by status</span>
+                                    <select id="admin-ticket-status-filter" class="input" style="width:auto;min-width:160px;">
                                         <option value="all">All statuses</option>
                                     </select>
                                 </label>
-                                <button type="button" id="admin-ticket-refresh-btn" class="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition">
+                                <button type="button" id="admin-ticket-refresh-btn" class="btn">
                                     <i class="fa-solid fa-rotate"></i> Refresh
                                 </button>
                             </div>
-                            <div class="overflow-x-auto rounded-xl border border-slate-700/50">
-                                <table class="min-w-full text-sm text-left">
-                                    <thead class="bg-slate-800/80 text-gray-500 uppercase text-xs">
+                            <div class="admin-soft-table-wrap">
+                                <table>
+                                    <thead>
                                         <tr>
-                                            <th class="px-4 py-3">Ticket #</th>
-                                            <th class="px-4 py-3">Title</th>
-                                            <th class="px-4 py-3">Status</th>
-                                            <th class="px-4 py-3">Priority</th>
-                                            <th class="px-4 py-3">CSR</th>
-                                            <th class="px-4 py-3">Technician</th>
-                                            <th class="px-4 py-3">Messages</th>
-                                            <th class="px-4 py-3">Created</th>
-                                            <th class="px-4 py-3">Updated</th>
-                                            <th class="px-4 py-3">Resolved</th>
+                                            <th>Ticket #</th>
+                                            <th>Title</th>
+                                            <th>Status</th>
+                                            <th>Priority</th>
+                                            <th>Created By</th>
+                                            <th>Technician</th>
+                                            <th>Messages</th>
+                                            <th>Created</th>
+                                            <th>Updated</th>
+                                            <th>Resolved</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="admin-ticket-table-body" class="divide-y divide-slate-700/50 text-slate-200">
-                                        <tr><td colspan="10" class="px-4 py-8 text-center text-gray-500">Loading tickets...</td></tr>
+                                    <tbody id="admin-ticket-table-body">
+                                        <tr><td colspan="10" class="tiny-note" style="padding:24px;">Loading tickets...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
-                        </section>
-                    </div>
+                        </div>
+                    </section>
                 </section>
 
-                {% elif admin_page == 'chats' %}
+                {% elif admin_page in ('chats', 'chats-active') %}
                 <section class="section" id="chat-section">
                     <div class="section-head">
                         <div>
-                            <div class="section-title">Chat Ledger</div>
-                            <div class="section-copy">A proper chat record view for storage, inspection, and deletion. Open any transcript, inspect ownership, and delete the full record when necessary.</div>
+                            <div class="section-title">{% if admin_page == 'chats-active' %}Active Chats{% else %}Chat History{% endif %}</div>
+                            <div class="section-copy">
+                                {% if admin_page == 'chats-active' %}
+                                Live conversations that are queued, assigned, or in progress. This view auto-refreshes so you can supervise work as it happens.
+                                {% else %}
+                                Full stored chat history for inspection and deletion. Open any transcript, inspect ownership, and remove records when necessary.
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
 
                     <div class="chat-grid">
                         <section class="panel">
                             <div class="panel-head">
-                                <div class="panel-title">All Stored Chats</div>
+                                <div class="panel-title">{% if admin_page == 'chats-active' %}Live Chats{% else %}All Stored Chats{% endif %}</div>
                                 <span class="tiny-note" id="chat-count">0 chats</span>
                             </div>
-                            <div class="panel-copy">This table shows which chat is open, which CSR is handling it, and the latest customer message captured in the database.</div>
+                            <div class="panel-copy">
+                                {% if admin_page == 'chats-active' %}
+                                Only open chats are listed here to keep the page fast while monitoring live activity.
+                                {% else %}
+                                This table shows which chat is open, which CSR is handling it, and the latest customer message captured in the database.
+                                {% endif %}
+                            </div>
                             <div class="panel-body chat-table-wrap">
                                 <table>
                                     <thead>
@@ -757,7 +780,11 @@
                                     </article>
                                     <article class="info-card">
                                         <div class="info-label">Last Seen</div>
-                                        <div class="info-value">{{ user.last_seen_at.strftime('%b %d, %Y %H:%M') if user and user.last_seen_at else 'Not available' }}</div>
+                                        <div
+                                            class="info-value"
+                                            id="account-last-seen"
+                                            data-iso="{{ user.last_seen_at.isoformat() ~ 'Z' if user and user.last_seen_at else '' }}"
+                                        >{{ 'Loading…' if user and user.last_seen_at else 'Not available' }}</div>
                                     </article>
                                 </div>
                             </div>
@@ -782,7 +809,23 @@
         </main>
     </div>
 
-    <script src="{{ url_for('static', filename='admin-dashboard.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='admin-dashboard.js') }}?v=20260730t" defer></script>
+    <script>
+        (function () {
+            const el = document.getElementById('account-last-seen');
+            if (!el || !el.dataset.iso) return;
+            const raw = el.dataset.iso;
+            const date = new Date(/[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw) ? raw : `${raw}Z`);
+            if (Number.isNaN(date.getTime())) {
+                el.textContent = 'Not available';
+                return;
+            }
+            el.textContent = date.toLocaleString(undefined, {
+                month: 'short', day: 'numeric', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+            });
+        })();
+    </script>
 
 </body>
 </html>

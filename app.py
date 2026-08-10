@@ -5,9 +5,10 @@ import json
 import os
 import random
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 from urllib.request import Request, urlopen
 
+from dotenv import load_dotenv
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -21,18 +22,20 @@ ACTIVE_CHAT_STATUSES = ("queued", "assigned", "in_progress")
 RESOLVED_CHAT_STATUSES = ("resolved", "closed")
 ASSIGNABLE_ROLES = ("csr",)
 DEFAULT_MAX_CONCURRENT_CHATS = 4
-CSR_ONLINE_WINDOW_SECONDS = 60
-CSR_PRESENCE_WRITE_INTERVAL_SECONDS = 15
+CSR_ONLINE_WINDOW_SECONDS = 45
+CSR_PRESENCE_WRITE_INTERVAL_SECONDS = 10
 CENTRAL_API_URL = os.environ.get("CENTRAL_API_URL", "http://52.74.227.205:5003").rstrip("/")
 CSR_WIDGET_KEY = os.environ.get("CSR_WIDGET_KEY", "csr_aridian_52_74_227_205_demo").strip()
 CSR_API_KEY = os.environ.get("CSR_API_KEY", "").strip()
 TICKET_CODE_PREFIXES = ("TCK", "FLT", "CLP", "IDK", "SUP", "OPS", "HLP", "TKT", "SRV", "INC")
 
 
-app = Flask(__name__, template_folder="templates", static_folder="static")
-app.secret_key = "csr-widget-app-secret-key-2024"
-
 basedir = os.path.abspath(os.path.dirname(__file__))
+load_dotenv(os.path.join(basedir, ".env"))
+
+app = Flask(__name__, template_folder="templates", static_folder="static")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "csr-widget-app-secret-key-2024")
+
 instance_dir = os.path.join(basedir, "instance")
 INTEGRATION_CONFIG_PATH = os.path.join(instance_dir, "integration_settings.json")
 CSR_DASHBOARD_APP_PATH = os.path.join(basedir, "static", "csr-dashboard-app.html")
@@ -48,8 +51,34 @@ KNOWLEDGE_BASE_UPDATER_URL = os.environ.get(
 ).strip()
 DEFAULT_CHAT_LIST_POLL = 5000
 DEFAULT_MESSAGE_POLL = 3000
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(basedir, "instance", "users.db")
+
+
+def build_database_uri():
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if database_url:
+        return database_url
+
+    supabase_url = os.environ.get("SUPABASE_URL", "").strip()
+    db_password = os.environ.get("SUPABASE_DB_PASSWORD", "").strip()
+    if supabase_url and db_password:
+        project_ref = supabase_url.replace("https://", "").split(".")[0]
+        encoded_password = quote_plus(db_password)
+        pooler_host = os.environ.get("SUPABASE_POOLER_HOST", "").strip()
+        if pooler_host:
+            return (
+                f"postgresql://postgres.{project_ref}:{encoded_password}"
+                f"@{pooler_host}:6543/postgres"
+            )
+        return f"postgresql://postgres:{encoded_password}@db.{project_ref}.supabase.co:5432/postgres"
+
+    raise RuntimeError(
+        "Database configuration missing. Set DATABASE_URL or SUPABASE_URL + SUPABASE_DB_PASSWORD in .env"
+    )
+
+
+app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 app.config["PERMANENT_SESSION_LIFETIME"] = 86400
 
 db = SQLAlchemy(app)
@@ -66,7 +95,7 @@ CORS(
                 "http://52.74.227.205:5003",
             ],
             "methods": ["GET", "POST", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Service-Secret"],
             "supports_credentials": True,
         }
     },
@@ -110,7 +139,13 @@ def auth_context(role):
 
 
 def isoformat_or_none(value):
-    return value.isoformat() if value else None
+    """Serialize datetimes as UTC ISO-8601 with Z so browsers convert to local time."""
+    if not value:
+        return None
+    if getattr(value, "tzinfo", None) is not None:
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    # App stores naive datetimes as UTC.
+    return f"{value.isoformat()}Z"
 
 
 def get_request_payload():
@@ -416,7 +451,7 @@ class User(db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     is_available = db.Column(db.Boolean, nullable=False, default=True)
     max_concurrent_chats = db.Column(db.Integer, nullable=False, default=DEFAULT_MAX_CONCURRENT_CHATS)
-    unlimited_chats = db.Column(db.Boolean, nullable=False, default=False)
+    unlimited_chats = db.Column(db.Boolean, nullable=False, default=True)
     last_assigned_at = db.Column(db.DateTime)
     last_seen_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=utcnow)
@@ -462,6 +497,9 @@ class ChatConversation(db.Model):
     external_chat_id = db.Column(db.String(100), unique=True, nullable=False, index=True)
     customer_name = db.Column(db.String(150), nullable=False)
     customer_email = db.Column(db.String(150))
+    customer_external_user_id = db.Column(db.String(120), index=True)
+    auth_mode = db.Column(db.String(20), nullable=False, default="anonymous")
+    authenticated_user_data = db.Column(db.Text)
     subject = db.Column(db.String(255))
     priority = db.Column(db.String(20), nullable=False, default="normal")
     status = db.Column(db.String(20), nullable=False, default="queued", index=True)
@@ -537,7 +575,11 @@ class TechTeamAccount(db.Model):
     last_seen_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=utcnow)
 
-    claimed_tickets = db.relationship("Ticket", back_populates="assigned_tech")
+    claimed_tickets = db.relationship(
+        "Ticket",
+        back_populates="assigned_tech",
+        foreign_keys="Ticket.assigned_tech_id",
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -577,7 +619,12 @@ class Ticket(db.Model):
     description = db.Column(db.Text)
     priority = db.Column(db.String(20), nullable=False, default="normal")
     status = db.Column(db.String(50), nullable=False, default="open", index=True)
-    created_by_csr_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    # Origin keeps CSR chat tickets separate from admin/tech operational tickets.
+    # csr = created from a customer chat; admin/tech = independent (no chat required).
+    origin = db.Column(db.String(20), nullable=False, default="csr", index=True)
+    created_by_csr_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_by_admin_id = db.Column(db.Integer, db.ForeignKey("admin_accounts.id"), nullable=True, index=True)
+    created_by_tech_id = db.Column(db.Integer, db.ForeignKey("tech_team_accounts.id"), nullable=True, index=True)
     chat_id = db.Column(db.Integer, db.ForeignKey("chat_conversations.id"), index=True)
     assigned_tech_id = db.Column(db.Integer, db.ForeignKey("tech_team_accounts.id"), index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
@@ -585,8 +632,14 @@ class Ticket(db.Model):
     resolved_at = db.Column(db.DateTime)
 
     created_by_csr = db.relationship("User", foreign_keys=[created_by_csr_id])
+    created_by_admin = db.relationship("AdminAccount", foreign_keys=[created_by_admin_id])
+    created_by_tech = db.relationship("TechTeamAccount", foreign_keys=[created_by_tech_id])
     chat_conversation = db.relationship("ChatConversation", foreign_keys=[chat_id])
-    assigned_tech = db.relationship("TechTeamAccount", back_populates="claimed_tickets")
+    assigned_tech = db.relationship(
+        "TechTeamAccount",
+        foreign_keys=[assigned_tech_id],
+        back_populates="claimed_tickets",
+    )
     status_logs = db.relationship(
         "TicketStatusLog",
         back_populates="ticket",
@@ -674,6 +727,16 @@ def is_user_online(user, now=None):
         and getattr(user, "is_active", True)
         and user.last_seen_at
         and user.last_seen_at >= get_online_cutoff(now)
+    )
+
+
+def is_tech_online(tech, now=None):
+    """Live presence for technical team (heartbeat within online window)."""
+    return bool(
+        tech
+        and getattr(tech, "is_active", True)
+        and tech.last_seen_at
+        and tech.last_seen_at >= get_online_cutoff(now)
     )
 
 
@@ -773,12 +836,28 @@ def get_current_tech_user():
 
 
 def touch_tech_presence(tech, force=False):
-    if not tech:
+    if not tech or not getattr(tech, "is_active", True):
         return
     now = utcnow()
     if force or not tech.last_seen_at or (now - tech.last_seen_at).total_seconds() >= CSR_PRESENCE_WRITE_INTERVAL_SECONDS:
         tech.last_seen_at = now
         db.session.commit()
+
+
+def finalize_user_presence(user):
+    """Stamp last activity time (keeps accurate last seen on logout/close)."""
+    if user and getattr(user, "is_active", True):
+        touch_user_presence(user, force=True)
+
+
+def finalize_tech_presence(tech):
+    if tech:
+        touch_tech_presence(tech, force=True)
+
+
+def finalize_admin_presence(admin):
+    if admin:
+        touch_admin_presence(admin, force=True)
 
 
 def tech_required(f):
@@ -788,6 +867,13 @@ def tech_required(f):
         if not tech:
             if request.path.startswith("/api/"):
                 return jsonify({"error": "Technical team access is required."}), 403
+            return redirect(url_for("tech_login"))
+        if not tech.is_active:
+            finalize_tech_presence(tech)
+            session.clear()
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Technical team account is disabled."}), 403
+            flash("Your technical team account is disabled.", "error")
             return redirect(url_for("tech_login"))
         touch_tech_presence(tech)
         return f(*args, **kwargs)
@@ -825,16 +911,8 @@ def get_support_user_rows(available_only=False, online_only=False, include_inact
 
 
 def pick_best_csr():
-    eligible_rows = []
-    for user, active_chat_count in get_support_user_rows(available_only=True, online_only=True):
-        if getattr(user, "unlimited_chats", False):
-            # Unlimited-capacity CSRs are always eligible regardless of load.
-            eligible_rows.append((user, active_chat_count))
-            continue
-        capacity = user.max_concurrent_chats or DEFAULT_MAX_CONCURRENT_CHATS
-        if active_chat_count < capacity:
-            eligible_rows.append((user, active_chat_count))
-
+    # All online + available CSRs are eligible; chats are unlimited by default.
+    eligible_rows = list(get_support_user_rows(available_only=True, online_only=True))
     if not eligible_rows:
         return None
 
@@ -1205,8 +1283,8 @@ def serialize_user(user):
         "is_active": bool(user.is_active),
         "is_available": bool(user.is_available),
         "is_online": is_user_online(user),
-        "max_concurrent_chats": user.max_concurrent_chats or DEFAULT_MAX_CONCURRENT_CHATS,
-        "unlimited_chats": bool(getattr(user, "unlimited_chats", False)),
+        "max_concurrent_chats": None,
+        "unlimited_chats": True,
         "last_assigned_at": isoformat_or_none(user.last_assigned_at),
         "last_seen_at": isoformat_or_none(user.last_seen_at),
         "created_at": isoformat_or_none(user.created_at),
@@ -1225,18 +1303,15 @@ def serialize_admin(admin):
 
 
 def serialize_support_user(user, active_chat_count):
-    unlimited = bool(getattr(user, "unlimited_chats", False))
-    capacity = user.max_concurrent_chats or DEFAULT_MAX_CONCURRENT_CHATS
-    if unlimited:
-        # Unlimited CSRs are never "full", so keep the load bar visually light.
-        load_pct = min(100, min(40, active_chat_count * 4))
-    else:
-        load_pct = min(100, round((active_chat_count / capacity) * 100)) if capacity else 0
+    # Concurrent chat caps are retired — every CSR is unlimited.
+    load_pct = min(100, min(40, active_chat_count * 4))
     payload = serialize_user(user)
     payload.update(
         {
             "active_chat_count": active_chat_count,
             "load_pct": load_pct,
+            "unlimited_chats": True,
+            "max_concurrent_chats": None,
         }
     )
     return payload
@@ -1287,6 +1362,8 @@ def serialize_chat(chat, current_user, message_count=None, latest_message=None):
         "external_chat_id": chat.external_chat_id,
         "customer_name": chat.customer_name,
         "customer_email": chat.customer_email,
+        "customer_external_user_id": chat.customer_external_user_id,
+        "auth_mode": chat.auth_mode,
         "subject": chat.subject,
         "status": chat.status,
         "priority": chat.priority,
@@ -1314,6 +1391,7 @@ def serialize_chat(chat, current_user, message_count=None, latest_message=None):
         "is_mine": is_mine,
         "is_read_only": is_read_only_for_user,
         "lock_reason": build_lock_reason(chat) if is_read_only_for_user else None,
+        "authenticated_user_data": chat.authenticated_user_data,
     }
 
 
@@ -1376,7 +1454,6 @@ def build_resolution_report(csr_users):
                 "resolved_today": today_counts.get(csr["id"], 0),
                 "resolved_yesterday": yesterday_counts.get(csr["id"], 0),
                 "open_chats": csr["active_chat_count"],
-                "max_concurrent_chats": csr["max_concurrent_chats"],
                 "is_online": csr["is_online"],
             }
         )
@@ -1404,8 +1481,20 @@ ADMIN_DASHBOARD_PAGE_SCOPES = {
     "team": {"csr_users", "available_csr_users", "reports"},
     "tech": set(),
     "chats": {"chats"},
+    "chats-active": {"chats"},
+    "tickets-current": set(),
+    "tickets-old": set(),
     "activity": set(),
     "account": set(),
+}
+
+ADMIN_DASHBOARD_NO_POLL_PAGES = {
+    "knowledge-base",
+    "tech",
+    "activity",
+    "account",
+    "tickets-current",
+    "tickets-old",
 }
 
 
@@ -1517,8 +1606,9 @@ def build_admin_dashboard_payload(current_admin, page=None, chat_page=1, chat_pe
             "active_chats": ChatConversation.query.filter(ChatConversation.status.in_(ACTIVE_CHAT_STATUSES)).count(),
             "queued_chats": ChatConversation.query.filter_by(status="queued").count(),
             "resolved_chats": ChatConversation.query.filter(ChatConversation.status.in_(RESOLVED_CHAT_STATUSES)).count(),
-            "total_capacity": sum(csr["max_concurrent_chats"] for csr in csr_users if csr["is_active"]),
+            "total_capacity": None,
             "used_capacity": sum(csr["active_chat_count"] for csr in csr_users if csr["is_active"]),
+            "unlimited_capacity": True,
             "resolved_today": resolution_report["today_total"],
             "resolved_yesterday": resolution_report["yesterday_total"],
         }
@@ -1552,15 +1642,22 @@ def build_admin_dashboard_payload(current_admin, page=None, chat_page=1, chat_pe
             per_page = ADMIN_CHATS_DEFAULT_PER_PAGE
         per_page = max(5, min(ADMIN_CHATS_MAX_PER_PAGE, per_page))
 
-        total_chats_count = ChatConversation.query.count()
+        chats_query = ChatConversation.query.options(joinedload(ChatConversation.assigned_csr))
+        # Active Chats page only loads live conversations to keep the payload light.
+        if page == "chats-active":
+            chats_query = chats_query.filter(ChatConversation.status.in_(ACTIVE_CHAT_STATUSES))
+            payload["chat_scope"] = "active"
+        else:
+            payload["chat_scope"] = "history"
+
+        total_chats_count = chats_query.count()
         total_pages = max(1, (total_chats_count + per_page - 1) // per_page)
         if page_num > total_pages:
             page_num = total_pages
         offset = (page_num - 1) * per_page
 
         chats = (
-            ChatConversation.query
-            .options(joinedload(ChatConversation.assigned_csr))
+            chats_query
             .order_by(
                 ChatConversation.last_activity_at.desc(),
                 ChatConversation.reverted_at.desc(),
@@ -1650,7 +1747,13 @@ def build_csr_dashboard_payload(current_user):
     chats = (
         ChatConversation.query
         .options(joinedload(ChatConversation.assigned_csr))
-        .filter(ChatConversation.status.in_(ACTIVE_CHAT_STATUSES))
+        .filter(
+            ChatConversation.status.in_(ACTIVE_CHAT_STATUSES),
+            or_(
+                ChatConversation.assigned_csr_id.is_(None),
+                ChatConversation.assigned_csr_id == current_user.id,
+            ),
+        )
         .order_by(
             ChatConversation.last_activity_at.desc(),
             ChatConversation.reverted_at.desc(),
@@ -1682,6 +1785,11 @@ def build_csr_dashboard_payload(current_user):
             "resolved_chats": ChatConversation.query.filter(ChatConversation.status.in_(RESOLVED_CHAT_STATUSES)).count(),
             "my_chats": ChatConversation.query.filter(
                 ChatConversation.assigned_csr_id == current_user.id,
+                ChatConversation.status.in_(ACTIVE_CHAT_STATUSES),
+            ).count(),
+            "other_chats": ChatConversation.query.filter(
+                ChatConversation.assigned_csr_id.is_not(None),
+                ChatConversation.assigned_csr_id != current_user.id,
                 ChatConversation.status.in_(ACTIVE_CHAT_STATUSES),
             ).count(),
             "available_csrs": User.query.filter(
@@ -1796,97 +1904,54 @@ def find_chat_by_visitor_id(visitor_id):
 
 # ─── Schema Bootstrap ────────────────────────────────────────
 def ensure_schema():
-    os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
+    os.makedirs(instance_dir, exist_ok=True)
     db.create_all()
-
     inspector = inspect(db.engine)
-    table_names = set(inspector.get_table_names())
-    if "users" not in table_names:
-        return
-
-    existing_columns = {column["name"] for column in inspector.get_columns("users")}
-    user_column_updates = {
-        "display_name": "ALTER TABLE users ADD COLUMN display_name VARCHAR(120)",
-        "role": "ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'csr'",
-        "is_active": "ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1",
-        "is_available": "ALTER TABLE users ADD COLUMN is_available BOOLEAN DEFAULT 1",
-        "max_concurrent_chats": (
-            "ALTER TABLE users ADD COLUMN max_concurrent_chats "
-            f"INTEGER DEFAULT {DEFAULT_MAX_CONCURRENT_CHATS}"
-        ),
-        "unlimited_chats": "ALTER TABLE users ADD COLUMN unlimited_chats BOOLEAN DEFAULT 0",
-        "last_assigned_at": "ALTER TABLE users ADD COLUMN last_assigned_at DATETIME",
-        "last_seen_at": "ALTER TABLE users ADD COLUMN last_seen_at DATETIME",
+    existing_columns = {column["name"] for column in inspector.get_columns("chat_conversations")}
+    column_definitions = {
+        "customer_external_user_id": "VARCHAR(120)",
+        "auth_mode": "VARCHAR(20) NOT NULL DEFAULT 'anonymous'",
+        "authenticated_user_data": "TEXT",
     }
-
     with db.engine.begin() as connection:
-        for column_name, statement in user_column_updates.items():
+        for column_name, column_definition in column_definitions.items():
             if column_name not in existing_columns:
-                connection.execute(text(statement))
-
-        connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_admin_accounts_email ON admin_accounts (email)"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_users_role ON users (role)"))
-        connection.execute(
-            text("CREATE INDEX IF NOT EXISTS ix_chat_conversations_assigned_csr_id ON chat_conversations (assigned_csr_id)")
-        )
-        connection.execute(
-            text("CREATE INDEX IF NOT EXISTS ix_chat_conversations_external_chat_id ON chat_conversations (external_chat_id)")
-        )
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_chat_conversations_status ON chat_conversations (status)"))
-        connection.execute(
-            text("CREATE INDEX IF NOT EXISTS ix_chat_assignment_events_chat_id ON chat_assignment_events (chat_id)")
-        )
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_chat_messages_chat_id ON chat_messages (chat_id)"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_chat_messages_sender_type ON chat_messages (sender_type)"))
-
-    assignment_columns = {column["name"] for column in inspector.get_columns("chat_assignment_events")}
-    assignment_updates = {
-        "acted_by_name": "ALTER TABLE chat_assignment_events ADD COLUMN acted_by_name VARCHAR(120)",
-        "acted_by_role": "ALTER TABLE chat_assignment_events ADD COLUMN acted_by_role VARCHAR(20)",
-    }
-    with db.engine.begin() as connection:
-        for column_name, statement in assignment_updates.items():
-            if column_name not in assignment_columns:
-                connection.execute(text(statement))
-
-    if "chat_messages" in table_names:
-        message_columns = {column["name"] for column in inspector.get_columns("chat_messages")}
-        if "image_attachments" not in message_columns:
-            with db.engine.begin() as connection:
-                connection.execute(text("ALTER TABLE chat_messages ADD COLUMN image_attachments TEXT"))
-
-    if "tickets" in table_names:
-        ticket_columns = {column["name"] for column in inspector.get_columns("tickets")}
-        if "ticket_number" not in ticket_columns:
-            with db.engine.begin() as connection:
-                connection.execute(text("ALTER TABLE tickets ADD COLUMN ticket_number VARCHAR(24)"))
-            for ticket in Ticket.query.filter(
-                (Ticket.ticket_number.is_(None)) | (Ticket.ticket_number == "")
-            ).all():
-                ticket.ticket_number = generate_unique_ticket_number()
-            db.session.commit()
-            with db.engine.begin() as connection:
                 connection.execute(
-                    text("CREATE UNIQUE INDEX IF NOT EXISTS ix_tickets_ticket_number ON tickets (ticket_number)")
-                )
-        ticket_columns = {column["name"] for column in inspector.get_columns("tickets")}
-        if "chat_id" not in ticket_columns:
-            with db.engine.begin() as connection:
-                connection.execute(text("ALTER TABLE tickets ADD COLUMN chat_id INTEGER"))
-                connection.execute(
-                    text("CREATE INDEX IF NOT EXISTS ix_tickets_chat_id ON tickets (chat_id)")
+                    text(f"ALTER TABLE chat_conversations ADD COLUMN {column_name} {column_definition}")
                 )
 
-    if "ticket_status_logs" in table_names:
-        log_columns = {column["name"] for column in inspector.get_columns("ticket_status_logs")}
-        log_column_updates = {
-            "old_assigned_tech_id": "ALTER TABLE ticket_status_logs ADD COLUMN old_assigned_tech_id INTEGER",
-            "new_assigned_tech_id": "ALTER TABLE ticket_status_logs ADD COLUMN new_assigned_tech_id INTEGER",
-        }
+    if inspector.has_table("tickets"):
+        ticket_columns = {column["name"]: column for column in inspector.get_columns("tickets")}
         with db.engine.begin() as connection:
-            for column_name, statement in log_column_updates.items():
-                if column_name not in log_columns:
-                    connection.execute(text(statement))
+            if "created_by_admin_id" not in ticket_columns:
+                connection.execute(
+                    text("ALTER TABLE tickets ADD COLUMN created_by_admin_id INTEGER REFERENCES admin_accounts(id)")
+                )
+            if "created_by_tech_id" not in ticket_columns:
+                connection.execute(
+                    text("ALTER TABLE tickets ADD COLUMN created_by_tech_id INTEGER REFERENCES tech_team_accounts(id)")
+                )
+            if "origin" not in ticket_columns:
+                connection.execute(
+                    text("ALTER TABLE tickets ADD COLUMN origin VARCHAR(20) NOT NULL DEFAULT 'csr'")
+                )
+                # Backfill origin from creator columns for existing rows.
+                connection.execute(text("""
+                    UPDATE tickets
+                    SET origin = CASE
+                        WHEN created_by_admin_id IS NOT NULL THEN 'admin'
+                        WHEN created_by_tech_id IS NOT NULL THEN 'tech'
+                        WHEN chat_id IS NOT NULL OR created_by_csr_id IS NOT NULL THEN 'csr'
+                        ELSE 'csr'
+                    END
+                """))
+            # Allow admin/tech-created tickets without a CSR creator.
+            csr_col = ticket_columns.get("created_by_csr_id")
+            if csr_col is not None and not csr_col.get("nullable", True):
+                try:
+                    connection.execute(text("ALTER TABLE tickets ALTER COLUMN created_by_csr_id DROP NOT NULL"))
+                except Exception:
+                    pass
 
 
 def generate_ticket_number():
@@ -1986,12 +2051,41 @@ def migrate_legacy_admins():
     db.session.commit()
 
 
+def seed_dummy_users():
+    """Seed a dummy CSR and admin for local testing if no users exist."""
+    dummy_csr = User.query.filter_by(email="dummy.csr@example.test").first()
+    if not dummy_csr:
+        dummy_csr = User(
+            email="dummy.csr@example.test",
+            display_name="Dummy CSR",
+            role="csr",
+            is_active=True,
+            is_available=True,
+            max_concurrent_chats=DEFAULT_MAX_CONCURRENT_CHATS,
+            unlimited_chats=True,
+        )
+        dummy_csr.set_password("dummy123")
+        db.session.add(dummy_csr)
+
+    dummy_admin = AdminAccount.query.filter_by(email="dummy.admin@example.test").first()
+    if not dummy_admin:
+        dummy_admin = AdminAccount(
+            email="dummy.admin@example.test",
+            display_name="Dummy Admin",
+        )
+        dummy_admin.set_password("dummy123")
+        db.session.add(dummy_admin)
+
+    db.session.commit()
+
+
 def bootstrap_users():
     migrate_legacy_admins()
 
     users = User.query.order_by(User.created_at.asc(), User.id.asc()).all()
     if not users:
-        return
+        seed_dummy_users()
+        users = User.query.order_by(User.created_at.asc(), User.id.asc()).all()
 
     for user in users:
         if not user.display_name:
@@ -2006,6 +2100,8 @@ def bootstrap_users():
                 user.is_active = True
             if user.is_available is None:
                 user.is_available = True
+            # All CSRs are unlimited concurrent chat handlers.
+            user.unlimited_chats = True
             if not user.max_concurrent_chats or user.max_concurrent_chats < 1:
                 user.max_concurrent_chats = DEFAULT_MAX_CONCURRENT_CHATS
 
@@ -2036,7 +2132,7 @@ def render_admin_dashboard_page(page, title, copy):
         admin_page=page,
         admin_page_title=title,
         admin_page_copy=copy,
-        dashboard_enabled=page not in {"knowledge-base", "tech", "activity", "account"},
+        dashboard_enabled=page not in ADMIN_DASHBOARD_NO_POLL_PAGES,
         knowledge_base_updater_url=KNOWLEDGE_BASE_UPDATER_URL,
     )
 
@@ -2093,8 +2189,38 @@ def admin_team():
 def admin_chats():
     return render_admin_dashboard_page(
         "chats",
-        "Chat Ledger",
-        "Inspect stored conversations, review transcripts, and remove chat records when necessary.",
+        "Chat History",
+        "Browse stored conversations, review transcripts, and remove chat records when necessary.",
+    )
+
+
+@app.route("/admin/dashboard/chats/active")
+@admin_required
+def admin_chats_active():
+    return render_admin_dashboard_page(
+        "chats-active",
+        "Active Chats",
+        "Live view of queued, assigned, and in-progress chats across the support team.",
+    )
+
+
+@app.route("/admin/dashboard/tickets/current")
+@admin_required
+def admin_tickets_current():
+    return render_admin_dashboard_page(
+        "tickets-current",
+        "Current Tickets",
+        "Open and in-progress technical tickets. Create new tickets as a super admin.",
+    )
+
+
+@app.route("/admin/dashboard/tickets/old")
+@admin_required
+def admin_tickets_old():
+    return render_admin_dashboard_page(
+        "tickets-old",
+        "Old Tickets",
+        "Completed and closed technical tickets for audit and history.",
     )
 
 
@@ -2188,6 +2314,7 @@ def handle_signup(role=None):
             is_active=True,
             is_available=True,
             max_concurrent_chats=DEFAULT_MAX_CONCURRENT_CHATS,
+            unlimited_chats=True,
         )
         user.set_password(password)
         db.session.add(user)
@@ -2290,15 +2417,16 @@ def csr_login():
 
 @app.route("/logout")
 def logout():
-    current_user = get_current_user()
     current_tech = get_current_tech_user()
+    current_csr = get_current_csr_user()
+    current_admin = get_current_admin()
 
     if current_tech:
-        current_tech.last_seen_at = None
-        db.session.commit()
-    elif current_user:
-        current_user.last_seen_at = None
-        db.session.commit()
+        finalize_tech_presence(current_tech)
+    elif current_csr:
+        finalize_user_presence(current_csr)
+    elif current_admin:
+        finalize_admin_presence(current_admin)
 
     session.clear()
     flash("You have been logged out.", "success")
@@ -2338,11 +2466,56 @@ def tech_login():
 def tech_logout():
     tech = get_current_tech_user()
     if tech:
-        tech.last_seen_at = None
-        db.session.commit()
+        finalize_tech_presence(tech)
     session.clear()
     flash("You have been logged out.", "success")
     return redirect(url_for("tech_login"))
+
+
+@app.route("/api/csr/heartbeat", methods=["POST"])
+@csr_required
+def csr_heartbeat():
+    """Keep CSR presence online while dashboard is open."""
+    user = get_current_csr_user()
+    touch_user_presence(user, force=True)
+    return jsonify({
+        "success": True,
+        "is_online": True,
+        "last_seen_at": isoformat_or_none(user.last_seen_at),
+        "online_window_seconds": CSR_ONLINE_WINDOW_SECONDS,
+    })
+
+
+@app.route("/api/csr/presence/offline", methods=["POST"])
+def csr_presence_offline():
+    """Record CSR last activity on logout or browser/tab close."""
+    user = get_current_csr_user()
+    if user:
+        finalize_user_presence(user)
+    return jsonify({"success": True, "is_online": False})
+
+
+@app.route("/api/tech/heartbeat", methods=["POST"])
+@tech_required
+def tech_heartbeat():
+    """Keep technical team presence online while dashboard is open."""
+    tech = get_current_tech_user()
+    touch_tech_presence(tech, force=True)
+    return jsonify({
+        "success": True,
+        "is_online": True,
+        "last_seen_at": isoformat_or_none(tech.last_seen_at),
+        "online_window_seconds": CSR_ONLINE_WINDOW_SECONDS,
+    })
+
+
+@app.route("/api/tech/presence/offline", methods=["POST"])
+def tech_presence_offline():
+    """Record tech last activity on logout or browser/tab close."""
+    tech = get_current_tech_user()
+    if tech:
+        finalize_tech_presence(tech)
+    return jsonify({"success": True, "is_online": False})
 
 
 @app.route("/tech/dashboard")
@@ -2367,6 +2540,15 @@ def external_init():
     payload = get_request_payload()
     visitor_id = (payload.get("visitor_id") or "").strip()
     transcript = payload.get("transcript") or []
+    authentication = payload.get("authentication") or {}
+    if not isinstance(authentication, dict):
+        authentication = {}
+    auth_mode = str(authentication.get("mode") or "anonymous").strip().lower()
+    authenticated_user = authentication.get("user")
+    if auth_mode not in {"anonymous", "authenticated"}:
+        auth_mode = "anonymous"
+    if not isinstance(authenticated_user, dict):
+        authenticated_user = None
 
     if not visitor_id:
         return jsonify({"success": False, "message": "visitor_id is required"}), 400
@@ -2378,7 +2560,23 @@ def external_init():
     if not chat:
         chat = ChatConversation(
             external_chat_id=visitor_id,
-            customer_name=visitor_id,
+            customer_name=(
+                str(authenticated_user.get("name") or visitor_id)
+                if authenticated_user
+                else visitor_id
+            ),
+            customer_email=(
+                str(authenticated_user.get("email") or "").strip() or None
+                if authenticated_user
+                else None
+            ),
+            customer_external_user_id=(
+                str(authenticated_user.get("id"))
+                if authenticated_user and authenticated_user.get("id") is not None
+                else None
+            ),
+            auth_mode=auth_mode,
+            authenticated_user_data=json.dumps(authenticated_user) if authenticated_user else None,
             subject="Incoming QSTP widget handoff",
             source="qstp_widget",
             reverted_reason="AI escalated this conversation to a human CSR.",
@@ -2412,7 +2610,15 @@ def external_init():
                 acted_by_role_value="system",
             )
 
-        chat.customer_name = chat.customer_name or visitor_id
+        if authenticated_user:
+            chat.customer_name = str(authenticated_user.get("name") or chat.customer_name or visitor_id)
+            chat.customer_email = str(authenticated_user.get("email") or "").strip() or chat.customer_email
+            if authenticated_user.get("id") is not None:
+                chat.customer_external_user_id = str(authenticated_user["id"])
+            chat.authenticated_user_data = json.dumps(authenticated_user)
+        else:
+            chat.customer_name = chat.customer_name or visitor_id
+        chat.auth_mode = auth_mode
         chat.subject = chat.subject or "Incoming QSTP widget handoff"
         chat.source = "qstp_widget"
         chat.reverted_reason = "AI escalated this conversation to a human CSR."
@@ -2584,6 +2790,87 @@ def csr_resolved_chats():
             "total_pages": total_pages,
             "has_prev": page > 1,
             "has_next": page < total_pages,
+        },
+    })
+
+
+@app.route("/api/csr/chats/others")
+@csr_required
+def csr_other_chats():
+    """Paginated teammate chats (assigned to other CSRs) for the Others tab."""
+    current_user = get_current_csr_user()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = int(request.args.get("per_page", 10))
+    except (TypeError, ValueError):
+        per_page = 10
+    per_page = max(5, min(per_page, 50))
+
+    date_raw = (request.args.get("date") or "").strip()
+    day_start = day_end = None
+    if date_raw:
+        try:
+            day = datetime.strptime(date_raw, "%Y-%m-%d").date()
+            day_start = datetime.combine(day, datetime.min.time())
+            day_end = datetime.combine(day, datetime.max.time())
+        except ValueError:
+            return jsonify({"error": "Invalid date. Use YYYY-MM-DD."}), 400
+
+    base_query = (
+        ChatConversation.query
+        .filter(
+            ChatConversation.status.in_(ACTIVE_CHAT_STATUSES),
+            ChatConversation.assigned_csr_id.is_not(None),
+            ChatConversation.assigned_csr_id != current_user.id,
+        )
+    )
+    if day_start and day_end:
+        base_query = base_query.filter(
+            ChatConversation.last_activity_at >= day_start,
+            ChatConversation.last_activity_at <= day_end,
+        )
+
+    total = base_query.count()
+    total_pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    page = min(page, total_pages) if total else 1
+    offset = (page - 1) * per_page
+
+    chats = (
+        base_query
+        .options(joinedload(ChatConversation.assigned_csr))
+        .order_by(
+            ChatConversation.last_activity_at.desc(),
+            ChatConversation.reverted_at.desc(),
+        )
+        .offset(offset)
+        .limit(per_page)
+        .all()
+    )
+    chat_counts = get_message_counts_for_chats([chat.id for chat in chats])
+    latest_messages = get_latest_messages_for_chats([chat.id for chat in chats])
+
+    return jsonify({
+        "chats": [
+            serialize_chat(
+                chat,
+                current_user,
+                message_count=chat_counts.get(chat.id, 0),
+                latest_message=latest_messages.get(chat.id),
+            )
+            for chat in chats
+        ],
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+            "has_more": page < total_pages,
+            "date": date_raw or None,
         },
     })
 
@@ -2813,12 +3100,8 @@ def update_csr_settings(user_id):
 
     payload = get_request_payload()
     csr_user.is_available = parse_bool(payload.get("is_available"), default=csr_user.is_available)
-    if "unlimited_chats" in payload:
-        csr_user.unlimited_chats = parse_bool(payload.get("unlimited_chats"), default=False)
-    csr_user.max_concurrent_chats = parse_int(
-        payload.get("max_concurrent_chats"),
-        csr_user.max_concurrent_chats or DEFAULT_MAX_CONCURRENT_CHATS,
-    )
+    # Concurrent caps removed — always keep CSRs unlimited.
+    csr_user.unlimited_chats = True
     db.session.commit()
 
     return jsonify({"success": True, "dashboard": build_dashboard_payload(current_user, page=get_request_dashboard_page())})
@@ -2832,8 +3115,6 @@ def create_csr_account():
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password") or ""
     display_name = (payload.get("display_name") or "").strip()
-    unlimited_chats = parse_bool(payload.get("unlimited_chats"), default=False)
-    max_concurrent_chats = parse_int(payload.get("max_concurrent_chats"), DEFAULT_MAX_CONCURRENT_CHATS)
     is_available = parse_bool(payload.get("is_available"), default=True)
 
     if not email or not password:
@@ -2857,8 +3138,8 @@ def create_csr_account():
         role="csr",
         is_active=True,
         is_available=is_available,
-        max_concurrent_chats=max_concurrent_chats,
-        unlimited_chats=unlimited_chats,
+        max_concurrent_chats=DEFAULT_MAX_CONCURRENT_CHATS,
+        unlimited_chats=True,
     )
     csr_user.set_password(password)
     db.session.add(csr_user)
@@ -2867,7 +3148,7 @@ def create_csr_account():
     return jsonify(
         {
             "success": True,
-            "message": f"CSR account created for {csr_user.display_name or csr_user.email}.",
+            "message": "User added successfully.",
             "dashboard": build_dashboard_payload(current_admin, page=get_request_dashboard_page()),
         }
     )
@@ -2926,6 +3207,8 @@ def serialize_tech_account_brief(tech):
         "display_name": tech.display_name or tech.email,
         "specialty": tech.specialty,
         "is_active": tech.is_active,
+        "is_online": is_tech_online(tech),
+        "last_seen_at": isoformat_or_none(tech.last_seen_at),
     }
 
 
@@ -2967,8 +3250,58 @@ def serialize_chat_ticket_ref(chat):
     return {
         "id": chat.id,
         "external_chat_id": chat.external_chat_id,
+        "visitor_id": chat.external_chat_id,
         "customer_name": chat.customer_name,
+        "visitor_name": chat.customer_name,
         "status": chat.status,
+    }
+
+
+def resolve_ticket_origin(ticket):
+    origin = (getattr(ticket, "origin", None) or "").strip().lower()
+    if origin in {"csr", "admin", "tech"}:
+        return origin
+    if getattr(ticket, "created_by_admin_id", None):
+        return "admin"
+    if getattr(ticket, "created_by_tech_id", None):
+        return "tech"
+    return "csr"
+
+
+def ticket_creator_payload(ticket):
+    origin = resolve_ticket_origin(ticket)
+    created_by_tech = getattr(ticket, "created_by_tech", None)
+    created_by_admin = getattr(ticket, "created_by_admin", None)
+    created_by_csr = getattr(ticket, "created_by_csr", None)
+    if origin == "tech" and created_by_tech:
+        label = created_by_tech.display_name or created_by_tech.email
+        role = "tech"
+    elif origin == "admin" and created_by_admin:
+        label = created_by_admin.display_name or created_by_admin.email
+        role = "admin"
+    elif created_by_csr:
+        label = created_by_csr.display_name or created_by_csr.email
+        role = "csr"
+    elif created_by_admin:
+        label = created_by_admin.display_name or created_by_admin.email
+        role = "admin"
+    elif created_by_tech:
+        label = created_by_tech.display_name or created_by_tech.email
+        role = "tech"
+    else:
+        label = "Unknown"
+        role = origin or None
+    return {
+        "origin": origin,
+        "is_chat_linked": bool(ticket.chat_id) and origin == "csr",
+        "created_by_csr_id": ticket.created_by_csr_id,
+        "created_by_csr": serialize_user(created_by_csr) if created_by_csr else None,
+        "created_by_admin_id": ticket.created_by_admin_id,
+        "created_by_admin": serialize_admin(created_by_admin) if created_by_admin else None,
+        "created_by_tech_id": getattr(ticket, "created_by_tech_id", None),
+        "created_by_tech": serialize_tech_account_brief(created_by_tech) if created_by_tech else None,
+        "created_by_label": label,
+        "created_by_role": role,
     }
 
 
@@ -2987,17 +3320,14 @@ def serialize_ticket(ticket, include_messages=False, include_admin_details=False
         tech.id: tech
         for tech in TechTeamAccount.query.filter(TechTeamAccount.id.in_(tech_ids)).all()
     } if tech_ids else {}
-    assignment_history = [
-        serialize_ticket_log(log, tech_lookup)
-        for log in (ticket.status_logs or [])
-        if log.old_assigned_tech_id != log.new_assigned_tech_id
-        and (log.old_assigned_tech_id is not None or log.new_assigned_tech_id is not None)
-    ]
+    history = [serialize_ticket_log(log, tech_lookup) for log in (ticket.status_logs or [])]
+    assignment_history = [item for item in history if item.get("is_assignment_change")]
     latest_message = max(
         ticket.messages or [],
         key=lambda message: (message.created_at, message.id),
         default=None,
     )
+    creator = ticket_creator_payload(ticket)
     data = {
         "id": ticket.id,
         "ticket_number": ticket.ticket_number or f"TCK_{ticket.id}",
@@ -3005,12 +3335,12 @@ def serialize_ticket(ticket, include_messages=False, include_admin_details=False
         "description": ticket.description,
         "priority": ticket.priority,
         "status": ticket.status,
-        "created_by_csr_id": ticket.created_by_csr_id,
-        "created_by_csr": serialize_user(ticket.created_by_csr) if ticket.created_by_csr else None,
-        "chat_id": ticket.chat_id,
-        "chat": serialize_chat_ticket_ref(ticket.chat_conversation),
+        **creator,
+        "chat_id": ticket.chat_id if creator["is_chat_linked"] else None,
+        "chat": serialize_chat_ticket_ref(ticket.chat_conversation) if creator["is_chat_linked"] else None,
         "assigned_tech_id": ticket.assigned_tech_id,
         "assigned_tech": serialize_tech_account_brief(ticket.assigned_tech),
+        "history": history,
         "assignment_history": assignment_history,
         "last_assignment_update": assignment_history[0] if assignment_history else None,
         "created_at": isoformat_or_none(ticket.created_at),
@@ -3110,6 +3440,7 @@ def serialize_ticket_summary(ticket, message_count=0, latest_message=None, lates
         for tech in TechTeamAccount.query.filter(TechTeamAccount.id.in_(tech_ids)).all()
     } if tech_ids else {}
     assignment_history = [serialize_ticket_log(assignment_log, tech_lookup)] if assignment_log else []
+    creator = ticket_creator_payload(ticket)
     data = {
         "id": ticket.id,
         "ticket_number": ticket.ticket_number or f"TCK_{ticket.id}",
@@ -3117,10 +3448,9 @@ def serialize_ticket_summary(ticket, message_count=0, latest_message=None, lates
         "description": ticket.description,
         "priority": ticket.priority,
         "status": ticket.status,
-        "created_by_csr_id": ticket.created_by_csr_id,
-        "created_by_csr": serialize_user(ticket.created_by_csr) if ticket.created_by_csr else None,
-        "chat_id": ticket.chat_id,
-        "chat": serialize_chat_ticket_ref(ticket.chat_conversation),
+        **creator,
+        "chat_id": ticket.chat_id if creator["is_chat_linked"] else None,
+        "chat": serialize_chat_ticket_ref(ticket.chat_conversation) if creator["is_chat_linked"] else None,
         "assigned_tech_id": ticket.assigned_tech_id,
         "assigned_tech": serialize_tech_account_brief(ticket.assigned_tech),
         "assignment_history": assignment_history,
@@ -3142,11 +3472,19 @@ def serialize_ticket_summary(ticket, message_count=0, latest_message=None, lates
 def ticket_query_with_relations():
     return Ticket.query.options(
         joinedload(Ticket.created_by_csr),
+        joinedload(Ticket.created_by_admin),
+        joinedload(Ticket.created_by_tech),
         joinedload(Ticket.chat_conversation),
         joinedload(Ticket.assigned_tech),
         joinedload(Ticket.messages),
         joinedload(Ticket.status_logs),
     )
+
+
+def resolved_ticket_status_names(statuses=None):
+    rows = statuses if statuses is not None else TicketStatus.query.all()
+    names = {s.name for s in rows if s.is_resolved}
+    return names | {"resolved", "closed"}
 
 
 def build_admin_ticket_stats(tickets, statuses):
@@ -3163,6 +3501,7 @@ def build_admin_ticket_stats(tickets, statuses):
 
 
 def build_tech_workload(tickets, tech_accounts):
+    now = utcnow()
     workload = {
         t.id: {
             "tech_id": t.id,
@@ -3170,6 +3509,8 @@ def build_tech_workload(tickets, tech_accounts):
             "email": t.email,
             "specialty": t.specialty,
             "is_active": t.is_active,
+            "is_online": is_tech_online(t, now=now),
+            "last_seen_at": isoformat_or_none(t.last_seen_at),
             "total_assigned": 0,
             "open": 0,
             "in_progress": 0,
@@ -3217,18 +3558,14 @@ def get_tickets():
     chat_id_filter = request.args.get("chat_id", type=int)
 
     if tech_user:
+        # Tech users can see every ticket. Client-side tabs (Queue / Mine / All)
+        # handle filtering, so the API always returns the full list to keep the
+        # "All" tab and the counts accurate. An optional status filter is still
+        # honored when explicitly requested.
+        query = ticket_query_with_relations()
         if status_filter:
-            tickets = ticket_query_with_relations().filter(Ticket.status == status_filter).order_by(Ticket.created_at.desc()).all()
-        else:
-            open_tickets = ticket_query_with_relations().filter(Ticket.status == "open").order_by(Ticket.created_at.desc()).all()
-            my_tickets = ticket_query_with_relations().filter(Ticket.assigned_tech_id == tech_user.id).order_by(Ticket.created_at.desc()).all()
-            all_others = (
-                ticket_query_with_relations()
-                .filter(Ticket.assigned_tech_id != tech_user.id, Ticket.status != "open")
-                .order_by(Ticket.updated_at.desc())
-                .all()
-            )
-            tickets = open_tickets + my_tickets + all_others
+            query = query.filter(Ticket.status == status_filter)
+        tickets = query.order_by(Ticket.updated_at.desc()).all()
     elif admin_user:
         query = ticket_query_with_relations()
         if status_filter and status_filter != "all":
@@ -3276,21 +3613,40 @@ def get_chat_tickets(chat_id):
 @app.route("/api/admin/tickets", methods=["GET"])
 @admin_required
 def admin_get_tickets():
-    """Admin overview: all tickets, stats, and per-tech workload."""
+    """Admin overview: tickets (optionally scoped), stats, and per-tech workload."""
     status_filter = (request.args.get("status") or "all").strip()
-    all_tickets = (
-        Ticket.query
-        .options(joinedload(Ticket.created_by_csr), joinedload(Ticket.assigned_tech))
-        .order_by(Ticket.updated_at.desc())
-        .all()
-    )
-    statuses = TicketStatus.query.order_by(TicketStatus.sort_order.asc()).all()
-    tech_accounts = TechTeamAccount.query.order_by(TechTeamAccount.display_name.asc()).all()
+    lifecycle = (request.args.get("lifecycle") or "all").strip().lower()
+    include_workload = (request.args.get("include_workload") or "1").strip() != "0"
+    include_stats = (request.args.get("include_stats") or "1").strip() != "0"
 
-    if status_filter and status_filter != "all":
-        tickets = [t for t in all_tickets if t.status == status_filter]
-    else:
-        tickets = all_tickets
+    statuses = TicketStatus.query.order_by(TicketStatus.sort_order.asc()).all()
+    resolved_names = resolved_ticket_status_names(statuses)
+    want_list = lifecycle in {"current", "old"} or status_filter not in {"", "all"} or not (include_stats or include_workload)
+
+    all_tickets = None
+    if include_stats or include_workload:
+        all_tickets = (
+            Ticket.query
+            .options(joinedload(Ticket.assigned_tech))
+            .order_by(Ticket.updated_at.desc())
+            .all()
+        )
+
+    tickets = []
+    if want_list or not (include_stats or include_workload):
+        list_query = Ticket.query.options(
+            joinedload(Ticket.created_by_csr),
+            joinedload(Ticket.created_by_admin),
+            joinedload(Ticket.created_by_tech),
+            joinedload(Ticket.assigned_tech),
+        )
+        if lifecycle == "current":
+            list_query = list_query.filter(~Ticket.status.in_(list(resolved_names)))
+        elif lifecycle == "old":
+            list_query = list_query.filter(Ticket.status.in_(list(resolved_names)))
+        if status_filter and status_filter != "all":
+            list_query = list_query.filter(Ticket.status == status_filter)
+        tickets = list_query.order_by(Ticket.updated_at.desc()).limit(300).all()
 
     ticket_ids = [ticket.id for ticket in tickets]
     message_counts = get_ticket_message_counts(ticket_ids)
@@ -3298,7 +3654,7 @@ def admin_get_tickets():
     latest_logs = get_latest_ticket_logs(ticket_ids)
     latest_assignment_logs = get_latest_ticket_logs(ticket_ids, assignment_only=True)
 
-    return jsonify({
+    payload = {
         "tickets": [
             serialize_ticket_summary(
                 ticket,
@@ -3310,8 +3666,63 @@ def admin_get_tickets():
             for ticket in tickets
         ],
         "statuses": [serialize_ticket_status(s) for s in statuses],
-        "stats": build_admin_ticket_stats(all_tickets, statuses),
-        "tech_workload": build_tech_workload(all_tickets, tech_accounts),
+        "lifecycle": lifecycle,
+    }
+    if include_stats:
+        payload["stats"] = build_admin_ticket_stats(all_tickets or tickets, statuses)
+    if include_workload:
+        tech_accounts = TechTeamAccount.query.order_by(TechTeamAccount.display_name.asc()).all()
+        payload["tech_workload"] = build_tech_workload(all_tickets or tickets, tech_accounts)
+    return jsonify(payload)
+
+
+@app.route("/api/admin/tickets", methods=["POST"])
+@admin_required
+def admin_create_ticket():
+    """Super-admin creates an independent technical ticket (not linked to CSR chats)."""
+    current_admin = get_current_admin()
+    payload = get_request_payload()
+
+    title = (payload.get("title") or "").strip()
+    description = (payload.get("description") or "").strip()
+    priority = (payload.get("priority") or "normal").strip().lower() or "normal"
+
+    if not title:
+        return jsonify({"error": "Ticket title is required."}), 400
+    if priority not in {"low", "normal", "high", "urgent"}:
+        priority = "normal"
+
+    # Admin tickets are independent of CSR chat tickets.
+    ticket = Ticket(
+        ticket_number=generate_unique_ticket_number(),
+        title=title,
+        description=description,
+        priority=priority,
+        status="open",
+        origin="admin",
+        created_by_csr_id=None,
+        created_by_admin_id=current_admin.id,
+        created_by_tech_id=None,
+        chat_id=None,
+    )
+    db.session.add(ticket)
+    db.session.flush()
+
+    log = TicketStatusLog(
+        ticket_id=ticket.id,
+        old_status=None,
+        new_status="open",
+        changed_by_user_id=None,
+        changed_by_role="admin",
+        notes=f"Independent admin ticket {ticket.ticket_number} created by {current_admin.display_name or current_admin.email}.",
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": f"Ticket {ticket.ticket_number} created successfully.",
+        "ticket": serialize_ticket(ticket, include_admin_details=True),
     })
 
 
@@ -3328,10 +3739,100 @@ def get_active_tech_accounts_for_handoff():
     return jsonify({"techs": [serialize_tech_account_brief(t) for t in techs]})
 
 
+@app.route("/api/tech/tickets", methods=["POST"])
+@tech_required
+def tech_create_ticket():
+    """Technical team creates an independent ticket (not linked to a CSR chat)."""
+    tech_user = get_current_tech_user()
+    payload = get_request_payload()
+
+    title = (payload.get("title") or "").strip()
+    description = (payload.get("description") or "").strip()
+    priority = (payload.get("priority") or "normal").strip().lower() or "normal"
+    assign_mode = (payload.get("assign_mode") or "me").strip().lower()
+    notes = (payload.get("notes") or "").strip()
+
+    if not title:
+        return jsonify({"error": "Ticket title is required."}), 400
+    if priority not in {"low", "normal", "high", "urgent"}:
+        priority = "normal"
+    if assign_mode not in {"me", "queue", "tech"}:
+        assign_mode = "me"
+
+    assigned_tech = None
+    if assign_mode == "me":
+        assigned_tech = tech_user
+    elif assign_mode == "tech":
+        try:
+            target_id = int(payload.get("assign_tech_id"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Select a technical person to assign."}), 400
+        assigned_tech = db.session.get(TechTeamAccount, target_id)
+        if not assigned_tech or not assigned_tech.is_active:
+            return jsonify({"error": "Selected technical person is not active."}), 400
+
+    status = "in_progress" if assigned_tech else "open"
+    ticket = Ticket(
+        ticket_number=generate_unique_ticket_number(),
+        title=title,
+        description=description,
+        priority=priority,
+        status=status,
+        origin="tech",
+        created_by_csr_id=None,
+        created_by_admin_id=None,
+        created_by_tech_id=tech_user.id,
+        chat_id=None,
+        assigned_tech_id=assigned_tech.id if assigned_tech else None,
+    )
+    db.session.add(ticket)
+    db.session.flush()
+
+    creator_name = tech_user.display_name or tech_user.email
+    create_notes = notes or f"Independent tech ticket created by {creator_name}."
+    db.session.add(
+        TicketStatusLog(
+            ticket_id=ticket.id,
+            old_status=None,
+            new_status="open",
+            old_assigned_tech_id=None,
+            new_assigned_tech_id=None,
+            changed_by_user_id=tech_user.id,
+            changed_by_role="tech",
+            notes=create_notes,
+        )
+    )
+    if assigned_tech:
+        assign_name = assigned_tech.display_name or assigned_tech.email
+        if assigned_tech.id == tech_user.id:
+            assign_note = f"Self-assigned by {creator_name}."
+        else:
+            assign_note = f"Assigned by {creator_name} to {assign_name}."
+        db.session.add(
+            TicketStatusLog(
+                ticket_id=ticket.id,
+                old_status="open",
+                new_status=status,
+                old_assigned_tech_id=None,
+                new_assigned_tech_id=assigned_tech.id,
+                changed_by_user_id=tech_user.id,
+                changed_by_role="tech",
+                notes=assign_note,
+            )
+        )
+
+    db.session.commit()
+    return jsonify({
+        "success": True,
+        "message": f"Ticket {ticket.ticket_number} created successfully.",
+        "ticket": serialize_ticket(ticket),
+    })
+
+
 @app.route("/api/tickets", methods=["POST"])
 @csr_required
 def create_ticket():
-    """CSR creates a new ticket."""
+    """CSR creates a chat-linked ticket for a specific customer conversation."""
     current_user = get_current_csr_user()
     payload = get_request_payload()
     
@@ -3342,16 +3843,16 @@ def create_ticket():
     
     if not title:
         return jsonify({"error": "Ticket title is required."}), 400
+    if chat_id in (None, "", 0, "0"):
+        return jsonify({"error": "CSR tickets must be linked to a specific chat."}), 400
 
-    chat = None
-    if chat_id is not None:
-        try:
-            chat_id = int(chat_id)
-        except (TypeError, ValueError):
-            return jsonify({"error": "Invalid chat_id."}), 400
-        chat = db.session.get(ChatConversation, chat_id)
-        if not chat:
-            return jsonify({"error": "Linked chat not found."}), 404
+    try:
+        chat_id = int(chat_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid chat_id."}), 400
+    chat = db.session.get(ChatConversation, chat_id)
+    if not chat:
+        return jsonify({"error": "Linked chat not found."}), 404
     
     ticket = Ticket(
         ticket_number=generate_unique_ticket_number(),
@@ -3359,8 +3860,11 @@ def create_ticket():
         description=description,
         priority=priority,
         status="open",
+        origin="csr",
         created_by_csr_id=current_user.id,
-        chat_id=chat.id if chat else None,
+        created_by_admin_id=None,
+        created_by_tech_id=None,
+        chat_id=chat.id,
     )
     db.session.add(ticket)
     db.session.flush()
@@ -3372,7 +3876,7 @@ def create_ticket():
         new_status="open",
         changed_by_user_id=current_user.id,
         changed_by_role="csr",
-        notes=f"Ticket {ticket.ticket_number} created by CSR.",
+        notes=f"CSR chat ticket {ticket.ticket_number} created for chat {chat.external_chat_id}.",
     )
     db.session.add(log)
     db.session.commit()
@@ -3699,7 +4203,16 @@ def create_tech_account():
     
     return jsonify({
         "success": True,
-        "message": f"Technical team account created for {tech.display_name or tech.email}.",
+        "message": "User added successfully.",
+        "tech": {
+            "id": tech.id,
+            "email": tech.email,
+            "display_name": tech.display_name,
+            "specialty": tech.specialty,
+            "is_active": tech.is_active,
+            "is_online": False,
+            "last_seen_at": None,
+        },
     })
 
 
@@ -3747,8 +4260,9 @@ def delete_tech_account(tech_id):
 @app.route("/api/admin/tech-accounts", methods=["GET"])
 @admin_required
 def get_tech_accounts():
-    """Get all technical team accounts."""
+    """Get all technical team accounts with live online presence."""
     techs = TechTeamAccount.query.order_by(TechTeamAccount.created_at.desc()).all()
+    now = utcnow()
     return jsonify({
         "techs": [
             {
@@ -3756,12 +4270,14 @@ def get_tech_accounts():
                 "email": t.email,
                 "display_name": t.display_name,
                 "specialty": t.specialty,
-                "is_active": t.is_active,
+                "is_active": bool(t.is_active),
+                "is_online": is_tech_online(t, now=now),
                 "last_seen_at": isoformat_or_none(t.last_seen_at),
                 "created_at": isoformat_or_none(t.created_at),
             }
             for t in techs
         ],
+        "online_window_seconds": CSR_ONLINE_WINDOW_SECONDS,
     })
 
 

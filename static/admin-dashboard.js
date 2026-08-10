@@ -8,20 +8,100 @@
             chatPerPage: 20,
             activityEvents: [],
             activityPagination: { total: 0, has_more: false },
-            activityLoading: false
+            activityLoading: false,
+            chartSignature: '',
+            pageVisible: !document.hidden
         };
 
         const ACTIVITY_DEFAULT_BATCH = 5;
+        const managedIntervals = [];
 
         const flashBanner = document.getElementById('flash-banner');
         let flashTimer = null;
         let refreshInterval = null;
+        let resizeTimer = null;
         const currentPage = document.body.dataset.adminPage || 'overview';
         const dashboardEnabled = document.body.dataset.dashboardEnabled === 'true';
+        const isChatPage = currentPage === 'chats' || currentPage === 'chats-active';
+        const isTicketPage = currentPage === 'tickets-current' || currentPage === 'tickets-old';
+
+        function schedulePoll(callback, ms) {
+            const id = window.setInterval(() => {
+                if (document.hidden) return;
+                callback();
+            }, ms);
+            managedIntervals.push(id);
+            return id;
+        }
+
+        function openMobileSidebar() {
+            document.body.classList.add('sidebar-open');
+            const backdrop = document.getElementById('sidebar-backdrop');
+            if (backdrop) backdrop.hidden = false;
+            const toggle = document.getElementById('menu-toggle');
+            if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        }
+
+        function closeMobileSidebar() {
+            document.body.classList.remove('sidebar-open');
+            const backdrop = document.getElementById('sidebar-backdrop');
+            if (backdrop) backdrop.hidden = true;
+            const toggle = document.getElementById('menu-toggle');
+            if (toggle) toggle.setAttribute('aria-expanded', 'false');
+        }
+
+        function setupMobileNav() {
+            const toggle = document.getElementById('menu-toggle');
+            const closeBtn = document.getElementById('sidebar-close');
+            const backdrop = document.getElementById('sidebar-backdrop');
+            if (toggle) {
+                toggle.addEventListener('click', () => {
+                    if (document.body.classList.contains('sidebar-open')) {
+                        closeMobileSidebar();
+                    } else {
+                        openMobileSidebar();
+                    }
+                });
+            }
+            if (closeBtn) closeBtn.addEventListener('click', closeMobileSidebar);
+            if (backdrop) backdrop.addEventListener('click', closeMobileSidebar);
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') closeMobileSidebar();
+            });
+            document.querySelectorAll('.sidebar a').forEach((link) => {
+                link.addEventListener('click', () => {
+                    if (window.matchMedia('(max-width: 1200px)').matches) {
+                        closeMobileSidebar();
+                    }
+                });
+            });
+            window.addEventListener('resize', () => {
+                if (!window.matchMedia('(max-width: 1200px)').matches) {
+                    closeMobileSidebar();
+                }
+            });
+        }
+
+        function buildChartSignature(dashboard) {
+            if (!dashboard || !dashboard.reports) return '';
+            const status = dashboard.reports.status_breakdown || {};
+            const board = dashboard.reports.resolution_leaderboard || [];
+            return JSON.stringify({
+                status,
+                board: board.map((row) => [
+                    row.id,
+                    row.resolved_today,
+                    row.resolved_yesterday,
+                    row.open_chats,
+                    row.is_online ? 1 : 0
+                ])
+            });
+        }
+
         function buildDashboardApiUrl() {
             if (!dashboardEnabled) return null;
             const params = new URLSearchParams({ page: currentPage });
-            if (currentPage === 'chats') {
+            if (isChatPage) {
                 params.set('chat_page', String(state.chatPage));
                 params.set('per_page', String(state.chatPerPage));
             }
@@ -37,37 +117,81 @@
                 .replaceAll("'", '&#39;');
         }
 
+        function parseServerDate(value) {
+            if (!value) return null;
+            if (value instanceof Date) {
+                return Number.isNaN(value.getTime()) ? null : value;
+            }
+            let raw = String(value).trim();
+            if (!raw) return null;
+
+            // Treat naive timestamps from the API as UTC (append Z).
+            const hasTimezone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw);
+            if (!hasTimezone && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
+                raw = raw.replace(' ', 'T');
+                if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+                    raw = `${raw}T00:00:00Z`;
+                } else if (!raw.endsWith('Z')) {
+                    raw = `${raw}Z`;
+                }
+            }
+
+            const date = new Date(raw);
+            return Number.isNaN(date.getTime()) ? null : date;
+        }
+
         function formatDateTime(value) {
-            if (!value) return 'Not available';
-            const date = new Date(value);
-            if (Number.isNaN(date.getTime())) return value;
-            return date.toLocaleString();
+            const date = parseServerDate(value);
+            if (!date) return value || 'Not available';
+            return date.toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZoneName: 'short'
+            });
         }
 
         function formatRelative(value) {
-            if (!value) return 'Not available';
-            const date = new Date(value);
-            if (Number.isNaN(date.getTime())) return value;
+            const date = parseServerDate(value);
+            if (!date) return value || 'Not available';
             const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+            if (seconds < 0) return 'Just now';
             if (seconds < 60) return 'Just now';
-            if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-            if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`;
-            return `${Math.floor(seconds / 86400)} day ago`;
+            if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                return `${mins} min${mins === 1 ? '' : 's'} ago`;
+            }
+            if (seconds < 86400) {
+                const hours = Math.floor(seconds / 3600);
+                return `${hours} hr${hours === 1 ? '' : 's'} ago`;
+            }
+            const days = Math.floor(seconds / 86400);
+            return `${days} day${days === 1 ? '' : 's'} ago`;
+        }
+
+        function formatLastSeen(value) {
+            const date = parseServerDate(value);
+            if (!date) return 'No heartbeat yet';
+            return `Last seen ${formatRelative(value)} · ${formatDateTime(value)}`;
         }
 
         function formatPresence(csr) {
             if (csr.is_online) return 'Online now';
             const reference = csr.last_seen_at || csr.last_assigned_at;
-            return reference ? `Last seen ${formatRelative(reference)}` : 'No heartbeat yet';
+            return reference ? formatLastSeen(reference) : 'No heartbeat yet';
         }
 
         function showBanner(message, tone = 'success') {
+            if (!flashBanner) return;
             flashBanner.textContent = message;
             flashBanner.className = `flash-banner show ${tone}`;
+            flashBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             window.clearTimeout(flashTimer);
             flashTimer = window.setTimeout(() => {
                 flashBanner.className = 'flash-banner';
-            }, 4500);
+            }, 5000);
         }
 
         async function requestJson(url, options = {}) {
@@ -254,13 +378,32 @@
                         <span class="badge online">Available</span>
                     </div>
                     <div class="row" style="margin-top:10px;">
-                        <div class="tiny-note">Open ${csr.active_chat_count}/${csr.max_concurrent_chats}</div>
+                        <div class="tiny-note">Open chats ${csr.active_chat_count}</div>
                         <div class="tiny-note">${escapeHtml(formatPresence(csr))}</div>
                     </div>
-                    <div class="load-bar"><span style="width:${Math.max(8, Math.round((csr.active_chat_count / Math.max(1, csr.max_concurrent_chats)) * 100))}%"></span></div>
+                    <div class="load-bar"><span style="width:${Math.max(8, Math.min(40, Number(csr.active_chat_count || 0) * 4))}%"></span></div>
                 </article>
             `).join('');
         }
+
+        const CHART_THEME = {
+            bg: '#eef2f7',
+            emptyBg: '#e2e8f0',
+            title: '#0f172a',
+            detail: '#475569',
+            legend: '#334155',
+            axis: '#475569',
+            grid: 'rgba(15, 23, 42, 0.08)',
+            gridStrong: 'rgba(15, 23, 42, 0.16)',
+            lane: 'rgba(15, 23, 42, 0.04)',
+            value: '#0f172a',
+            label: '#334155',
+            donutTotal: '#0f172a',
+            donutSub: '#475569',
+            legendRowBg: '#ffffff',
+            legendRowBorder: 'rgba(15, 23, 42, 0.08)',
+            legendMeta: '#64748b',
+        };
 
         function prepareCanvas(canvas) {
             const ratio = window.devicePixelRatio || 1;
@@ -278,6 +421,8 @@
             ctx.lineJoin = 'round';
             ctx.lineCap = 'round';
             ctx.textBaseline = 'middle';
+            ctx.fillStyle = CHART_THEME.bg;
+            ctx.fillRect(0, 0, width, height);
 
             return { ctx, w: width, h: height };
         }
@@ -316,12 +461,12 @@
         }
 
         function drawChartEmptyState(ctx, w, h, title, detail) {
-            fillRoundedRect(ctx, 18, 18, w - 36, h - 36, 16, 'rgba(15, 23, 42, 0.7)');
+            fillRoundedRect(ctx, 18, 18, w - 36, h - 36, 16, CHART_THEME.emptyBg);
             ctx.textAlign = 'center';
-            ctx.fillStyle = '#e2e8f0';
+            ctx.fillStyle = CHART_THEME.title;
             ctx.font = '700 15px Inter';
             ctx.fillText(title, w / 2, h / 2 - 10);
-            ctx.fillStyle = '#94a3b8';
+            ctx.fillStyle = CHART_THEME.detail;
             ctx.font = '12px Inter';
             ctx.fillText(detail, w / 2, h / 2 + 14);
             ctx.textAlign = 'left';
@@ -379,7 +524,7 @@
                     ? 18 + Math.floor(index / 2) * legendRowHeight
                     : 18;
                 fillRoundedRect(ctx, legendX, legendY - 6, 12, 12, 4, metric.color);
-                ctx.fillStyle = '#cbd5e1';
+                ctx.fillStyle = CHART_THEME.legend;
                 ctx.fillText(metric.label, legendX + 18, legendY);
             });
 
@@ -387,13 +532,13 @@
                 const y = padding.top + (chartHeight / gridLines) * index;
                 const value = scaleMax - (scaleMax / gridLines) * index;
                 ctx.beginPath();
-                ctx.strokeStyle = index === gridLines ? 'rgba(148, 163, 184, 0.3)' : 'rgba(148, 163, 184, 0.12)';
+                ctx.strokeStyle = index === gridLines ? CHART_THEME.gridStrong : CHART_THEME.grid;
                 ctx.lineWidth = 1;
                 ctx.moveTo(plotLeft, y);
                 ctx.lineTo(plotLeft + plotWidth, y);
                 ctx.stroke();
 
-                ctx.fillStyle = '#64748b';
+                ctx.fillStyle = CHART_THEME.axis;
                 ctx.font = '11px Inter';
                 ctx.textAlign = 'right';
                 ctx.fillText(Number.isInteger(value) ? String(value) : value.toFixed(1), padding.left - 8, y);
@@ -406,7 +551,7 @@
             const barWidth = Math.max(10, Math.min(24, (availableBarWidth - barGap * (metrics.length - 1)) / metrics.length));
 
             ctx.beginPath();
-            ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
+            ctx.strokeStyle = CHART_THEME.gridStrong;
             ctx.lineWidth = 1.2;
             ctx.moveTo(plotLeft, padding.top + chartHeight);
             ctx.lineTo(plotLeft + plotWidth, padding.top + chartHeight);
@@ -425,7 +570,7 @@
                     laneWidth,
                     chartHeight - 10,
                     12,
-                    'rgba(148, 163, 184, 0.04)'
+                    CHART_THEME.lane
                 );
 
                 metrics.forEach((metric, metricIndex) => {
@@ -436,15 +581,15 @@
 
                     if (barHeight > 0) {
                         fillRoundedRect(ctx, x, y, barWidth, barHeight, 8, metric.color);
-                        ctx.fillStyle = '#f8fafc';
+                        ctx.fillStyle = CHART_THEME.value;
                         ctx.font = '600 11px Inter';
                         ctx.textAlign = 'center';
                         ctx.fillText(String(rawValue), x + barWidth / 2, Math.max(padding.top - 10, y - 8));
                     }
                 });
 
-                ctx.fillStyle = '#94a3b8';
-                ctx.font = '11px Inter';
+                ctx.fillStyle = CHART_THEME.label;
+                ctx.font = '600 12px Inter';
                 ctx.textAlign = 'center';
                 const label = truncateLabel(ctx, row.display_name || 'CSR', groupWidth - 10);
                 ctx.fillText(label, plotLeft + index * groupWidth + groupWidth / 2, h - 18);
@@ -479,7 +624,7 @@
             let startAngle = -Math.PI / 2;
 
             ctx.beginPath();
-            ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+            ctx.strokeStyle = CHART_THEME.grid;
             ctx.lineWidth = ringWidth;
             ctx.arc(centerX, centerY, segmentRadius, 0, Math.PI * 2);
             ctx.stroke();
@@ -496,10 +641,10 @@
             });
 
             ctx.textAlign = 'center';
-            ctx.fillStyle = '#f8fafc';
+            ctx.fillStyle = CHART_THEME.donutTotal;
             ctx.font = '700 22px Inter';
             ctx.fillText(String(total), centerX, centerY - 4);
-            ctx.fillStyle = '#94a3b8';
+            ctx.fillStyle = CHART_THEME.donutSub;
             ctx.font = '12px Inter';
             ctx.fillText('Tracked chats', centerX, centerY + 18);
 
@@ -507,17 +652,17 @@
                 const legendY = legendStartY + index * 34;
                 const percent = total ? Math.round((entry.value / total) * 100) : 0;
 
-                fillRoundedRect(ctx, legendX, legendY - 10, compact ? w - 36 : Math.max(120, w - legendX - 18), 24, 10, 'rgba(15, 23, 42, 0.58)');
+                fillRoundedRect(ctx, legendX, legendY - 10, compact ? w - 36 : Math.max(120, w - legendX - 18), 28, 10, CHART_THEME.legendRowBg);
                 fillRoundedRect(ctx, legendX + 10, legendY - 3, 10, 10, 4, entry.color);
                 ctx.textAlign = 'left';
-                ctx.fillStyle = '#e2e8f0';
+                ctx.fillStyle = CHART_THEME.legend;
                 ctx.font = '600 12px Inter';
                 ctx.fillText(entry.label, legendX + 28, legendY + 1);
-                ctx.fillStyle = '#94a3b8';
+                ctx.fillStyle = CHART_THEME.legendMeta;
                 ctx.font = '11px Inter';
                 ctx.fillText(`${entry.value} chats`, legendX + 28, legendY + 13);
                 ctx.textAlign = 'right';
-                ctx.fillStyle = '#cbd5e1';
+                ctx.fillStyle = CHART_THEME.axis;
                 ctx.font = '700 11px Inter';
                 ctx.fillText(`${percent}%`, compact ? w - 30 : w - 24, legendY + 1);
             });
@@ -546,16 +691,21 @@
                     <div class="row" style="margin-top:10px;">
                         <div class="tiny-note">Today ${row.resolved_today}</div>
                         <div class="tiny-note">Yesterday ${row.resolved_yesterday}</div>
-                        <div class="tiny-note">Open ${row.open_chats}/${row.max_concurrent_chats}</div>
+                        <div class="tiny-note">Open ${row.open_chats}</div>
                     </div>
-                    <div class="load-bar"><span style="width:${Math.max(8, Math.round((row.open_chats / Math.max(1, row.max_concurrent_chats)) * 100))}%"></span></div>
+                    <div class="load-bar"><span style="width:${Math.max(8, Math.min(40, Number(row.open_chats || 0) * 4))}%"></span></div>
                 </article>
             `).join('');
 
             drawBarChart(document.getElementById('resolution-chart'), rows);
         }
 
-        function renderCharts() {
+        function renderCharts(force = false) {
+            const signature = buildChartSignature(state.dashboard);
+            if (!force && signature && signature === state.chartSignature) {
+                return;
+            }
+            state.chartSignature = signature;
             drawDonutChart(document.getElementById('status-chart'), state.dashboard.reports.status_breakdown || {});
             renderLeaderboard();
             renderCoverageList();
@@ -574,8 +724,6 @@
             container.innerHTML = rows.map((csr) => {
                 const report = leaderboard.get(csr.id) || { resolved_today: 0 };
                 const activeChats = Number(csr.active_chat_count || 0);
-                const maxChats = Math.max(1, Number(csr.max_concurrent_chats || 0));
-                const remainingCapacity = Math.max(0, maxChats - activeChats);
                 return `
                     <article class="coverage-row">
                         <div>
@@ -585,126 +733,82 @@
                             </div>
                             <div class="tiny-note" style="margin-top:6px;">${csr.is_available ? 'Available' : 'Paused'} · Resolved today ${report.resolved_today || 0}</div>
                         </div>
-                        <div class="coverage-stat">Open ${activeChats}/${maxChats}</div>
-                        <div class="coverage-stat">Free ${remainingCapacity}</div>
+                        <div class="coverage-stat">Open ${activeChats}</div>
+                        <div class="coverage-stat">Unlimited</div>
                     </article>
                 `;
             }).join('');
         }
 
         function renderCsrTable() {
-            const tbody = document.getElementById('csr-table-body');
+            const list = document.getElementById('csr-roster-list');
+            if (!list) return;
             const rows = state.dashboard.csr_users || [];
             const availableNow = state.dashboard.available_csr_users || [];
             const leaderboard = new Map((state.dashboard.reports.resolution_leaderboard || []).map((row) => [row.id, row]));
-            document.getElementById('roster-count').textContent = `${rows.length} registered · ${availableNow.length} available now`;
+            const rosterCount = document.getElementById('roster-count');
+            if (rosterCount) {
+                rosterCount.textContent = `${rows.length} registered · ${availableNow.length} available now`;
+            }
 
             if (!rows.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="tiny-note" style="padding:24px;">No CSR accounts have been registered yet.</td></tr>';
+                list.innerHTML = '<div class="tiny-note p-6">No CSR accounts have been registered yet.</div>';
                 return;
             }
 
-            tbody.innerHTML = rows.map((csr) => {
+            list.innerHTML = rows.map((csr) => {
                 const report = leaderboard.get(csr.id) || { resolved_today: 0, resolved_yesterday: 0 };
-                const unlimited = Boolean(csr.unlimited_chats);
-                const loadCell = unlimited
-                    ? `${csr.active_chat_count} <span class="badge unlimited">Unlimited</span>`
-                    : `${csr.active_chat_count}/${csr.max_concurrent_chats}`;
                 return `
-                    <tr>
-                        <td>
-                            <strong>${escapeHtml(csr.display_name)}</strong><br>
-                            <span class="cell-subtle">${escapeHtml(csr.email)}</span>
-                        </td>
-                        <td>
-                            <span class="badge ${csr.is_online ? 'online' : 'offline'}">${csr.is_online ? 'Online' : 'Offline'}</span><br>
-                            <span class="cell-subtle">${escapeHtml(formatPresence(csr))}</span>
-                        </td>
-                        <td>
-                            ${loadCell}<br>
-                            <span class="cell-subtle">${csr.is_available ? 'Available' : 'Paused'}</span>
-                        </td>
-                        <td>${report.resolved_today}</td>
-                        <td>${report.resolved_yesterday}</td>
-                        <td>
-                            <form class="settings-form" data-csr-id="${csr.id}">
-                                <label>
-                                    <span>Max chats</span>
-                                    <select class="input" name="max_concurrent_chats_sel">
-                                        ${[1,2,3,4,5,10,20,30,40,50,75,100,200,500,1000].map((n) => {
-                                            const sel = !unlimited && Number(csr.max_concurrent_chats) === n ? 'selected' : '';
-                                            return `<option value="${n}" ${sel}>${n}</option>`;
-                                        }).join('')}
-                                        <option value="custom" ${!unlimited && ![1,2,3,4,5,10,20,30,40,50,75,100,200,500,1000].includes(Number(csr.max_concurrent_chats)) ? 'selected' : ''}>Custom...</option>
-                                        <option value="unlimited" ${unlimited ? 'selected' : ''}>∞ Unlimited</option>
-                                    </select>
-                                    <input class="input" type="number" min="1" name="max_concurrent_chats" value="${csr.max_concurrent_chats}" style="${unlimited || [1,2,3,4,5,10,20,30,40,50,75,100,200,500,1000].includes(Number(csr.max_concurrent_chats)) ? 'display:none;' : ''}margin-top:6px;" placeholder="Enter number">
-                                </label>
-                                <label class="checkbox-row unlimited-row">
-                                    <input type="checkbox" name="unlimited_chats" ${unlimited ? 'checked' : ''}>
-                                    <span>Unlimited</span>
-                                </label>
-                                <label class="checkbox-row">
-                                    <input type="checkbox" name="is_available" ${csr.is_available ? 'checked' : ''}>
-                                    <span>Available</span>
-                                </label>
-                                <button class="mini-btn primary" type="submit">Save</button>
-                            </form>
-                        </td>
-                    </tr>
+                    <article class="csr-roster-card rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0 flex-1">
+                                <div class="text-sm font-extrabold text-slate-900 break-words">${escapeHtml(csr.display_name)}</div>
+                                <div class="mt-0.5 text-xs text-slate-500 break-all">${escapeHtml(csr.email)}</div>
+                            </div>
+                            <span class="badge ${csr.is_online ? 'online' : 'offline'} shrink-0">${csr.is_online ? 'Online' : 'Offline'}</span>
+                        </div>
+                        <div class="mt-1.5 text-xs text-slate-500">${escapeHtml(formatPresence(csr))}</div>
+                        <div class="mt-3 grid grid-cols-3 gap-2">
+                            <div class="rounded-xl bg-slate-50 border border-slate-100 p-2 min-w-0">
+                                <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Load</div>
+                                <div class="mt-1 flex flex-wrap items-center gap-1">
+                                    <span class="text-sm font-extrabold text-slate-900">${csr.active_chat_count}</span>
+                                    <span class="badge unlimited">Unlimited</span>
+                                </div>
+                                <div class="mt-1 text-xs text-slate-500">${csr.is_available ? 'Available' : 'Paused'}</div>
+                            </div>
+                            <div class="rounded-xl bg-slate-50 border border-slate-100 p-2 min-w-0">
+                                <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Today</div>
+                                <div class="mt-1 text-sm font-extrabold text-slate-900">${report.resolved_today}</div>
+                                <div class="mt-1 text-xs text-slate-500">Resolved</div>
+                            </div>
+                            <div class="rounded-xl bg-slate-50 border border-slate-100 p-2 min-w-0">
+                                <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Yesterday</div>
+                                <div class="mt-1 text-sm font-extrabold text-slate-900">${report.resolved_yesterday}</div>
+                                <div class="mt-1 text-xs text-slate-500">Resolved</div>
+                            </div>
+                        </div>
+                        <form class="settings-form mt-3 flex flex-wrap items-center gap-2" data-csr-id="${csr.id}">
+                            <label class="checkbox-row">
+                                <input type="checkbox" name="is_available" ${csr.is_available ? 'checked' : ''}>
+                                <span>Available</span>
+                            </label>
+                            <button class="mini-btn primary" type="submit">Save</button>
+                        </form>
+                    </article>
                 `;
             }).join('');
 
-            tbody.querySelectorAll('.settings-form').forEach((form) => {
-                const unlimitedCheckbox = form.querySelector('input[name="unlimited_chats"]');
-                const maxChatsInput = form.querySelector('input[name="max_concurrent_chats"]');
-                const maxChatsSel = form.querySelector('select[name="max_concurrent_chats_sel"]');
-
-                // Helper: sync UI state from select value
-                function applySelChange(val) {
-                    if (val === 'unlimited') {
-                        if (unlimitedCheckbox) unlimitedCheckbox.checked = true;
-                        if (maxChatsInput) maxChatsInput.style.display = 'none';
-                    } else if (val === 'custom') {
-                        if (unlimitedCheckbox) unlimitedCheckbox.checked = false;
-                        if (maxChatsInput) { maxChatsInput.style.display = ''; maxChatsInput.focus(); }
-                    } else {
-                        if (unlimitedCheckbox) unlimitedCheckbox.checked = false;
-                        if (maxChatsInput) { maxChatsInput.style.display = 'none'; maxChatsInput.value = val; }
-                    }
-                }
-
-                if (maxChatsSel) {
-                    maxChatsSel.addEventListener('change', () => applySelChange(maxChatsSel.value));
-                }
-
-                if (unlimitedCheckbox && maxChatsSel) {
-                    unlimitedCheckbox.addEventListener('change', () => {
-                        if (unlimitedCheckbox.checked) {
-                            maxChatsSel.value = 'unlimited';
-                            if (maxChatsInput) maxChatsInput.style.display = 'none';
-                        } else {
-                            maxChatsSel.value = maxChatsInput ? (maxChatsInput.value || '4') : '4';
-                            applySelChange(maxChatsSel.value);
-                        }
-                    });
-                }
+            list.querySelectorAll('.settings-form').forEach((form) => {
                 form.addEventListener('submit', async (event) => {
                     event.preventDefault();
                     const csrId = form.dataset.csrId;
-                    const selVal = maxChatsSel ? maxChatsSel.value : null;
-                    const isUnlimited = selVal === 'unlimited' || (unlimitedCheckbox ? unlimitedCheckbox.checked : false);
-                    // For custom or preset values, read from the number input; for unlimited use 0 as sentinel
-                    const maxConcurrentChats = isUnlimited ? 0
-                        : (selVal === 'custom' ? (maxChatsInput ? maxChatsInput.value : 4) : (selVal || (maxChatsInput ? maxChatsInput.value : 4)));
                     const isAvailable = form.querySelector('input[name="is_available"]').checked;
                     try {
                         const response = await requestJson(`/api/csrs/${csrId}/settings`, {
                             method: 'POST',
                             body: JSON.stringify({
-                                max_concurrent_chats: maxConcurrentChats,
-                                is_available: isAvailable,
-                                unlimited_chats: isUnlimited
+                                is_available: isAvailable
                             })
                         });
                         state.dashboard = response.dashboard;
@@ -725,26 +829,29 @@
             document.getElementById('chat-count').textContent = `${total} chat${total === 1 ? '' : 's'}`;
 
             if (!chats.length) {
-                tbody.innerHTML = '<tr><td colspan="7" class="tiny-note" style="padding:24px;">No chats have been stored yet.</td></tr>';
+                const emptyMsg = currentPage === 'chats-active'
+                    ? 'No active chats right now.'
+                    : 'No chats have been stored yet.';
+                tbody.innerHTML = `<tr><td colspan="7" class="tiny-note" style="padding:24px;">${emptyMsg}</td></tr>`;
                 renderChatPagination(pagination);
                 return;
             }
 
             tbody.innerHTML = chats.map((chat) => `
                 <tr class="${state.selectedChatId === chat.id ? 'is-selected' : ''}">
-                    <td>
+                    <td data-label="Customer">
                         <strong>${escapeHtml(chat.customer_name || chat.visitor_id)}</strong><br>
                         <span class="cell-subtle">${escapeHtml(chat.visitor_id)}</span>
                     </td>
-                    <td>${escapeHtml(chat.status.replace('_', ' '))}</td>
-                    <td>${escapeHtml(chat.assigned_label || 'Waiting queue')}</td>
-                    <td>${chat.message_count}</td>
-                    <td>
+                    <td data-label="Status">${escapeHtml(chat.status.replace('_', ' '))}</td>
+                    <td data-label="Assigned">${escapeHtml(chat.assigned_label || 'Waiting queue')}</td>
+                    <td data-label="Messages">${chat.message_count}</td>
+                    <td data-label="Last Activity">
                         ${escapeHtml(formatRelative(chat.last_activity_at))}<br>
                         <span class="cell-subtle">${escapeHtml(formatDateTime(chat.last_activity_at))}</span>
                     </td>
-                    <td>${escapeHtml(chat.last_customer_message || chat.preview || 'No customer message yet.')}</td>
-                    <td>
+                    <td data-label="Preview">${escapeHtml(chat.last_customer_message || chat.preview || 'No customer message yet.')}</td>
+                    <td data-label="Actions">
                         <div class="action-row">
                             <button class="mini-btn" type="button" data-view-chat="${chat.id}">View</button>
                             <button class="mini-btn danger" type="button" data-delete-chat="${chat.id}">Delete</button>
@@ -1082,13 +1189,13 @@
             updateActivityControls();
         }
 
-        function renderCurrentPage(forceIntegrationSync = false) {
+        function renderCurrentPage(forceIntegrationSync = false, forceCharts = false) {
             if (!state.dashboard) {
                 return;
             }
             if (currentPage === 'overview') {
                 renderSummary();
-                renderCharts();
+                renderCharts(forceCharts);
                 return;
             }
             /* Credentials tab temporarily disabled
@@ -1102,7 +1209,7 @@
                 renderCsrTable();
                 return;
             }
-            if (currentPage === 'chats') {
+            if (isChatPage) {
                 renderChatTable();
                 renderChatDetail();
                 return;
@@ -1129,7 +1236,7 @@
             const payload = await requestJson(buildDashboardApiUrl(), { method: 'GET' });
             state.dashboard = payload;
             const chats = state.dashboard.chats || [];
-            if (currentPage === 'chats' && reloadSelectedChat && state.selectedChatId && chats.some((chat) => chat.id === state.selectedChatId)) {
+            if (isChatPage && reloadSelectedChat && state.selectedChatId && chats.some((chat) => chat.id === state.selectedChatId)) {
                 try {
                     const detailPayload = await requestJson(`/api/chats/${state.selectedChatId}/messages`, { method: 'GET' });
                     state.selectedMessages = detailPayload.messages || [];
@@ -1139,7 +1246,7 @@
                     state.selectedMessages = [];
                     state.selectedEvents = [];
                 }
-            } else if (currentPage === 'chats' && (!state.selectedChatId || !chats.some((chat) => chat.id === state.selectedChatId))) {
+            } else if (isChatPage && (!state.selectedChatId || !chats.some((chat) => chat.id === state.selectedChatId))) {
                 state.selectedChatId = null;
                 state.selectedMessages = [];
                 state.selectedEvents = [];
@@ -1149,47 +1256,10 @@
 
         const createCsrForm = document.getElementById('create-csr-form');
         if (createCsrForm) {
-            const unlimitedBox = createCsrForm.querySelector('input[name="unlimited_chats"]');
-            const maxChatsSel = createCsrForm.querySelector('select[name="max_concurrent_chats_sel"]');
-            const maxChatsCustom = createCsrForm.querySelector('input[name="max_concurrent_chats"]');
-
-            function applyCreateSelChange(val) {
-                if (val === 'unlimited') {
-                    if (unlimitedBox) unlimitedBox.checked = true;
-                    if (maxChatsCustom) maxChatsCustom.style.display = 'none';
-                } else if (val === 'custom') {
-                    if (unlimitedBox) unlimitedBox.checked = false;
-                    if (maxChatsCustom) { maxChatsCustom.style.display = ''; maxChatsCustom.focus(); }
-                } else {
-                    if (unlimitedBox) unlimitedBox.checked = false;
-                    if (maxChatsCustom) { maxChatsCustom.style.display = 'none'; maxChatsCustom.value = val; }
-                }
-            }
-
-            if (maxChatsSel) {
-                maxChatsSel.addEventListener('change', () => applyCreateSelChange(maxChatsSel.value));
-            }
-
-            if (unlimitedBox && maxChatsSel) {
-                unlimitedBox.addEventListener('change', () => {
-                    if (unlimitedBox.checked) {
-                        maxChatsSel.value = 'unlimited';
-                        if (maxChatsCustom) maxChatsCustom.style.display = 'none';
-                    } else {
-                        maxChatsSel.value = '4';
-                        if (maxChatsCustom) { maxChatsCustom.style.display = 'none'; maxChatsCustom.value = '4'; }
-                    }
-                });
-            }
-
             createCsrForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 const form = event.currentTarget;
                 const formData = new FormData(form);
-                const selVal = maxChatsSel ? maxChatsSel.value : '4';
-                const isUnlimited = selVal === 'unlimited' || formData.get('unlimited_chats') === 'on';
-                const maxConcurrentChats = isUnlimited ? 0
-                    : (selVal === 'custom' ? (maxChatsCustom ? maxChatsCustom.value : 4) : (selVal || 4));
                 try {
                     const response = await requestJson('/api/admin/csrs/create', {
                         method: 'POST',
@@ -1197,19 +1267,14 @@
                             display_name: formData.get('display_name'),
                             email: formData.get('email'),
                             password: formData.get('password'),
-                            max_concurrent_chats: maxConcurrentChats,
-                            is_available: formData.get('is_available') === 'on',
-                            unlimited_chats: isUnlimited
+                            is_available: formData.get('is_available') === 'on'
                         })
                     });
                     form.reset();
-                    if (maxChatsSel) maxChatsSel.value = '4';
-                    if (maxChatsCustom) { maxChatsCustom.style.display = 'none'; maxChatsCustom.value = '4'; }
                     form.querySelector('input[name="is_available"]').checked = true;
-                    if (unlimitedBox) unlimitedBox.checked = false;
                     state.dashboard = response.dashboard;
                     renderCurrentPage();
-                    showBanner(response.message || 'CSR account created.', 'success');
+                    showBanner(response.message || 'User added successfully.', 'success');
                 } catch (error) {
                     showBanner(error.message, 'error');
                 }
@@ -1261,23 +1326,43 @@
         }
         */
 
-        document.getElementById('refresh-btn').addEventListener('click', async () => {
+        async function handleDashboardRefresh() {
             try {
                 if (currentPage === 'activity') {
                     await loadActivityEvents({ append: false, limit: ACTIVITY_DEFAULT_BATCH });
                     showBanner('Activity timeline refreshed.', 'success');
                     return;
                 }
+                if (isTicketPage) {
+                    await loadTicketLedger();
+                    showBanner('Tickets refreshed.', 'success');
+                    return;
+                }
+                if (currentPage === 'tech') {
+                    await loadTechData();
+                    showBanner('Technical team refreshed.', 'success');
+                    return;
+                }
                 if (!dashboardEnabled) {
                     window.location.reload();
                     return;
                 }
+                state.chartSignature = '';
                 await refreshDashboard(true);
                 showBanner('Dashboard refreshed.', 'success');
             } catch (error) {
                 showBanner(error.message, 'error');
             }
-        });
+        }
+
+        const refreshBtn = document.getElementById('refresh-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', handleDashboardRefresh);
+        }
+        const topbarRefreshBtn = document.getElementById('topbar-refresh-btn');
+        if (topbarRefreshBtn) {
+            topbarRefreshBtn.addEventListener('click', handleDashboardRefresh);
+        }
 
         /* Rebalance queue temporarily removed from admin sidebar
         document.getElementById('rebalance-btn').addEventListener('click', async () => {
@@ -1298,10 +1383,15 @@
         */
 
         window.addEventListener('resize', () => {
-            if (state.dashboard && currentPage === 'overview') {
-                renderCharts();
-            }
+            window.clearTimeout(resizeTimer);
+            resizeTimer = window.setTimeout(() => {
+                if (state.dashboard && currentPage === 'overview') {
+                    renderCharts(true);
+                }
+            }, 180);
         });
+
+        setupMobileNav();
 
         const activityLoadMoreBtn = document.getElementById('activity-load-more-btn');
         if (activityLoadMoreBtn) {
@@ -1336,20 +1426,37 @@
             });
         }
 
+        document.querySelectorAll('.nav-dropdown-toggle').forEach((toggle) => {
+            toggle.addEventListener('click', () => {
+                const dropdown = toggle.closest('.nav-dropdown');
+                if (!dropdown) return;
+                const willOpen = !dropdown.classList.contains('open');
+                dropdown.classList.toggle('open', willOpen);
+                toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            });
+        });
+
         if (dashboardEnabled) {
             refreshDashboard(true).catch((error) => {
                 showBanner(error.message, 'error');
             });
 
-            refreshInterval = window.setInterval(() => {
-                refreshDashboard(currentPage === 'chats' && Boolean(state.selectedChatId)).catch(() => {});
-            }, 8000);
+            // Active Chats + overview/team poll; Chat History loads once (Refresh button).
+            // Pause while tab is hidden to cut wasted network/CPU.
+            const shouldAutoPoll = currentPage === 'chats-active' || currentPage === 'overview' || currentPage === 'team';
+            if (shouldAutoPoll) {
+                const pollMs = currentPage === 'chats-active' ? 12000 : 20000;
+                refreshInterval = schedulePoll(() => {
+                    refreshDashboard(currentPage === 'chats-active' && Boolean(state.selectedChatId)).catch(() => {});
+                }, pollMs);
+            }
         }
 
         // ── Technical Team Section ──
         function showTechSection() {
             document.querySelectorAll('.section').forEach(s => s.style.display = 'none');
-            document.getElementById('tech-section').style.display = 'block';
+            const techSection = document.getElementById('tech-section');
+            if (techSection) techSection.style.display = 'block';
             document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(btn => {
                 if (btn.textContent.includes('Technical Team')) btn.classList.add('active');
@@ -1358,142 +1465,205 @@
         }
 
         let adminTicketStatuses = [];
+        let adminTechMembers = [];
+        let adminTechWorkload = [];
+
+        function techPresenceLabel(tech) {
+            if (!tech.is_active) return 'Account disabled';
+            if (tech.is_online) return 'Online now';
+            if (!tech.last_seen_at) return 'No heartbeat yet';
+            return formatLastSeen(tech.last_seen_at);
+        }
+
+        function techPresenceChip(tech) {
+            if (!tech.is_active) {
+                return '<span class="chip chip-disabled">Disabled</span>';
+            }
+            return tech.is_online
+                ? '<span class="chip chip-online">Online</span>'
+                : '<span class="chip chip-offline">Offline</span>';
+        }
+
+        function techAccountChip(tech) {
+            return tech.is_active
+                ? '<span class="chip chip-active">Enabled</span>'
+                : '<span class="chip chip-disabled">Disabled</span>';
+        }
+
+        function renderTechTeamTable(techs, workload) {
+            adminTechMembers = techs || [];
+            if (Array.isArray(workload)) {
+                adminTechWorkload = workload;
+            }
+            const body = document.getElementById('tech-team-body');
+            if (!body) return;
+
+            const workloadById = new Map(
+                (adminTechWorkload || []).map((row) => [Number(row.tech_id || row.id), row])
+            );
+
+            const techCount = document.getElementById('tech-count');
+            if (!adminTechMembers.length) {
+                body.innerHTML = '<tr><td colspan="9" class="tiny-note" style="padding:24px;">No technical team members yet. Use the form above to add one.</td></tr>';
+                if (techCount) techCount.textContent = '0 members';
+                return;
+            }
+
+            const onlineCount = adminTechMembers.filter((t) => t.is_active && t.is_online).length;
+            if (techCount) {
+                techCount.textContent = `${adminTechMembers.length} member${adminTechMembers.length !== 1 ? 's' : ''} · ${onlineCount} online`;
+            }
+
+            body.innerHTML = adminTechMembers.map((tech) => {
+                const load = workloadById.get(Number(tech.id)) || {};
+                const active = load.active ?? 0;
+                const inProgress = load.in_progress ?? 0;
+                const open = load.open ?? 0;
+                const total = load.total_assigned ?? 0;
+                return `
+                    <tr>
+                        <td data-label="Technician">
+                            <strong>${escapeHtml(tech.display_name || 'Unnamed')}</strong>
+                            <div class="admin-soft-muted">${escapeHtml(tech.email)}</div>
+                            <div class="admin-soft-muted">${escapeHtml(techPresenceLabel(tech))}</div>
+                        </td>
+                        <td data-label="Specialty">${escapeHtml(tech.specialty || 'General')}</td>
+                        <td data-label="Online">${techPresenceChip(tech)}</td>
+                        <td data-label="Account">${techAccountChip(tech)}</td>
+                        <td data-label="Active"><strong style="color:#0d9488;">${active}</strong></td>
+                        <td data-label="In Progress">${inProgress}</td>
+                        <td data-label="Open">${open}</td>
+                        <td data-label="Total">${total}</td>
+                        <td data-label="Actions">
+                            <div class="action-row">
+                                <button class="mini-btn" onclick="editTechMember(${tech.id})" title="Enable / disable account"><i class="fa-solid fa-power-off"></i></button>
+                                <button class="mini-btn danger" onclick="deleteTechMember(${tech.id})" title="Delete member"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Back-compat alias used by presence refresh.
+        function renderTechMembersTable(techs) {
+            renderTechTeamTable(techs, adminTechWorkload);
+        }
 
         function setTechDataLoadError(message) {
             const err = escapeHtml(message || 'Failed to load data');
-            const wl = document.getElementById('tech-workload-body');
+            const wl = document.getElementById('tech-team-body');
             const tb = document.getElementById('admin-ticket-table-body');
-            if (wl) wl.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-red-400">${err}</td></tr>`;
-            if (tb) tb.innerHTML = `<tr><td colspan="10" class="px-4 py-8 text-center text-red-400">${err}</td></tr>`;
+            if (wl) wl.innerHTML = `<tr><td colspan="9" class="tiny-note" style="padding:24px;color:var(--red);">${err}</td></tr>`;
+            if (tb) tb.innerHTML = `<tr><td colspan="10" class="tiny-note" style="padding:24px;color:var(--red);">${err}</td></tr>`;
+        }
+
+        function getTicketLifecycle() {
+            const section = document.getElementById('tickets-section');
+            return section?.dataset?.ticketLifecycle || (currentPage === 'tickets-old' ? 'old' : 'current');
+        }
+
+        function renderAdminTicketRows(tickets, statuses) {
+            const ticketBody = document.getElementById('admin-ticket-table-body');
+            const countEl = document.getElementById('admin-ticket-count');
+            if (countEl) countEl.textContent = `${tickets.length} ticket${tickets.length !== 1 ? 's' : ''}`;
+            if (!ticketBody) return;
+
+            if (!tickets.length) {
+                ticketBody.innerHTML = '<tr><td colspan="10" class="tiny-note" style="padding:24px;">No tickets match this filter.</td></tr>';
+                return;
+            }
+
+            ticketBody.innerHTML = tickets.map(t => {
+                const status = statuses.find(s => s.name === t.status) || {};
+                const creatorLabel = t.created_by_label
+                    || (t.created_by_admin ? (t.created_by_admin.display_name || t.created_by_admin.email) : null)
+                    || (t.created_by_csr ? (t.created_by_csr.display_name || t.created_by_csr.email) : null)
+                    || '—';
+                const creatorRole = t.created_by_role === 'admin' ? 'Admin' : (t.created_by_role === 'csr' ? 'CSR' : '');
+                const statusColor = status.color || '#64748b';
+                const lastNote = t.last_status_update?.notes
+                    ? `<div class="admin-soft-muted" style="margin-top:4px;" title="${escapeHtml(t.last_status_update.notes)}">${escapeHtml(t.last_status_update.notes).slice(0, 50)}${t.last_status_update.notes.length > 50 ? '…' : ''}</div>`
+                    : '';
+                const lastAssignment = t.last_assignment_update;
+                const assignmentTrail = lastAssignment
+                    ? `<div class="admin-soft-muted" style="margin-top:4px;" title="${escapeHtml(lastAssignment.notes || '')}">
+                        <i class="fa-solid fa-share-nodes"></i>
+                        ${escapeHtml(lastAssignment.old_assigned_tech ? (lastAssignment.old_assigned_tech.display_name || lastAssignment.old_assigned_tech.email) : 'Unassigned')}
+                        →
+                        ${escapeHtml(lastAssignment.new_assigned_tech ? (lastAssignment.new_assigned_tech.display_name || lastAssignment.new_assigned_tech.email) : 'Unassigned')}
+                        ${lastAssignment.changed_by_name ? `<div>By ${escapeHtml(lastAssignment.changed_by_name)}</div>` : ''}
+                    </div>`
+                    : '';
+                return `
+                    <tr>
+                        <td class="ticket-num-cell" data-label="Ticket">${escapeHtml(t.ticket_number || ('#' + t.id))}</td>
+                        <td data-label="Title"><strong>${escapeHtml(t.title)}</strong>${t.description ? `<div class="admin-soft-muted" style="margin-top:4px;">${escapeHtml(t.description).slice(0, 60)}${t.description.length > 60 ? '…' : ''}</div>` : ''}${lastNote}</td>
+                        <td data-label="Status"><span class="admin-soft-chip" style="background:${statusColor}22;color:${statusColor}">${escapeHtml(status.label || t.status)}</span></td>
+                        <td data-label="Priority" style="text-transform:capitalize;">${escapeHtml(t.priority || 'normal')}</td>
+                        <td data-label="Created By"><strong>${escapeHtml(creatorLabel)}</strong>${creatorRole ? `<div class="admin-soft-muted">${creatorRole}</div>` : ''}</td>
+                        <td data-label="Assigned">${t.assigned_tech ? `<strong>${escapeHtml(t.assigned_tech.display_name || 'Tech')}</strong><div class="admin-soft-muted">${escapeHtml(t.assigned_tech.specialty || '')}</div>${assignmentTrail}` : '<span class="admin-soft-chip">Unassigned</span>'}</td>
+                        <td data-label="Msgs">${t.message_count ?? 0}</td>
+                        <td class="admin-soft-muted" data-label="Created">${formatDate(t.created_at)}</td>
+                        <td class="admin-soft-muted" data-label="Updated">${formatDate(t.updated_at)}</td>
+                        <td class="admin-soft-muted" data-label="Resolved">${t.resolved_at ? formatDate(t.resolved_at) : '—'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function loadTicketLedger() {
+            const ticketBody = document.getElementById('admin-ticket-table-body');
+            if (ticketBody) ticketBody.innerHTML = '<tr><td colspan="10" class="tiny-note" style="padding:24px;">Loading tickets...</td></tr>';
+            try {
+                const lifecycle = getTicketLifecycle();
+                const statusFilter = document.getElementById('admin-ticket-status-filter')?.value || 'all';
+                const params = new URLSearchParams({
+                    lifecycle,
+                    include_stats: '0',
+                    include_workload: '0',
+                });
+                if (statusFilter !== 'all') params.set('status', statusFilter);
+                const ticketsResp = await requestJson(`/api/admin/tickets?${params.toString()}`);
+                const tickets = ticketsResp.tickets || [];
+                const statuses = ticketsResp.statuses || [];
+                adminTicketStatuses = statuses;
+                populateAdminTicketStatusFilter(statuses);
+                renderAdminTicketRows(tickets, statuses);
+            } catch (err) {
+                console.error('Failed to load tickets:', err);
+                setTechDataLoadError(err.message);
+                showBanner(err.message || 'Failed to load tickets', 'error');
+            }
         }
 
         async function loadTechData() {
-            const workloadBody = document.getElementById('tech-workload-body');
-            const ticketBody = document.getElementById('admin-ticket-table-body');
-            if (workloadBody) workloadBody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">Loading workload...</td></tr>';
-            if (ticketBody) ticketBody.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-500">Loading tickets...</td></tr>';
+            const teamBody = document.getElementById('tech-team-body');
+            if (teamBody) {
+                teamBody.innerHTML = '<tr><td colspan="9" class="tiny-note" style="padding:24px;">Loading technical team...</td></tr>';
+            }
 
             try {
-                const statusFilter = document.getElementById('admin-ticket-status-filter')?.value || 'all';
-                const ticketUrl = statusFilter === 'all'
-                    ? '/api/admin/tickets?view=list'
-                    : `/api/admin/tickets?view=list&status=${encodeURIComponent(statusFilter)}`;
-
                 const [techResp, ticketsResp] = await Promise.all([
                     requestJson('/api/admin/tech-accounts'),
-                    requestJson(ticketUrl),
+                    requestJson('/api/admin/tickets?lifecycle=all&include_stats=1&include_workload=1'),
                 ]);
 
                 const techs = techResp.techs || [];
-                const tickets = ticketsResp.tickets || [];
                 const statuses = ticketsResp.statuses || [];
                 const stats = ticketsResp.stats || {};
                 const workload = ticketsResp.tech_workload || [];
                 adminTicketStatuses = statuses;
 
                 const setStat = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-                setStat('stat-tech-count', techs.filter(t => t.is_active).length);
+                setStat('stat-tech-count', techs.filter(t => t.is_active && t.is_online).length);
                 setStat('stat-open-tickets', stats.open ?? 0);
                 setStat('stat-progress-tickets', stats.in_progress ?? 0);
                 setStat('stat-closed-tickets', stats.closed ?? 0);
                 setStat('stat-total-tickets', stats.total ?? 0);
                 setStat('stat-unassigned-tickets', stats.unassigned ?? 0);
 
-                populateAdminTicketStatusFilter(statuses);
-
-                // Render tech table
-                const techBody = document.getElementById('tech-table-body');
-                if (techs.length === 0) {
-                    techBody.innerHTML = '<tr><td colspan="6" class="tiny-note" style="padding:24px;">No technical team members yet. Use the form above to add one.</td></tr>';
-                } else {
-                    document.getElementById('tech-count').textContent = `${techs.length} member${techs.length !== 1 ? 's' : ''}`;
-                    techBody.innerHTML = techs.map(tech => `
-                        <tr>
-                            <td><strong>${escapeHtml(tech.display_name || 'Unnamed')}</strong></td>
-                            <td>${escapeHtml(tech.email)}</td>
-                            <td>${escapeHtml(tech.specialty || 'General')}</td>
-                            <td>${tech.is_active ? '<span class="chip chip-active">Active</span>' : '<span class="chip chip-inactive">Inactive</span>'}</td>
-                            <td>${tech.last_seen_at ? formatDate(tech.last_seen_at) : 'Never'}</td>
-                            <td>
-                                <button class="mini-btn" onclick="editTechMember(${tech.id})" title="Toggle active"><i class="fa-solid fa-power-off"></i></button>
-                                <button class="mini-btn danger" onclick="deleteTechMember(${tech.id})" title="Delete member"><i class="fa-solid fa-trash"></i></button>
-                            </td>
-                        </tr>
-                    `).join('');
-                }
-
-                // Render statuses
-                const statusList = document.getElementById('status-list');
-                if (statuses.length === 0) {
-                    statusList.innerHTML = '<div class="tiny-note">No statuses configured.</div>';
-                } else {
-                    statusList.innerHTML = statuses.map(s => `
-                        <div class="status-item">
-                            <div class="status-color" style="background:${s.color}"></div>
-                            <div class="status-label">${escapeHtml(s.label)}</div>
-                            <div class="status-badge" style="background:${s.color}22;color:${s.color}">${escapeHtml(s.name)}</div>
-                            ${s.is_resolved ? '<span class="status-badge" style="background:#10b98122;color:#10b981">Resolved</span>' : ''}
-                        </div>
-                    `).join('');
-                }
-
-                if (workloadBody) {
-                    if (!workload.length) {
-                        workloadBody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">No technical team members yet.</td></tr>';
-                    } else {
-                        workloadBody.innerHTML = workload.map(row => `
-                            <tr class="hover:bg-slate-800/40">
-                                <td class="px-4 py-3"><strong class="text-white">${escapeHtml(row.display_name)}</strong><div class="text-xs text-slate-500">${escapeHtml(row.email)}</div></td>
-                                <td class="px-4 py-3">${escapeHtml(row.specialty || 'General')}</td>
-                                <td class="px-4 py-3">${row.is_active ? '<span class="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-300">Active</span>' : '<span class="inline-flex rounded-full bg-slate-600/30 px-2 py-0.5 text-xs text-slate-400">Inactive</span>'}</td>
-                                <td class="px-4 py-3 font-bold text-teal-300">${row.active}</td>
-                                <td class="px-4 py-3">${row.in_progress}</td>
-                                <td class="px-4 py-3">${row.open}</td>
-                                <td class="px-4 py-3">${row.total_assigned}</td>
-                            </tr>
-                        `).join('');
-                    }
-                }
-
-                const countEl = document.getElementById('admin-ticket-count');
-                if (countEl) countEl.textContent = `${tickets.length} ticket${tickets.length !== 1 ? 's' : ''}`;
-                if (ticketBody) {
-                    if (!tickets.length) {
-                        ticketBody.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-slate-500">No tickets match this filter.</td></tr>';
-                    } else {
-                        ticketBody.innerHTML = tickets.map(t => {
-                            const status = statuses.find(s => s.name === t.status) || {};
-                            const csrName = t.created_by_csr ? (t.created_by_csr.display_name || t.created_by_csr.email) : '—';
-                            const statusColor = status.color || '#64748b';
-                            const lastNote = t.last_status_update?.notes
-                                ? `<div class="text-xs text-slate-500 mt-1" title="${escapeHtml(t.last_status_update.notes)}">${escapeHtml(t.last_status_update.notes).slice(0, 50)}${t.last_status_update.notes.length > 50 ? '…' : ''}</div>`
-                                : '';
-                            const lastAssignment = t.last_assignment_update;
-                            const assignmentTrail = lastAssignment
-                                ? `<div class="mt-1 text-xs text-amber-300/90" title="${escapeHtml(lastAssignment.notes || '')}">
-                                    <i class="fa-solid fa-share-nodes mr-1"></i>${escapeHtml(lastAssignment.old_assigned_tech ? (lastAssignment.old_assigned_tech.display_name || lastAssignment.old_assigned_tech.email) : 'Unassigned')}
-                                    <span class="text-slate-500">&rarr;</span>
-                                    ${escapeHtml(lastAssignment.new_assigned_tech ? (lastAssignment.new_assigned_tech.display_name || lastAssignment.new_assigned_tech.email) : 'Unassigned')}
-                                    ${lastAssignment.changed_by_name ? `<div class="text-slate-500">By ${escapeHtml(lastAssignment.changed_by_name)}</div>` : ''}
-                                </div>`
-                                : '';
-                            return `
-                                <tr class="hover:bg-slate-800/40 align-top">
-                                    <td class="px-4 py-3 font-mono font-bold text-teal-300 whitespace-nowrap">${escapeHtml(t.ticket_number || ('#' + t.id))}</td>
-                                    <td class="px-4 py-3"><div class="font-semibold text-white">${escapeHtml(t.title)}</div>${t.description ? `<div class="text-xs text-slate-500 mt-0.5">${escapeHtml(t.description).slice(0, 60)}${t.description.length > 60 ? '…' : ''}</div>` : ''}${lastNote}</td>
-                                    <td class="px-4 py-3"><span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold" style="background:${statusColor}22;color:${statusColor}">${escapeHtml(status.label || t.status)}</span></td>
-                                    <td class="px-4 py-3 capitalize">${escapeHtml(t.priority || 'normal')}</td>
-                                    <td class="px-4 py-3">${escapeHtml(csrName)}</td>
-                                    <td class="px-4 py-3">${t.assigned_tech ? `<span class="text-white">${escapeHtml(t.assigned_tech.display_name || 'Tech')}</span><div class="text-xs text-slate-500">${escapeHtml(t.assigned_tech.specialty || '')}</div>${assignmentTrail}` : '<span class="inline-flex rounded-full bg-slate-600/30 px-2 py-0.5 text-xs text-slate-400">Unassigned</span>'}</td>
-                                    <td class="px-4 py-3">${t.message_count ?? 0}</td>
-                                    <td class="px-4 py-3 text-slate-400">${formatDate(t.created_at)}</td>
-                                    <td class="px-4 py-3 text-slate-400">${formatDate(t.updated_at)}</td>
-                                    <td class="px-4 py-3 text-slate-400">${t.resolved_at ? formatDate(t.resolved_at) : '—'}</td>
-                                </tr>
-                            `;
-                        }).join('');
-                    }
-                }
+                renderTechTeamTable(techs, workload);
             } catch (err) {
                 console.error('Failed to load tech data:', err);
                 setTechDataLoadError(err.message);
@@ -1515,17 +1685,58 @@
 
         const adminTicketStatusFilter = document.getElementById('admin-ticket-status-filter');
         if (adminTicketStatusFilter) {
-            adminTicketStatusFilter.addEventListener('change', () => loadTechData());
+            adminTicketStatusFilter.addEventListener('change', () => {
+                if (isTicketPage) loadTicketLedger();
+                else loadTechData();
+            });
         }
         const adminTicketRefreshBtn = document.getElementById('admin-ticket-refresh-btn');
         if (adminTicketRefreshBtn) {
-            adminTicketRefreshBtn.addEventListener('click', () => loadTechData());
+            adminTicketRefreshBtn.addEventListener('click', () => {
+                if (isTicketPage) loadTicketLedger();
+                else loadTechData();
+            });
+        }
+
+        const adminCreateTicketForm = document.getElementById('admin-create-ticket-form');
+        if (adminCreateTicketForm) {
+            adminCreateTicketForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const form = event.currentTarget;
+                const formData = new FormData(form);
+                const payload = {
+                    title: String(formData.get('title') || '').trim(),
+                    description: String(formData.get('description') || '').trim(),
+                    priority: String(formData.get('priority') || 'normal'),
+                };
+                if (!payload.title) {
+                    showBanner('Ticket title is required.', 'error');
+                    return;
+                }
+                try {
+                    const resp = await requestJson('/api/admin/tickets', {
+                        method: 'POST',
+                        body: JSON.stringify(payload),
+                    });
+                    showBanner(resp.message || 'Ticket created.', 'success');
+                    form.reset();
+                    await loadTicketLedger();
+                } catch (err) {
+                    showBanner(err.message || 'Failed to create ticket', 'error');
+                }
+            });
         }
 
         function formatDate(dateStr) {
-            if (!dateStr) return 'N/A';
-            const date = new Date(dateStr);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            const date = parseServerDate(dateStr);
+            if (!date) return 'N/A';
+            return date.toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZoneName: 'short'
+            });
         }
 
         function escapeHtml(text) {
@@ -1570,7 +1781,7 @@
                         body: JSON.stringify(payload),
                     });
                     if (resp.success) {
-                        showBanner(resp.message, 'success');
+                        showBanner(resp.message || 'User added successfully.', 'success');
                         form.reset();
                         loadTechData();
                     } else {
@@ -1582,63 +1793,43 @@
             });
         }
 
-        // ── Create Ticket Status Form ──
-        const createStatusForm = document.getElementById('create-status-form');
-        if (createStatusForm) {
-            createStatusForm.addEventListener('submit', async (event) => {
-                event.preventDefault();
-                const form = event.currentTarget;
-                const formData = new FormData(form);
-                const payload = {
-                    name: formData.get('name').trim().toLowerCase(),
-                    label: formData.get('label').trim(),
-                    color: formData.get('color'),
-                    sort_order: parseInt(formData.get('sort_order')) || 10,
-                    is_resolved: formData.has('is_resolved'),
-                };
-
-                if (!payload.name || !payload.label) {
-                    showBanner('Status name and label are required.', 'error');
-                    return;
-                }
-
-                try {
-                    const resp = await requestJson('/api/admin/ticket-statuses', {
-                        method: 'POST',
-                        body: JSON.stringify(payload),
-                    });
-                    if (resp.success) {
-                        showBanner(resp.message, 'success');
-                        form.reset();
-                        loadTechData();
-                    } else {
-                        showBanner(resp.error || 'Failed to create status', 'error');
-                    }
-                } catch (err) {
-                    showBanner(err.message, 'error');
-                }
-            });
-        }
+        // Ticket status management UI removed from Technical Team tab.
 
         function editTechMember(id) {
-            // Toggle active/inactive
-            if (confirm('Toggle this member\'s active status?')) {
-                fetch(`/api/admin/tech-accounts/${id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ is_active: false })
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        showBanner('Member status updated.', 'success');
-                        loadTechData();
-                    } else {
-                        showBanner(data.error || 'Failed to update member', 'error');
-                    }
-                })
-                .catch(() => showBanner('Failed to update member', 'error'));
+            const tech = adminTechMembers.find((item) => Number(item.id) === Number(id));
+            if (!tech) {
+                showBanner('Member not found.', 'error');
+                return;
             }
+            const nextActive = !tech.is_active;
+            const actionLabel = nextActive ? 'enable' : 'disable';
+            if (!confirm(`${nextActive ? 'Enable' : 'Disable'} this technical team account?`)) {
+                return;
+            }
+            fetch(`/api/admin/tech-accounts/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: nextActive })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showBanner(`Member ${actionLabel}d successfully.`, 'success');
+                    refreshTechPresence().catch(() => loadTechData());
+                } else {
+                    showBanner(data.error || 'Failed to update member', 'error');
+                }
+            })
+            .catch(() => showBanner('Failed to update member', 'error'));
+        }
+
+        async function refreshTechPresence() {
+            const techResp = await requestJson('/api/admin/tech-accounts');
+            const techs = techResp.techs || [];
+            renderTechMembersTable(techs);
+            const setStat = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            setStat('stat-tech-count', techs.filter((t) => t.is_active && t.is_online).length);
+            return techs;
         }
 
         function deleteTechMember(id) {
@@ -1656,7 +1847,21 @@
             }
         }
 
+        window.editTechMember = editTechMember;
+        window.deleteTechMember = deleteTechMember;
+
         if (document.body.dataset.adminPage === 'tech') {
             loadTechData();
-            window.setInterval(() => loadTechData().catch(() => {}), 30000);
+            // Fast presence refresh so Online/Offline tracks logout / browser close quickly.
+            schedulePoll(() => refreshTechPresence().catch(() => {}), 8000);
+            // Full ticket/workload refresh less often.
+            schedulePoll(() => loadTechData().catch(() => {}), 45000);
+        }
+
+        if (isTicketPage) {
+            loadTicketLedger();
+            // Current tickets poll lightly; old tickets stay manual-refresh only.
+            if (currentPage === 'tickets-current') {
+                schedulePoll(() => loadTicketLedger().catch(() => {}), 25000);
+            }
         }

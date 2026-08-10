@@ -42,6 +42,9 @@
                 <i class="fa-solid fa-circle-user text-gray-400"></i>
                 <span class="max-w-[100px] truncate">{{ (user.display_name or user.email) if user else 'Tech User' }}</span>
             </div>
+            <button onclick="openCreateTicketModal()" class="w-8 h-8 flex items-center justify-center rounded-lg border border-yellow-300 bg-yellow-400 text-black hover:bg-yellow-500 transition-colors shadow-sm" title="Create ticket">
+                <i class="fa-solid fa-plus text-xs"></i>
+            </button>
             <button onclick="loadTickets()" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-black transition-colors" title="Refresh">
                 <i class="fa-solid fa-rotate-right text-xs"></i>
             </button>
@@ -81,10 +84,12 @@
             </div>
             
             <div class="flex-shrink-0 px-3 py-2 border-b border-gray-100 hidden bg-gray-50/50" id="all-filters">
-                <select id="filter-status" onchange="loadTickets()" class="w-full px-2 py-1.5 rounded-lg bg-white border border-gray-200 text-xs text-black focus:border-yellow-400 outline-none">
+                <select id="filter-status" onchange="renderTicketList()" class="w-full px-2 py-1.5 rounded-lg bg-white border border-gray-200 text-xs text-black focus:border-yellow-400 outline-none">
                     <option value="">All Statuses</option>
                     <option value="open">Open</option>
                     <option value="in_progress">In Progress</option>
+                    <option value="waiting_parts">Waiting for Parts</option>
+                    <option value="resolved">Resolved</option>
                     <option value="closed">Closed</option>
                 </select>
             </div>
@@ -102,7 +107,10 @@
                     <i class="fa-solid fa-clipboard-list"></i>
                 </div>
                 <p class="text-sm font-semibold text-gray-600">Select a ticket to view details</p>
-                <p class="text-xs mt-1 text-gray-400">Chat with CSRs, view customer info, and update status here.</p>
+                <p class="text-xs mt-1 text-gray-400">Work CSR chat tickets or independent tech/admin tickets. Claim, assign, and track full history here.</p>
+                <button onclick="openCreateTicketModal()" class="mt-4 px-4 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-bold shadow-sm">
+                    <i class="fa-solid fa-plus mr-1.5"></i>Create Ticket
+                </button>
             </div>
 
             <!-- Active Detail State -->
@@ -197,6 +205,67 @@
         </div>
     </div>
 
+    <!-- Create Ticket Modal -->
+    <div id="create-ticket-modal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 hidden w-[90%] max-w-md">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col">
+            <div class="px-5 py-4 border-b border-gray-100 bg-yellow-50 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-black flex items-center gap-2">
+                    <i class="fa-solid fa-plus text-yellow-600"></i>
+                    Create Technical Ticket
+                </h3>
+                <button onclick="closeCreateTicketModal()" class="text-gray-400 hover:text-black"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-5">
+                <p class="text-xs text-gray-500 mb-4 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                    Independent of CSR chat tickets. Use this for internal technical work, then claim/refer with full history.
+                </p>
+                <div class="mb-3">
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Title <span class="text-red-500">*</span></label>
+                    <input id="create-ticket-title" type="text" maxlength="255" class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black focus:border-yellow-400 outline-none" placeholder="Short summary">
+                </div>
+                <div class="mb-3">
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Priority</label>
+                    <select id="create-ticket-priority" class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black focus:border-yellow-400 outline-none">
+                        <option value="low">Low</option>
+                        <option value="normal" selected>Normal</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Description</label>
+                    <textarea id="create-ticket-description" rows="3" class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black resize-none focus:border-yellow-400 outline-none" placeholder="What needs to be done?"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Assign</label>
+                    <select id="create-ticket-assign-mode" onchange="onCreateAssignModeChange()" class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black focus:border-yellow-400 outline-none">
+                        <option value="me" selected>Assign to me (start working)</option>
+                        <option value="queue">Leave in Open Queue</option>
+                        <option value="tech">Assign to another tech</option>
+                    </select>
+                </div>
+                <div class="mb-3 hidden" id="create-ticket-assign-tech-wrap">
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Technical Person</label>
+                    <select id="create-ticket-assign-tech" class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black focus:border-yellow-400 outline-none">
+                        <option value="">Select tech person...</option>
+                    </select>
+                </div>
+                <div class="mb-5">
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Notes (optional)</label>
+                    <textarea id="create-ticket-notes" rows="2" class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black resize-none focus:border-yellow-400 outline-none" placeholder="Why this ticket was created..."></textarea>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="submitCreateTicket()" id="create-ticket-submit-btn" class="flex-1 py-2.5 rounded-xl bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-semibold transition-colors shadow-sm">
+                        Create Ticket
+                    </button>
+                    <button onclick="closeCreateTicketModal()" class="flex-1 py-2.5 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-sm font-semibold transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Refer Modal -->
     <div id="refer-modal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 hidden w-[90%] max-w-md">
         <div class="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col">
@@ -272,6 +341,39 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function parseServerDate(v) {
+    if (!v) return null;
+    let raw = String(v).trim();
+    const hasTimezone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw);
+    if (!hasTimezone && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
+        raw = raw.replace(' ', 'T');
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) raw = `${raw}T00:00:00Z`;
+        else if (!raw.endsWith('Z')) raw = `${raw}Z`;
+    }
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatLocalDate(v, opts) {
+    const d = parseServerDate(v);
+    if (!d) return '';
+    return d.toLocaleDateString(undefined, opts || { month: 'short', day: 'numeric' });
+}
+
+function formatLocalDateTime(v, opts) {
+    const d = parseServerDate(v);
+    if (!d) return '';
+    return d.toLocaleString(undefined, opts || {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+    });
+}
+
+function formatLocalTime(v, opts) {
+    const d = parseServerDate(v);
+    if (!d) return '';
+    return d.toLocaleTimeString(undefined, opts || { hour: '2-digit', minute: '2-digit' });
+}
+
 function ticketNum(ticket) {
     if (!ticket) return '';
     return ticket.ticket_number || ('#' + ticket.id);
@@ -325,13 +427,10 @@ function showTab(tab) {
 }
 
 function loadTickets() {
-    const statusFilter = document.getElementById('filter-status').value;
-    let url = '/api/tickets';
-    if (statusFilter && currentTab === 'all') {
-        url += `?status=${statusFilter}`;
-    }
-    
-    fetch(url)
+    // Always fetch the full ticket list. Tab and status filtering is handled
+    // client-side in renderTicketList so the "All" tab shows every ticket and
+    // the Queue / Mine counts stay accurate.
+    return fetch('/api/tickets')
         .then(r => r.json())
         .then(data => {
             let playedSound = false;
@@ -361,6 +460,7 @@ function loadTickets() {
                     closeTicketDetail();
                 }
             }
+            return data;
         });
 }
 
@@ -398,7 +498,7 @@ function renderTicketList() {
         const pClass = ticket.priority === 'high' ? 'priority-high' : ticket.priority === 'low' ? 'priority-low' : 'priority-normal';
         const sClass = `status-${ticket.status}`;
         const activeClass = ticket.id === activeChatTicketId ? 'active' : 'bg-white';
-        const date = new Date(ticket.created_at).toLocaleDateString(undefined, {month:'short', day:'numeric'});
+        const date = formatLocalDate(ticket.created_at);
         
         const isUnread = ticket.latest_message_sender_type === 'csr' && (!seenMessages[ticket.id] || seenMessages[ticket.id] < ticket.latest_message_id);
         const unreadIndicator = isUnread ? `<span class="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-sm"></span>` : '';
@@ -416,8 +516,11 @@ function renderTicketList() {
         <div onclick="openTicketDetail(${ticket.id})" class="ticket-card ${activeClass} rounded-xl ${borderClass} p-3 cursor-pointer shadow-sm relative overflow-hidden group">
             ${unreadIndicator}
             <div class="absolute left-0 top-0 bottom-0 w-1 ${pClass}"></div>
-            <div class="flex justify-between items-start mb-2 pl-2">
-                <span class="font-mono text-[11px] font-bold text-gray-500">${escapeHtml(ticketNum(ticket))}</span>
+            <div class="flex justify-between items-start mb-2 pl-2 gap-2">
+                <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="font-mono text-[11px] font-bold text-gray-500">${escapeHtml(ticketNum(ticket))}</span>
+                    <span class="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${originBadgeClass(ticket)}">${escapeHtml(originLabel(ticket))}</span>
+                </div>
                 <span class="status-badge ${sClass}">${getStatusLabel(ticket.status)}</span>
             </div>
             <h3 class="text-sm font-bold text-gray-900 mb-1 pl-2 truncate" title="${escapeHtml(ticket.title)}">${escapeHtml(ticket.title)}</h3>
@@ -463,14 +566,39 @@ function closeTicketDetail() {
     renderTicketList();
 }
 
+function originLabel(ticket) {
+    const origin = (ticket.origin || ticket.created_by_role || 'csr').toLowerCase();
+    if (origin === 'tech') return 'Tech';
+    if (origin === 'admin') return 'Admin';
+    return 'CSR Chat';
+}
+
+function originBadgeClass(ticket) {
+    const origin = (ticket.origin || ticket.created_by_role || 'csr').toLowerCase();
+    if (origin === 'tech') return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
+    if (origin === 'admin') return 'bg-amber-50 text-amber-700 border border-amber-100';
+    return 'bg-blue-50 text-blue-700 border border-blue-100';
+}
+
+function creatorRoleLabel(ticket) {
+    const role = (ticket.created_by_role || ticket.origin || '').toLowerCase();
+    if (role === 'tech') return 'Created by Tech';
+    if (role === 'admin') return 'Created by Admin';
+    return 'Created by CSR';
+}
+
 function renderTicketDetail(ticket) {
     const header = document.getElementById('detail-header');
     const myId = Number(document.body.dataset.userId || 0);
     const isMine = Number(ticket.assigned_tech_id) === myId;
-    
-    const csrName = ticket.created_by_csr ? (ticket.created_by_csr.display_name || ticket.created_by_csr.email) : 'Unknown CSR';
-    const customerName = ticket.chat && ticket.chat.visitor_name ? ticket.chat.visitor_name : 'Customer';
-    const customerId = ticket.chat && ticket.chat.visitor_id ? ticket.chat.visitor_id : 'No ID';
+    const isChatLinked = Boolean(ticket.is_chat_linked || (ticket.origin === 'csr' && ticket.chat));
+    const creatorName = ticket.created_by_label
+        || (ticket.created_by_tech && (ticket.created_by_tech.display_name || ticket.created_by_tech.email))
+        || (ticket.created_by_admin && (ticket.created_by_admin.display_name || ticket.created_by_admin.email))
+        || (ticket.created_by_csr && (ticket.created_by_csr.display_name || ticket.created_by_csr.email))
+        || 'Unknown';
+    const customerName = ticket.chat && (ticket.chat.visitor_name || ticket.chat.customer_name) ? (ticket.chat.visitor_name || ticket.chat.customer_name) : 'Customer';
+    const customerId = ticket.chat && (ticket.chat.visitor_id || ticket.chat.external_chat_id) ? (ticket.chat.visitor_id || ticket.chat.external_chat_id) : 'No ID';
 
     let actions = '';
     if (ticket.status === 'open' && !ticket.assigned_tech_id) {
@@ -478,33 +606,46 @@ function renderTicketDetail(ticket) {
     } else if (isMine) {
         actions = `
             <button onclick="openStatusModal(${ticket.id})" class="px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold transition-colors shadow-sm"><i class="fa-solid fa-pen-to-square mr-1.5 text-blue-500"></i>Update Status</button>
-            <button onclick="openReferModal(${ticket.id})" class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"><i class="fa-solid fa-share-nodes mr-1.5"></i>Refer</button>
+            <button onclick="openReferModal(${ticket.id})" class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"><i class="fa-solid fa-share-nodes mr-1.5"></i>Assign / Refer</button>
         `;
     }
+
+    const contextCards = isChatLinked ? `
+        <div class="bg-blue-50 border border-blue-100 px-3 py-2 rounded-lg flex items-center gap-2 text-blue-800">
+            <i class="fa-solid fa-user-circle text-blue-400 text-sm"></i>
+            <div>
+                <div class="font-bold uppercase tracking-wider text-[9px] text-blue-500 mb-0.5">Associated Customer</div>
+                <div class="font-semibold">${escapeHtml(customerName)} <span class="text-blue-400 font-normal ml-1">(${escapeHtml(customerId)})</span></div>
+            </div>
+        </div>
+    ` : `
+        <div class="bg-emerald-50 border border-emerald-100 px-3 py-2 rounded-lg flex items-center gap-2 text-emerald-800">
+            <i class="fa-solid fa-screwdriver-wrench text-emerald-500 text-sm"></i>
+            <div>
+                <div class="font-bold uppercase tracking-wider text-[9px] text-emerald-600 mb-0.5">Independent Ticket</div>
+                <div class="font-semibold">Not linked to a CSR chat</div>
+            </div>
+        </div>
+    `;
 
     header.innerHTML = `
         <div class="flex flex-col md:flex-row md:items-start justify-between gap-4">
             <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-2">
+                <div class="flex items-center gap-2 mb-2 flex-wrap">
                     <span class="status-badge status-${ticket.status}">${getStatusLabel(ticket.status)}</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${originBadgeClass(ticket)}">${escapeHtml(originLabel(ticket))}</span>
                     <span class="font-mono text-xs font-bold text-gray-400">${escapeHtml(ticketNum(ticket))}</span>
                 </div>
                 <h1 class="text-xl font-extrabold text-gray-900 mb-2 leading-tight">${escapeHtml(ticket.title)}</h1>
                 ${ticket.description ? `<p class="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-xl border border-gray-100">${escapeHtml(ticket.description)}</p>` : ''}
                 
                 <div class="flex flex-wrap gap-4 text-xs">
-                    <div class="bg-blue-50 border border-blue-100 px-3 py-2 rounded-lg flex items-center gap-2 text-blue-800">
-                        <i class="fa-solid fa-user-circle text-blue-400 text-sm"></i>
-                        <div>
-                            <div class="font-bold uppercase tracking-wider text-[9px] text-blue-500 mb-0.5">Associated Customer</div>
-                            <div class="font-semibold">${escapeHtml(customerName)} <span class="text-blue-400 font-normal ml-1">(${escapeHtml(customerId)})</span></div>
-                        </div>
-                    </div>
+                    ${contextCards}
                     <div class="bg-gray-50 border border-gray-100 px-3 py-2 rounded-lg flex items-center gap-2 text-gray-700">
-                        <i class="fa-solid fa-headset text-gray-400 text-sm"></i>
+                        <i class="fa-solid fa-user-pen text-gray-400 text-sm"></i>
                         <div>
-                            <div class="font-bold uppercase tracking-wider text-[9px] text-gray-500 mb-0.5">Created By CSR</div>
-                            <div class="font-semibold">${escapeHtml(csrName)}</div>
+                            <div class="font-bold uppercase tracking-wider text-[9px] text-gray-500 mb-0.5">${escapeHtml(creatorRoleLabel(ticket))}</div>
+                            <div class="font-semibold">${escapeHtml(creatorName)}</div>
                         </div>
                     </div>
                 </div>
@@ -515,36 +656,65 @@ function renderTicketDetail(ticket) {
         </div>
     `;
 
+    const chatInput = document.getElementById('tech-chat-input');
+    if (chatInput) {
+        chatInput.placeholder = isChatLinked
+            ? 'Message CSR... (Press Enter to send)'
+            : 'Add internal ticket note... (Press Enter to send)';
+    }
+
     renderHistory(ticket);
+}
+
+function historyActionText(item) {
+    const isCreate = !item.old_status && item.new_status;
+    const statusChanged = item.old_status && item.new_status && item.old_status !== item.new_status;
+    if (isCreate) {
+        return `Created <span class="font-semibold text-gray-900">(${escapeHtml(item.new_status)})</span>`;
+    }
+    if (!item.old_assigned_tech && item.new_assigned_tech && statusChanged) {
+        return `Assigned to <span class="font-semibold text-gray-900">${escapeHtml(item.new_assigned_tech.display_name||'Tech')}</span> · status <span class="font-semibold">${escapeHtml(item.old_status)}</span> → <span class="font-semibold">${escapeHtml(item.new_status)}</span>`;
+    }
+    if (!item.old_assigned_tech && item.new_assigned_tech) {
+        return `Claimed / assigned to <span class="font-semibold text-gray-900">${escapeHtml(item.new_assigned_tech.display_name||'Tech')}</span>`;
+    }
+    if (item.old_assigned_tech && item.new_assigned_tech) {
+        return `Referred from ${escapeHtml(item.old_assigned_tech.display_name||'Tech')} to <span class="font-semibold text-gray-900">${escapeHtml(item.new_assigned_tech.display_name||'Tech')}</span>`;
+    }
+    if (statusChanged) {
+        return `Status <span class="font-semibold">${escapeHtml(item.old_status)}</span> → <span class="font-semibold text-gray-900">${escapeHtml(item.new_status)}</span>`;
+    }
+    return 'Updated';
 }
 
 function renderHistory(ticket) {
     const histDiv = document.getElementById('detail-history');
-    const hist = ticket.assignment_history || [];
+    const hist = (ticket.history && ticket.history.length)
+        ? ticket.history
+        : (ticket.assignment_history || []);
     if (!hist.length) {
-        histDiv.innerHTML = '';
+        histDiv.innerHTML = `
+            <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 shadow-sm mb-4">
+                <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Ticket History</h4>
+                <p class="text-xs text-gray-400">No history events yet.</p>
+            </div>
+        `;
         return;
     }
 
-    const items = hist.map(item => {
-        const time = new Date(item.created_at).toLocaleString(undefined, {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+    // Newest first for readability.
+    const ordered = [...hist].sort((a, b) => (parseServerDate(b.created_at)?.getTime() || 0) - (parseServerDate(a.created_at)?.getTime() || 0) || (b.id || 0) - (a.id || 0));
+    const items = ordered.map(item => {
+        const time = formatLocalDateTime(item.created_at);
         const note = item.notes ? `<div class="mt-1.5 text-xs text-gray-600 bg-white border border-gray-100 p-2 rounded-lg italic">"${escapeHtml(item.notes)}"</div>` : '';
-        const by = item.changed_by_name ? `by <span class="font-semibold">${escapeHtml(item.changed_by_name)}</span>` : '';
-        
-        let actionTxt = '';
-        if (!item.old_assigned_tech && item.new_assigned_tech) {
-            actionTxt = `Claimed by <span class="font-semibold text-gray-900">${escapeHtml(item.new_assigned_tech.display_name||'Tech')}</span>`;
-        } else if (item.old_assigned_tech && item.new_assigned_tech) {
-            actionTxt = `Referred from ${escapeHtml(item.old_assigned_tech.display_name||'Tech')} to <span class="font-semibold text-gray-900">${escapeHtml(item.new_assigned_tech.display_name||'Tech')}</span>`;
-        } else {
-            actionTxt = `Updated`;
-        }
+        const role = item.changed_by_role ? ` · ${escapeHtml(item.changed_by_role)}` : '';
+        const by = item.changed_by_name ? `by <span class="font-semibold">${escapeHtml(item.changed_by_name)}</span>${role}` : (role ? role.replace(' · ', '') : '');
 
         return `
             <div class="relative pl-6 pb-4 border-l-2 border-gray-200 last:border-l-0 last:pb-0">
-                <div class="absolute w-2.5 h-2.5 bg-gray-300 rounded-full left-[-5px] top-1.5 ring-4 ring-gray-50"></div>
+                <div class="absolute w-2.5 h-2.5 bg-yellow-400 rounded-full left-[-5px] top-1.5 ring-4 ring-gray-50"></div>
                 <div class="text-xs text-gray-400 mb-0.5">${time} ${by}</div>
-                <div class="text-sm text-gray-700">${actionTxt}</div>
+                <div class="text-sm text-gray-700">${historyActionText(item)}</div>
                 ${note}
             </div>
         `;
@@ -552,7 +722,7 @@ function renderHistory(ticket) {
 
     histDiv.innerHTML = `
         <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 shadow-sm mb-4">
-            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Ticket History</h4>
+            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Complete Ticket History</h4>
             <div class="ml-2">${items}</div>
         </div>
     `;
@@ -587,7 +757,7 @@ function renderMessages(messages) {
     let html = '';
     messages.forEach(msg => {
         const isMine = msg.sender_type === 'tech';
-        const time = new Date(msg.created_at).toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
+        const time = formatLocalTime(msg.created_at);
         
         if (isMine) {
             html += `
@@ -665,6 +835,89 @@ document.getElementById('tech-chat-input').addEventListener('keydown', e => {
         sendTicketChatMessage();
     }
 });
+
+// Create ticket (independent of CSR chat tickets)
+function onCreateAssignModeChange() {
+    const mode = document.getElementById('create-ticket-assign-mode').value;
+    const wrap = document.getElementById('create-ticket-assign-tech-wrap');
+    wrap.classList.toggle('hidden', mode !== 'tech');
+    if (mode === 'tech') populateCreateAssignTechSelect();
+}
+
+function populateCreateAssignTechSelect() {
+    const select = document.getElementById('create-ticket-assign-tech');
+    const myId = Number(document.body.dataset.userId || 0);
+    const options = techAccounts.filter(t => Number(t.id) !== myId && t.is_active !== false);
+    if (options.length) {
+        select.innerHTML = '<option value="">Select tech person...</option>' + options.map(t =>
+            `<option value="${t.id}">${escapeHtml(t.display_name || t.email)}</option>`
+        ).join('');
+    } else {
+        select.innerHTML = '<option value="">No other active techs</option>';
+    }
+}
+
+function openCreateTicketModal() {
+    document.getElementById('create-ticket-title').value = '';
+    document.getElementById('create-ticket-description').value = '';
+    document.getElementById('create-ticket-notes').value = '';
+    document.getElementById('create-ticket-priority').value = 'normal';
+    document.getElementById('create-ticket-assign-mode').value = 'me';
+    onCreateAssignModeChange();
+    if (!techAccounts.length) loadTechAccounts();
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    document.getElementById('create-ticket-modal').classList.remove('hidden');
+}
+
+function closeCreateTicketModal() {
+    document.getElementById('modal-overlay').classList.add('hidden');
+    document.getElementById('create-ticket-modal').classList.add('hidden');
+}
+
+function submitCreateTicket() {
+    const title = document.getElementById('create-ticket-title').value.trim();
+    const description = document.getElementById('create-ticket-description').value.trim();
+    const priority = document.getElementById('create-ticket-priority').value;
+    const assign_mode = document.getElementById('create-ticket-assign-mode').value;
+    const notes = document.getElementById('create-ticket-notes').value.trim();
+    const assign_tech_id = document.getElementById('create-ticket-assign-tech').value;
+    if (!title) {
+        showNotification('Title is required', 'error');
+        return;
+    }
+    if (assign_mode === 'tech' && !assign_tech_id) {
+        showNotification('Select a technical person', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('create-ticket-submit-btn');
+    btn.disabled = true;
+    const payload = { title, description, priority, assign_mode, notes };
+    if (assign_mode === 'tech') payload.assign_tech_id = Number(assign_tech_id);
+
+    fetch('/api/tech/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showNotification(data.message || 'Ticket created');
+                closeCreateTicketModal();
+                const createdId = data.ticket && data.ticket.id;
+                loadTickets().then(() => {
+                    if (createdId) openTicketDetail(createdId);
+                    else if (assign_mode === 'me') showTab('mine');
+                    else if (assign_mode === 'queue') showTab('queue');
+                });
+            } else {
+                showNotification(data.error || 'Failed to create ticket', 'error');
+            }
+        })
+        .catch(() => showNotification('Failed to create ticket', 'error'))
+        .finally(() => { btn.disabled = false; });
+}
 
 // Modals
 function openStatusModal(id) {
@@ -757,9 +1010,71 @@ function referTicket() {
 loadTechAccounts();
 loadTickets();
 setInterval(() => {
+    if (document.hidden) return;
     loadTickets();
     if(activeChatTicketId) loadTicketMessages(activeChatTicketId);
 }, 5000);
+
+// Presence: Online while dashboard is open; Offline on logout / browser close.
+(function setupTechPresence() {
+    const HEARTBEAT_MS = 12000;
+    let heartbeatTimer = null;
+    let offlineSent = false;
+
+    function sendHeartbeat() {
+        if (document.hidden) return;
+        fetch('/api/tech/heartbeat', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+        }).catch(() => {});
+    }
+
+    function markOffline() {
+        if (offlineSent) return;
+        offlineSent = true;
+        try {
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon('/api/tech/presence/offline', new Blob(['{}'], { type: 'application/json' }));
+                return;
+            }
+        } catch (_err) {}
+        fetch('/api/tech/presence/offline', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+            keepalive: true
+        }).catch(() => {});
+    }
+
+    function startHeartbeat() {
+        offlineSent = false;
+        sendHeartbeat();
+        window.clearInterval(heartbeatTimer);
+        heartbeatTimer = window.setInterval(sendHeartbeat, HEARTBEAT_MS);
+    }
+
+    function stopHeartbeat() {
+        window.clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopHeartbeat();
+            markOffline();
+        } else {
+            startHeartbeat();
+        }
+    });
+
+    window.addEventListener('pagehide', markOffline);
+    window.addEventListener('beforeunload', markOffline);
+
+    startHeartbeat();
+})();
 
 </script>
 </body>

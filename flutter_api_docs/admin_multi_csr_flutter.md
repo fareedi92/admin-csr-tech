@@ -7,7 +7,7 @@ This file is only about building the admin/CSR Flutter app through the existing 
 - Service: `flt-csr-app-admin`
 - Code: `/home/ubuntu/new_admin/flt_csr_app_ai/app.py`
 - Port: `5002`
-- Database: `/home/ubuntu/new_admin/flt_csr_app_ai/instance/users.db`
+- Database: Supabase PostgreSQL (configured via `.env` — `SUPABASE_URL` + `SUPABASE_DB_PASSWORD`)
 
 ## What this backend handles
 
@@ -268,7 +268,7 @@ Recommended:
 sequenceDiagram
     participant WM as widget-manager
     participant API as flt-csr-app-admin:5002
-    participant DB as users.db
+    participant DB as Supabase PostgreSQL
     participant CSR as CSR Flutter App
     participant Admin as Admin Flutter App
 

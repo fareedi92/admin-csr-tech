@@ -16,10 +16,40 @@
         .chat-scroll::-webkit-scrollbar { width: 5px; }
         .chat-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
         .chat-scroll::-webkit-scrollbar-track { background: transparent; }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        .msg-bubble { animation: slideUp 0.2s ease-out; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .msg-row { display: flex; width: 100%; animation: slideUp 0.18s ease-out; }
+        .msg-row--out { justify-content: flex-end; }
+        .msg-row--in { justify-content: flex-start; }
+        .msg-wrap { display: flex; flex-direction: column; max-width: min(78%, 480px); min-width: 0; }
+        .msg-wrap--out { align-items: flex-end; }
+        .msg-wrap--in { align-items: flex-start; }
+        .msg-label { font-size: 10px; font-weight: 600; line-height: 1.2; margin-bottom: 3px; color: #9ca3af; }
+        .msg-label--out { color: #a16207; }
+        .msg-label--teammate { color: #1d4ed8; }
+        .msg-body {
+            display: inline-block;
+            max-width: 100%;
+            padding: 7px 12px;
+            border-radius: 14px;
+            font-size: 13px;
+            line-height: 1.45;
+            word-break: break-word;
+            white-space: pre-wrap;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        }
+        .msg-body--csr { background: #facc15; color: #111827; border-bottom-right-radius: 4px; }
+        .msg-body--teammate { background: #dbeafe; color: #0f172a; border: 1px solid #bfdbfe; border-bottom-right-radius: 4px; }
+        .msg-body--user { background: #fff; color: #111827; border: 1px solid #e5e7eb; border-bottom-left-radius: 4px; }
+        .msg-body--ai { background: #f3f4f6; color: #6b7280; font-style: italic; border-bottom-left-radius: 4px; }
+        .msg-body--tech { background: #fff; color: #111827; border: 1px solid #e5e7eb; border-bottom-left-radius: 4px; }
+        .msg-time { font-size: 10px; color: #9ca3af; margin-top: 3px; line-height: 1.2; }
+        .msg-time--out { text-align: right; }
+        .msg-stack { display: flex; flex-direction: column; gap: 10px; }
         @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+        .chat-card { transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background-color .15s ease; }
+        .chat-card:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(15, 23, 42, .08); }
+        .chat-card:active { transform: translateY(0); }
         /* Archive collapse animation */
         #view-workspace { transition: grid-template-columns 0.3s ease; }
         #col-archive { transition: opacity 0.25s ease, transform 0.25s ease; transform-origin: right center; }
@@ -47,22 +77,14 @@
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <div class="hidden md:flex items-center gap-1.5 text-[11px]">
-                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 text-gray-600">
-                        <i class="fa-solid fa-comments text-[9px]"></i> <span id="stat-total" class="font-semibold">0</span>
-                    </span>
-                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-yellow-50 text-yellow-700 border border-yellow-200">
-                        Mine: <span id="stat-mine" class="font-semibold">0</span>
-                    </span>
-                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-600 border border-orange-200">
-                        Wait: <span id="stat-queued" class="font-semibold">0</span>
-                    </span>
-                </div>
                 <div id="relay-pill" class="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium">
                     <i class="fa-solid fa-plug"></i><span>Checking</span>
                 </div>
-                <button id="refresh-btn" type="button" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-black transition-colors" title="Refresh">
+                <button id="refresh-btn" type="button" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-black transition-colors" title="Refresh now">
                     <i class="fa-solid fa-rotate-right text-xs"></i>
+                </button>
+                <button id="auto-refresh-btn" type="button" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors" title="Auto refresh (every 5s)">
+                    <i id="auto-refresh-icon" class="fa-solid fa-arrows-rotate text-xs"></i>
                 </button>
                 <button id="sound-toggle" type="button" class="hidden sm:flex w-8 h-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors" title="Toggle sound">
                     <i id="sound-toggle-icon" class="fa-solid fa-volume-high text-xs"></i>
@@ -104,21 +126,31 @@
                     <span class="w-6 h-6 rounded-md bg-yellow-400 flex items-center justify-center text-black text-[10px] font-bold">1</span>
                     <h2 class="text-sm font-bold text-black">Customer Chats</h2>
                 </div>
-                <span id="col1-count" class="text-[11px] text-gray-400 font-medium">0 chats</span>
             </div>
 
             <!-- Chat List View -->
             <div id="user-list-view" class="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <div class="flex-shrink-0 px-3 py-2 border-b border-gray-100 flex gap-1.5">
                     <button type="button" id="tab-btn-queued" onclick="setChatBucket('queued')" class="chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
-                        New <span id="bucket-queued-count" class="ml-0.5 opacity-70">0</span>
+                        New <span id="bucket-queued-count" class="ml-0.5 opacity-80">0</span>
                     </button>
                     <button type="button" id="tab-btn-mine" onclick="setChatBucket('mine')" class="chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
-                        Mine <span id="bucket-mine-count" class="ml-0.5 opacity-70">0</span>
+                        Mine <span id="bucket-mine-count" class="ml-0.5 opacity-80">0</span>
                     </button>
                     <button type="button" id="tab-btn-other" onclick="setChatBucket('other')" class="chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
-                        Others <span id="bucket-other-count" class="ml-0.5 opacity-70">0</span>
+                        Others <span id="bucket-other-count" class="ml-0.5 opacity-80">0</span>
                     </button>
+                </div>
+                <div id="other-chat-toolbar" class="hidden flex-shrink-0 px-3 py-2 border-b border-gray-100 bg-blue-50/40 space-y-2">
+                    <p class="text-[11px] text-gray-500 leading-snug">Teammate chats load 10 at a time. Use load more or pick a date to browse older activity.</p>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <label class="inline-flex items-center gap-1.5 text-[11px] text-gray-600">
+                            <span>Date</span>
+                            <input id="other-date-filter" type="date" class="px-2 py-1 rounded-md border border-gray-200 bg-white text-xs">
+                        </label>
+                        <button type="button" id="other-date-apply" class="px-2.5 py-1 rounded-md bg-blue-500 text-white text-[11px] font-semibold hover:bg-blue-600">Apply</button>
+                        <button type="button" id="other-date-clear" class="px-2.5 py-1 rounded-md border border-gray-200 bg-white text-[11px] font-semibold text-gray-600 hover:bg-gray-50">Clear</button>
+                    </div>
                 </div>
                 <div id="chat-list" class="flex-1 overflow-y-auto p-2 space-y-1.5 chat-scroll">
                     <div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>
@@ -209,7 +241,6 @@
         <div id="archive-mini" style="display:none" class="flex-col items-center justify-start py-3 px-1.5 bg-white rounded-xl border border-gray-200 cursor-pointer hover:bg-yellow-50 hover:border-yellow-300 transition-all gap-2 flex-shrink-0" onclick="toggleArchive()">
             <i class="fa-solid fa-box-archive text-gray-400 text-sm"></i>
             <span class="text-[10px] text-gray-500 font-semibold [writing-mode:vertical-lr] tracking-wider">ARCHIVE</span>
-            <span id="archive-mini-count" class="text-[10px] font-bold text-yellow-600 bg-yellow-100 rounded px-1 py-0.5 mt-1">0</span>
             <i class="fa-solid fa-chevron-left text-gray-300 text-[10px] mt-auto"></i>
         </div>
 
@@ -221,7 +252,6 @@
                     <h2 class="text-sm font-bold text-black">Archive</h2>
                 </div>
                 <div class="flex items-center gap-2">
-                    <span class="text-[11px] text-gray-400 font-medium"><span id="tab-closed-count">0</span> resolved</span>
                     <button type="button" id="archive-collapse-btn" onclick="toggleArchive()" class="hidden lg:flex w-6 h-6 items-center justify-center rounded-md hover:bg-gray-200 text-gray-400 transition-colors" title="Minimize archive">
                         <i class="fa-solid fa-chevron-right text-[10px]"></i>
                     </button>
@@ -314,7 +344,7 @@
                 <div class="font-semibold text-black mt-0.5">{{ user.email if user else '—' }}</div>
             </div>
         </div>
-        <a href="/logout" class="mt-4 flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm font-semibold hover:bg-red-100 transition-colors">
+        <a href="/logout" id="csr-logout-link" class="mt-4 flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm font-semibold hover:bg-red-100 transition-colors">
             <i class="fa-solid fa-right-from-bracket"></i> Log out
         </a>
     </div>
@@ -343,6 +373,7 @@ const state = {
     closedPagination: { page: 1, per_page: 20, total: 0, total_pages: 1, has_prev: false, has_next: false },
     closedLoading: false,
     soundEnabled: localStorage.getItem('csrSoundEnabled') !== 'false',
+    autoRefreshEnabled: localStorage.getItem('csrAutoRefreshEnabled') === 'true',
     alertsReady: false,
     ticketsAlertReady: false,
     chatSnapshots: {},
@@ -350,6 +381,13 @@ const state = {
     unreadChats: {},
     unreadTickets: {},
     archiveCollapsed: localStorage.getItem('csrArchiveCollapsed') === 'true',
+    sendingReply: false,
+    sendingTicketMessage: false,
+    renderSignatures: { chatList: '', otherList: '', archiveList: '', ticketList: '', workspace: '', ticketChat: '' },
+    otherChats: [],
+    otherPagination: { page: 0, per_page: 10, total: 0, total_pages: 0, has_more: false, date: null },
+    otherDateFilter: '',
+    otherLoading: false,
 };
 
 const WORKSPACE_STORAGE_KEY = 'csrWorkspaceState';
@@ -367,20 +405,75 @@ let flashTimer = null;
 function escapeHtml(v) {
     return String(v || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 }
-function formatDateTime(v) {
-    if (!v) return '';
-    const d = new Date(v);
-    return isNaN(d) ? v : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+function parseServerDate(v) {
+    if (!v) return null;
+    let raw = String(v).trim();
+    const hasTimezone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw);
+    if (!hasTimezone && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
+        raw = raw.replace(' ', 'T');
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) raw = `${raw}T00:00:00Z`;
+        else if (!raw.endsWith('Z')) raw = `${raw}Z`;
+    }
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+function formatDateTime(v, { withSeconds = false } = {}) {
+    const d = parseServerDate(v);
+    if (!d) return v || '';
+    const opts = {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'short'
+    };
+    if (withSeconds) opts.second = '2-digit';
+    return d.toLocaleString(undefined, opts);
+}
+function formatMessageTime(v) {
+    const d = parseServerDate(v);
+    if (!d) return '';
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) {
+        return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    }
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) {
+        return `Yesterday ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+    }
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 function formatRelative(v) {
-    if (!v) return 'Just now';
-    const d = new Date(v);
-    if (isNaN(d)) return v;
-    const s = Math.floor((Date.now() - d) / 1000);
+    const d = parseServerDate(v);
+    if (!d) return 'Just now';
+    const s = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (s < 0) return 'Just now';
     if (s < 60) return 'Just now';
-    if (s < 3600) return Math.floor(s/60) + 'm ago';
-    if (s < 86400) return Math.floor(s/3600) + 'h ago';
-    return Math.floor(s/86400) + 'd ago';
+    if (s < 3600) { const m = Math.floor(s / 60); return `${m} min${m === 1 ? '' : 's'} ago`; }
+    if (s < 86400) { const h = Math.floor(s / 3600); return `${h} hr${h === 1 ? '' : 's'} ago`; }
+    const days = Math.floor(s / 86400);
+    return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+function formatChatCardTime(chat, { archive = false } = {}) {
+    const completed = archive || chat.is_resolved;
+    if (completed) {
+        const when = chat.resolved_at || chat.last_activity_at;
+        return when ? `Completed ${formatDateTime(when)}` : 'Completed · time unknown';
+    }
+    const when = chat.last_activity_at;
+    if (!when) return 'No activity yet';
+    return `${formatRelative(when)} · ${formatDateTime(when)}`;
+}
+function formatTicketCardTime(ticket) {
+    const bucket = ticketBucket(ticket);
+    if (bucket === 'closed') {
+        const when = ticket.resolved_at || ticket.updated_at || ticket.created_at;
+        return when ? `Completed ${formatDateTime(when)}` : '';
+    }
+    const when = ticket.updated_at || ticket.created_at;
+    return when ? `Updated ${formatDateTime(when)}` : '';
 }
 function showBanner(msg, tone = 'success') {
     flashBanner.textContent = msg;
@@ -393,7 +486,12 @@ function showBanner(msg, tone = 'success') {
 async function requestJson(url, options = {}) {
     const res = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
     const payload = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(payload.error || payload.message || 'Request failed');
+    if (!res.ok) {
+        const err = new Error(payload.error || payload.message || 'Request failed');
+        err.status = res.status;
+        err.payload = payload;
+        throw err;
+    }
     return payload;
 }
 
@@ -512,8 +610,129 @@ function setChatBucket(bucket) {
         const btn = document.getElementById('tab-btn-' + b);
         if (btn) btn.className = `chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all ${b === bucket ? BUCKET_ACTIVE[b] : BUCKET_INACTIVE}`;
     });
-    renderChatList();
+    const otherToolbar = document.getElementById('other-chat-toolbar');
+    if (otherToolbar) otherToolbar.classList.toggle('hidden', bucket !== 'other');
+    if (bucket === 'other') {
+        if (!state.otherChats.length && !state.otherLoading) {
+            loadOtherChats({ reset: true, page: 1 }).catch((e) => showBanner(e.message, 'error'));
+        } else {
+            renderChatList();
+        }
+    } else {
+        renderChatList();
+    }
     saveWorkspaceState();
+}
+
+function updateChatBucketCounts() {
+    const s = state.dashboard?.summary || {};
+    const setCount = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(val ?? 0);
+    };
+    setCount('bucket-queued-count', s.queued_chats ?? 0);
+    setCount('bucket-mine-count', s.my_chats ?? 0);
+    setCount('bucket-other-count', s.other_chats ?? 0);
+}
+
+function bindOtherChatControls() {
+    document.getElementById('other-date-apply')?.addEventListener('click', () => {
+        const input = document.getElementById('other-date-filter');
+        state.otherDateFilter = input?.value || '';
+        loadOtherChats({ reset: true, page: 1 }).catch((e) => showBanner(e.message, 'error'));
+    });
+    document.getElementById('other-date-clear')?.addEventListener('click', () => {
+        state.otherDateFilter = '';
+        const input = document.getElementById('other-date-filter');
+        if (input) input.value = '';
+        loadOtherChats({ reset: true, page: 1 }).catch((e) => showBanner(e.message, 'error'));
+    });
+}
+
+async function loadOtherChats({ reset = false, page = 1, append = false, background = false } = {}) {
+    if (!background) {
+        state.otherLoading = true;
+        if (reset) {
+            state.otherChats = [];
+            state.otherPagination = { page: 0, per_page: 10, total: 0, total_pages: 0, has_more: false, date: state.otherDateFilter || null };
+        }
+        renderChatList();
+    }
+    try {
+        const params = new URLSearchParams({ page: String(page), per_page: '10' });
+        if (state.otherDateFilter) params.set('date', state.otherDateFilter);
+        const payload = await requestJson(`/api/csr/chats/others?${params.toString()}`);
+        const rows = payload.chats || [];
+        state.otherPagination = payload.pagination || state.otherPagination;
+        if (background) {
+            // Silent refresh of the first page; keep any extra "load more" rows.
+            const refreshedIds = new Set(rows.map((r) => r.id));
+            const tail = state.otherChats.filter((c) => !refreshedIds.has(c.id));
+            state.otherChats = rows.concat(tail);
+        } else {
+            state.otherChats = append ? state.otherChats.concat(rows) : rows;
+        }
+        const dateInput = document.getElementById('other-date-filter');
+        if (dateInput && state.otherDateFilter) dateInput.value = state.otherDateFilter;
+    } catch (err) {
+        if (reset && !background) state.otherChats = [];
+        if (!background) throw err;
+    } finally {
+        if (!background) state.otherLoading = false;
+        renderChatList();
+    }
+}
+
+function loadMoreOtherChats() {
+    const nextPage = (state.otherPagination?.page || 0) + 1;
+    if (!state.otherPagination?.has_more) return;
+    loadOtherChats({ page: nextPage, append: true }).catch((e) => showBanner(e.message, 'error'));
+}
+
+function renderOtherChatList(container, minuteTick = Math.floor(Date.now() / 60000)) {
+    const total = state.otherPagination?.total ?? state.otherChats.length;
+    const loaded = state.otherChats.length;
+    const sig = ['other', state.otherLoading ? 1 : 0, loaded, total, state.otherPagination?.has_more ? 1 : 0, state.otherDateFilter || '', minuteTick, state.otherChats.map(chatCardSignature).join(';')].join('|');
+    if (sig === state.renderSignatures.otherList) return;
+    state.renderSignatures.otherList = sig;
+
+    const prevScroll = container.scrollTop;
+    const dateLabel = state.otherDateFilter
+        ? ` on ${state.otherDateFilter}`
+        : '';
+    const header = `<div class="px-1 pb-2 text-[11px] text-gray-500">
+        Showing <strong>${loaded}</strong> of <strong>${total}</strong> teammate chat${total === 1 ? '' : 's'}${dateLabel}
+    </div>`;
+
+    if (state.otherLoading && !state.otherChats.length) {
+        container.innerHTML = `${header}<div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading teammate chats…</div>`;
+        return;
+    }
+
+    if (!state.otherChats.length) {
+        container.innerHTML = `${header}<div class="flex flex-col items-center justify-center py-10 text-center">
+            <i class="fa-solid fa-users text-gray-200 text-2xl mb-2"></i>
+            <p class="text-sm font-medium text-gray-400">No teammate chats${dateLabel}</p>
+            <p class="text-xs text-gray-300 mt-1">Try another date or wait for a teammate to claim a chat.</p>
+        </div>`;
+        return;
+    }
+
+    const cards = state.otherChats.map((c) => chatCardHtml(c)).join('');
+    const loadMore = state.otherPagination?.has_more
+        ? `<div class="pt-2 pb-1">
+            <button type="button" id="other-load-more-btn" class="w-full px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition-colors">
+                Load 10 more
+            </button>
+           </div>`
+        : `<div class="pt-2 pb-1 text-center text-[11px] text-gray-400">All teammate chats loaded${dateLabel}.</div>`;
+
+    container.innerHTML = `${header}<div class="space-y-1.5">${cards}</div>${loadMore}`;
+    container.scrollTop = prevScroll;
+    container.querySelectorAll('.chat-card').forEach((el) => {
+        el.addEventListener('click', () => selectChat(Number(el.dataset.chatId), el.dataset.chatBucket).catch((e) => showBanner(e.message, 'error')));
+    });
+    document.getElementById('other-load-more-btn')?.addEventListener('click', loadMoreOtherChats);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -546,6 +765,7 @@ function showArchiveListView() { document.getElementById('archive-chat-view').st
 document.getElementById('back-to-chats').addEventListener('click', () => {
     state.selectedChatId = null;
     state.selectedMessages = [];
+    state.renderSignatures.workspace = '';
     activeTicketChatId = null;
     showUserListView();
     showTicketListView();
@@ -572,8 +792,10 @@ document.getElementById('back-to-archive').addEventListener('click', () => {
 // CHAT HELPERS
 // ═══════════════════════════════════════════════════════════
 function getSelectedChat() {
-    if (!state.dashboard) return null;
-    return state.dashboard.chats.find(c => c.id === state.selectedChatId) || null;
+    if (!state.dashboard && !state.otherChats.length) return null;
+    const fromDash = (state.dashboard?.chats || []).find((c) => c.id === state.selectedChatId);
+    if (fromDash) return fromDash;
+    return state.otherChats.find((c) => c.id === state.selectedChatId) || null;
 }
 function getDraftMessage(id) { return state.drafts[String(id)] || ''; }
 function setDraftMessage(id, v) { state.drafts[String(id)] = v; }
@@ -599,11 +821,9 @@ function updateTechColHint() {
 // ═══════════════════════════════════════════════════════════
 function renderSummary() {
     const s = state.dashboard.summary;
-    document.getElementById('stat-total').textContent = s.total_chats;
-    document.getElementById('stat-mine').textContent = s.my_chats;
-    document.getElementById('stat-queued').textContent = s.queued_chats;
-    document.getElementById('stat-csrs').textContent = s.available_csrs;
-    document.getElementById('tab-closed-count').textContent = s.resolved_chats || 0;
+    updateChatBucketCounts();
+    const statCsrs = document.getElementById('stat-csrs');
+    if (statCsrs) statCsrs.textContent = s.available_csrs;
     const rp = document.getElementById('relay-pill');
     const on = state.dashboard.integration.relay_enabled;
     rp.className = `hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium ${on ? 'border-green-200 bg-green-50 text-green-700' : 'border-orange-200 bg-orange-50 text-orange-700'}`;
@@ -613,6 +833,46 @@ function renderSummary() {
 // ═══════════════════════════════════════════════════════════
 // CHAT CARD
 // ═══════════════════════════════════════════════════════════
+const CHAT_AVATAR_COLORS = [
+    'bg-yellow-400 text-black', 'bg-blue-500 text-white', 'bg-emerald-500 text-white',
+    'bg-violet-500 text-white', 'bg-rose-500 text-white', 'bg-orange-500 text-white',
+    'bg-cyan-600 text-white', 'bg-slate-600 text-white'
+];
+function chatAvatarClass(name) {
+    let h = 0;
+    const s = String(name || '?');
+    for (let i = 0; i < s.length; i++) h = ((h * 31) + s.charCodeAt(i)) >>> 0;
+    return CHAT_AVATAR_COLORS[h % CHAT_AVATAR_COLORS.length];
+}
+function chatInitials(name) {
+    const parts = String(name || '?').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+function chatCardShortTime(chat, archive) {
+    const when = (archive || chat.is_resolved) ? (chat.resolved_at || chat.last_activity_at) : chat.last_activity_at;
+    const d = parseServerDate(when);
+    if (!d) return '';
+    const diff = Date.now() - d.getTime();
+    if (diff >= 0 && diff < 86400000) return formatRelative(when);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// Fields that, when changed, require the list DOM to update.
+function chatCardSignature(chat) {
+    const owner = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email || '') : '';
+    return [
+        chat.id, chat.message_count, chat.latest_message_id || 0, chat.preview || '',
+        chat.ownership_bucket || '', chat.assigned_csr_id || '', owner,
+        chat.customer_name || chat.visitor_id || '',
+        chat.is_resolved ? 1 : 0, chat.resolved_at || '', chat.last_activity_at || '',
+        state.unreadChats[chat.id] ? 1 : 0,
+        state.selectedChatId === chat.id ? 1 : 0,
+        state.selectedArchiveChatId === chat.id ? 1 : 0,
+    ].join('|');
+}
+
 function chatCardHtml(chat, { archive = false } = {}) {
     const bucket = chat.ownership_bucket || (chat.is_mine ? 'mine' : (chat.assigned_csr_id ? 'other' : 'queued'));
     const owner = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : null;
@@ -623,17 +883,28 @@ function chatCardHtml(chat, { archive = false } = {}) {
     else if (archive) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-200 text-gray-600">Done</span>';
     else if (bucket === 'mine') badge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700">Yours</span>';
     else if (bucket === 'queued') badge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-100 text-yellow-700">New</span>';
-    else if (owner) badge = `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 truncate max-w-[60px]">${escapeHtml(owner.split(' ')[0])}</span>`;
-    const ring = isActive ? 'border-yellow-400 bg-yellow-50' : unread ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-yellow-300 hover:bg-yellow-50/50';
-    return `<div class="chat-card cursor-pointer rounded-lg border p-2.5 transition-all ${ring}" data-chat-id="${chat.id}" data-chat-bucket="${bucket}" data-archive="${archive ? '1' : '0'}">
-        <div class="flex items-center justify-between gap-2 mb-1">
-            <span class="font-semibold text-sm text-black truncate">${escapeHtml(chat.customer_name || chat.visitor_id)}</span>
-            ${badge}
+    else if (owner) badge = `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 truncate max-w-[88px]">${escapeHtml(owner.split(' ')[0])}</span>`;
+    const readOnlyHint = bucket === 'other' ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">View only</span>' : '';
+    const ring = isActive
+        ? (bucket === 'other' ? 'border-blue-400 bg-blue-50' : 'border-yellow-400 bg-yellow-50')
+        : unread ? 'border-red-300 bg-red-50' : bucket === 'other' ? 'border-blue-200 hover:border-blue-300 hover:bg-blue-50/40' : 'border-gray-200 hover:border-yellow-300 hover:bg-yellow-50/50';
+    const name = chat.customer_name || chat.visitor_id || 'Customer';
+    const shortTime = chatCardShortTime(chat, archive);
+    return `<div class="chat-card cursor-pointer rounded-xl border p-2.5 ${ring}" data-chat-id="${chat.id}" data-chat-bucket="${bucket}" data-archive="${archive ? '1' : '0'}">
+        <div class="flex items-start gap-2.5">
+            <div class="w-9 h-9 rounded-full ${chatAvatarClass(name)} flex items-center justify-center text-[11px] font-bold flex-shrink-0 shadow-sm">${escapeHtml(chatInitials(name))}</div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="font-semibold text-[13px] text-gray-900 truncate">${escapeHtml(name)}</span>
+                    ${shortTime ? `<span class="text-[10px] text-gray-400 flex-shrink-0 whitespace-nowrap">${escapeHtml(shortTime)}</span>` : ''}
+                </div>
+                <p class="text-xs text-gray-500 line-clamp-1 mt-0.5">${escapeHtml(chat.preview) || '<span class="italic text-gray-300">No messages</span>'}</p>
+                <div class="flex items-center justify-between gap-2 mt-1.5">
+                    <span class="inline-flex items-center gap-1 text-[10px] font-medium text-gray-400"><i class="fa-regular fa-message text-[9px]"></i>${chat.message_count}</span>
+                    <div class="flex items-center gap-1 flex-shrink-0">${readOnlyHint}${badge}</div>
+                </div>
+            </div>
         </div>
-        <div class="flex items-center gap-2 text-[11px] text-gray-400">
-            <span>${escapeHtml(formatRelative(chat.last_activity_at))}</span><span>·</span><span>${chat.message_count} msgs</span>
-        </div>
-        <p class="text-xs text-gray-500 line-clamp-1 mt-1">${escapeHtml(chat.preview) || '<span class="italic text-gray-300">No messages</span>'}</p>
     </div>`;
 }
 
@@ -642,19 +913,32 @@ function chatCardHtml(chat, { archive = false } = {}) {
 // ═══════════════════════════════════════════════════════════
 function renderChatList() {
     const container = document.getElementById('chat-list');
-    if (!state.dashboard) { container.innerHTML = '<div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>'; return; }
+    if (!state.dashboard) { container.innerHTML = '<div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>'; state.renderSignatures.chatList = ''; state.renderSignatures.otherList = ''; return; }
+    updateChatBucketCounts();
+    const minuteTick = Math.floor(Date.now() / 60000);
+
+    if (state.chatBucket === 'other') {
+        renderOtherChatList(container, minuteTick);
+        return;
+    }
+
     const chats = state.dashboard.chats || [];
-    const counts = { queued: 0, other: 0, mine: 0 };
-    chats.forEach(c => { const k = c.ownership_bucket || (c.is_mine ? 'mine' : (c.assigned_csr_id ? 'other' : 'queued')); if (counts[k] !== undefined) counts[k]++; });
-    document.getElementById('bucket-queued-count').textContent = counts.queued;
-    document.getElementById('bucket-other-count').textContent = counts.other;
-    document.getElementById('bucket-mine-count').textContent = counts.mine;
-    document.getElementById('col1-count').textContent = `${chats.length} chats`;
     const filtered = chats.filter(c => { const b = c.ownership_bucket || (c.is_mine ? 'mine' : (c.assigned_csr_id ? 'other' : 'queued')); return b === state.chatBucket; });
-    const emptyMsg = { queued: { icon: 'fa-inbox', title: 'No new chats', sub: 'New customer chats appear here.' }, mine: { icon: 'fa-user-check', title: 'No active chats', sub: 'Claim a chat from "New".' }, other: { icon: 'fa-users', title: 'No other CSR chats', sub: 'Teammate chats show here.' } }[state.chatBucket];
+    const sig = `${state.chatBucket}|${minuteTick}|` + filtered.map(chatCardSignature).join(';');
+    // Skip DOM rebuild when nothing changed — prevents the list from
+    // vanishing and reappearing on every background poll.
+    if (sig === state.renderSignatures.chatList) return;
+    state.renderSignatures.chatList = sig;
+
+    const prevScroll = container.scrollTop;
+    const emptyMsg = {
+        queued: { icon: 'fa-inbox', title: 'No new chats', sub: 'Unclaimed customer chats appear here.' },
+        mine: { icon: 'fa-user-check', title: 'No active chats', sub: 'Claim a chat from "New".' },
+    }[state.chatBucket];
     container.innerHTML = filtered.length
         ? filtered.map(c => chatCardHtml(c)).join('')
         : `<div class="flex flex-col items-center justify-center py-10 text-center"><i class="fa-solid ${emptyMsg.icon} text-gray-200 text-2xl mb-2"></i><p class="text-sm font-medium text-gray-400">${emptyMsg.title}</p><p class="text-xs text-gray-300 mt-1">${emptyMsg.sub}</p></div>`;
+    container.scrollTop = prevScroll;
     container.querySelectorAll('.chat-card').forEach(el => {
         el.addEventListener('click', () => selectChat(Number(el.dataset.chatId), el.dataset.chatBucket).catch(e => showBanner(e.message, 'error')));
     });
@@ -665,27 +949,36 @@ function renderChatList() {
 // ═══════════════════════════════════════════════════════════
 function renderArchiveList() {
     const container = document.getElementById('archive-list');
-    if (state.closedLoading) { container.innerHTML = '<div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>'; return; }
+    const minuteTick = Math.floor(Date.now() / 60000);
+    const sig = [state.closedLoading ? 1 : 0, state.closedPagination.page || 1, state.closedPagination.total || 0, minuteTick, state.closedChats.map(chatCardSignature).join(';')].join('|');
+    if (sig === state.renderSignatures.archiveList) return;
+    state.renderSignatures.archiveList = sig;
+
+    const prevScroll = container.scrollTop;
+    if (state.closedLoading && !state.closedChats.length) { container.innerHTML = '<div class="text-sm text-gray-400 text-center py-10"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>'; return; }
     if (!state.closedChats.length) { container.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-center"><i class="fa-solid fa-box-archive text-gray-200 text-2xl mb-2"></i><p class="text-sm font-medium text-gray-400">No archived chats</p></div>'; return; }
     container.innerHTML = state.closedChats.map(c => chatCardHtml(c, { archive: true })).join('');
+    container.scrollTop = prevScroll;
     container.querySelectorAll('.chat-card').forEach(el => {
         el.addEventListener('click', () => selectArchiveChat(Number(el.dataset.chatId)).catch(e => showBanner(e.message, 'error')));
     });
 }
 
-async function loadClosedChats(page) {
-    state.closedLoading = true; renderArchiveList();
+async function loadClosedChats(page, { background = false } = {}) {
+    if (!background) { state.closedLoading = true; renderArchiveList(); }
     try {
         const payload = await requestJson(`/api/csr/chats/resolved?page=${page}&per_page=20`);
         state.closedChats = payload.chats || [];
         state.closedPagination = payload.pagination || state.closedPagination;
-        document.getElementById('tab-closed-count').textContent = state.closedPagination.total || 0;
-        document.getElementById('archive-mini-count').textContent = state.closedPagination.total || 0;
         document.getElementById('closed-page-info').textContent = state.closedPagination.total ? `Page ${state.closedPagination.page}/${state.closedPagination.total_pages}` : 'No chats';
         document.getElementById('closed-prev').disabled = !state.closedPagination.has_prev;
         document.getElementById('closed-next').disabled = !state.closedPagination.has_next;
-    } catch (e) { showBanner(e.message, 'error'); }
-    finally { state.closedLoading = false; renderArchiveList(); saveWorkspaceState(); }
+    } catch (e) { if (!background) showBanner(e.message, 'error'); }
+    finally {
+        if (!background) state.closedLoading = false;
+        renderArchiveList();
+        saveWorkspaceState();
+    }
 }
 
 document.getElementById('closed-prev').addEventListener('click', () => { if (state.closedPagination.has_prev) loadClosedChats(state.closedPagination.page - 1); });
@@ -698,16 +991,25 @@ async function selectChat(chatId, bucket) {
     state.selectedChatId = chatId;
     delete state.unreadChats[chatId];
     state.selectedMessages = [];
+    state.renderSignatures.workspace = '';
     saveWorkspaceState();
     renderChatList();
     updateTechColHint();
     showUserChatView();
     document.getElementById('workspace-body').innerHTML = '<div class="flex-1 flex items-center justify-center"><p class="text-sm text-gray-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</p></div>';
 
-    // Load tickets for this chat
+    const chatPreview = getSelectedChat() || (state.dashboard?.chats || []).find(c => c.id === chatId);
+    const effectiveBucket = chatPreview?.ownership_bucket || bucket;
+
     await loadTicketsForChat(chatId);
 
-    if (bucket === 'queued') {
+    // Teammate chats are always read-only — never attempt to claim them.
+    if (effectiveBucket === 'other' || chatPreview?.is_read_only) {
+        await loadSelectedMessages();
+        return;
+    }
+
+    if (effectiveBucket === 'queued' && chatPreview?.can_claim) {
         try {
             const payload = await requestJson(`/api/chats/${chatId}/claim`, { method: 'POST', body: '{}' });
             state.selectedMessages = payload.messages || [];
@@ -717,6 +1019,13 @@ async function selectChat(chatId, bucket) {
             showBanner('Chat claimed — you can reply now.');
             return;
         } catch (err) {
+            if (err.status === 409) {
+                await refreshDashboard(false);
+                state.selectedChatId = chatId;
+                await loadSelectedMessages();
+                showBanner('Already handled by a teammate — read-only view.');
+                return;
+            }
             showBanner(err.message || 'Could not claim.', 'error');
             await refreshDashboard(false);
         }
@@ -730,7 +1039,9 @@ async function selectArchiveChat(chatId) {
     showArchiveChatView();
     const chat = state.closedChats.find(c => c.id === chatId);
     document.getElementById('archive-title').textContent = chat ? (chat.customer_name || chat.visitor_id) : 'Chat';
-    document.getElementById('archive-subtitle').textContent = chat ? `${chat.message_count} messages · read only` : '';
+    document.getElementById('archive-subtitle').textContent = chat
+        ? `${chat.message_count} messages · ${formatChatCardTime(chat, { archive: true })}`
+        : '';
     document.getElementById('archive-messages').innerHTML = '<div class="text-center py-8 text-xs text-gray-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading…</div>';
     const payload = await requestJson(`/api/chats/${chatId}/messages`);
     state.archiveMessages = payload.messages || [];
@@ -752,74 +1063,206 @@ function renderMessageAttachments(m) {
     if (!imgs.length) return '';
     return `<div class="grid gap-1.5 mt-1.5">${imgs.map(img => `<img class="max-w-[200px] max-h-32 rounded-lg border border-gray-200 object-cover" src="${escapeHtml(img.src)}" alt="">`).join('')}</div>`;
 }
-function senderLabel(type) { return type === 'csr' ? 'You (CSR)' : type === 'user' ? 'Customer' : type; }
+function senderLabel(type, chat) {
+    if (type === 'user') return 'Customer';
+    if (type === 'csr') {
+        if (chat && !chat.is_mine) {
+            return chat.assigned_label || chat.assigned_csr?.display_name || 'Teammate CSR';
+        }
+        return 'You (CSR)';
+    }
+    return type === 'ai' ? 'AI' : type;
+}
 
-function renderMessages(messages) {
+function messageBubbleHtml(m, { chat = null, ticket = false } = {}) {
+    const isCsr = m.sender_type === 'csr';
+    const isUser = m.sender_type === 'user';
+    const isAi = m.sender_type === 'ai';
+    const isTeammateCsr = isCsr && chat && !chat.is_mine;
+    const isOut = isCsr;
+
+    let label, bodyClass;
+    if (ticket) {
+        label = isCsr ? 'You' : (m.sender_name || 'Tech Team');
+        bodyClass = isCsr ? 'msg-body--csr' : 'msg-body--tech';
+    } else if (isCsr) {
+        label = isTeammateCsr ? (chat.assigned_label || chat.assigned_csr?.display_name || 'Teammate CSR') : 'You (CSR)';
+        bodyClass = isTeammateCsr ? 'msg-body--teammate' : 'msg-body--csr';
+    } else if (isUser) {
+        label = 'Customer';
+        bodyClass = 'msg-body--user';
+    } else if (isAi) {
+        label = 'AI';
+        bodyClass = 'msg-body--ai';
+    } else {
+        label = m.sender_type || 'System';
+        bodyClass = 'msg-body--ai';
+    }
+
+    const rowClass = isOut ? 'msg-row msg-row--out' : 'msg-row msg-row--in';
+    const wrapClass = isOut ? 'msg-wrap msg-wrap--out' : 'msg-wrap msg-wrap--in';
+    const labelClass = isTeammateCsr ? 'msg-label msg-label--teammate' : (isOut ? 'msg-label msg-label--out' : 'msg-label');
+    const timeClass = isOut ? 'msg-time msg-time--out' : 'msg-time';
+    const attachments = ticket ? '' : renderMessageAttachments(m);
+
+    return `<div class="${rowClass}">
+        <div class="${wrapClass}">
+            <div class="${labelClass}">${escapeHtml(label)}</div>
+            <div class="msg-body ${bodyClass}">${escapeHtml(m.content)}${attachments}</div>
+            <div class="${timeClass}">${escapeHtml(formatMessageTime(m.created_at))}</div>
+        </div>
+    </div>`;
+}
+
+function renderMessages(messages, chat = null) {
     if (!messages.length) return '<div class="text-center py-8 text-xs text-gray-400">No messages in this chat.</div>';
-    return `<div class="flex flex-col gap-2.5">${messages.map(m => {
-        const isCsr = m.sender_type === 'csr', isUser = m.sender_type === 'user';
-        return `<div class="flex ${isCsr ? 'justify-end' : 'justify-start'} msg-bubble">
-            <div class="max-w-[85%]">
-                <div class="text-[10px] font-semibold mb-0.5 ${isCsr ? 'text-right text-yellow-700' : 'text-gray-400'}">${escapeHtml(senderLabel(m.sender_type))}</div>
-                <div class="px-3 py-2 rounded-xl text-sm leading-relaxed whitespace-pre-wrap break-words
-                    ${isCsr ? 'bg-yellow-400 text-black rounded-br-sm' : isUser ? 'bg-white border border-gray-200 text-black rounded-bl-sm' : 'bg-gray-100 text-gray-500 italic'}">
-                    ${escapeHtml(m.content)}${renderMessageAttachments(m)}
-                </div>
-                <div class="text-[10px] text-gray-300 mt-0.5 ${isCsr ? 'text-right' : ''}">${escapeHtml(formatDateTime(m.created_at))}</div>
-            </div>
-        </div>`;
-    }).join('')}</div>`;
+    const ordered = [...messages].sort((a, b) => {
+        const ta = parseServerDate(a.created_at)?.getTime() ?? 0;
+        const tb = parseServerDate(b.created_at)?.getTime() ?? 0;
+        return ta - tb;
+    });
+    return `<div class="msg-stack">${ordered.map(m => messageBubbleHtml(m, { chat })).join('')}</div>`;
 }
 
 // ═══════════════════════════════════════════════════════════
 // WORKSPACE (conversation in col 1)
 // ═══════════════════════════════════════════════════════════
+function setReplySending(sending, form, button, textarea) {
+    state.sendingReply = sending;
+    if (form) form.dataset.sending = sending ? '1' : '';
+    if (button) {
+        button.disabled = sending;
+        button.innerHTML = sending
+            ? '<i class="fa-solid fa-spinner fa-spin text-xs"></i> Sending…'
+            : '<i class="fa-solid fa-paper-plane text-xs"></i> Send';
+        button.classList.toggle('opacity-70', sending);
+        button.classList.toggle('cursor-not-allowed', sending);
+    }
+    if (textarea) textarea.readOnly = sending;
+}
+
 function renderWorkspace() {
     const chat = getSelectedChat();
-    if (!chat) { showUserListView(); return; }
+    if (!chat) { state.renderSignatures.workspace = ''; showUserListView(); return; }
     showUserChatView();
+
+    // Skip full rebuild when chat + messages are unchanged (background poll).
+    const msgSig = (state.selectedMessages || []).map(m => `${m.id}:${m.created_at || ''}`).join(',');
+    const wsSig = [chat.id, chat.message_count, chat.last_activity_at || '', chat.resolved_at || '', chat.is_resolved ? 1 : 0, chat.can_reply ? 1 : 0, chat.can_resolve ? 1 : 0, chat.assigned_csr_id || 0, chat.auth_mode || '', msgSig].join('|');
+    if (wsSig === state.renderSignatures.workspace) { updateTechColHint(); return; }
+    state.renderSignatures.workspace = wsSig;
+
+    // Keep the user's reading position; only stick to bottom when already there.
+    const prevMp = document.getElementById('messages-panel');
+    const prevScroll = prevMp ? prevMp.scrollTop : 0;
+    const prevNearBottom = !prevMp || (prevMp.scrollHeight - prevMp.scrollTop - prevMp.clientHeight < 90);
+
     const ownerLabel = chat.assigned_csr ? (chat.assigned_csr.display_name || chat.assigned_csr.email) : null;
-    const statusNote = chat.is_mine ? 'Your chat' : ownerLabel ? `By ${ownerLabel}` : 'Unclaimed';
+    const statusNote = chat.is_mine
+        ? 'Your chat'
+        : chat.is_read_only && ownerLabel
+            ? `Read-only · handled by ${ownerLabel}`
+            : ownerLabel
+                ? `By ${ownerLabel}`
+                : 'Unclaimed';
     document.getElementById('detail-title').textContent = chat.customer_name || chat.visitor_id;
-    document.getElementById('detail-subtitle').textContent = `${statusNote} · ${chat.message_count} msgs`;
+    const authLabel = chat.auth_mode === 'authenticated' ? '🔒 Authenticated' : 'Anonymous';
+    const externalId = chat.customer_external_user_id ? `ID ${chat.customer_external_user_id}` : null;
+    const activityNote = chat.is_resolved && chat.resolved_at
+        ? `Resolved ${formatDateTime(chat.resolved_at)}`
+        : chat.last_activity_at
+            ? `Last activity ${formatDateTime(chat.last_activity_at)}`
+            : null;
+    document.getElementById('detail-subtitle').textContent = [
+        statusNote,
+        authLabel,
+        externalId,
+        `${chat.message_count} msgs`,
+        activityNote
+    ].filter(Boolean).join(' · ');
     document.getElementById('detail-actions').innerHTML = `
         ${chat.can_reply ? `<button type="button" onclick="openTicketModal()" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-500 hover:bg-blue-600 text-white text-[11px] font-semibold transition-colors"><i class="fa-solid fa-ticket text-[10px]"></i> Ticket</button>` : ''}
         ${chat.can_resolve ? '<button id="resolve-btn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-red-200 text-red-600 text-[11px] font-semibold hover:bg-red-50 transition-colors"><i class="fa-solid fa-check text-[10px]"></i> Resolve</button>' : ''}`;
     let readOnlyNote = '';
     if (!chat.can_reply) {
-        readOnlyNote = chat.is_resolved ? '<i class="fa-solid fa-lock mr-1"></i> Resolved — view only'
-            : ownerLabel ? `<i class="fa-solid fa-eye mr-1"></i> Handled by <strong>${escapeHtml(ownerLabel)}</strong>` : '<i class="fa-solid fa-hand-pointer mr-1"></i> Click to claim';
+        readOnlyNote = chat.is_resolved
+            ? '<i class="fa-solid fa-lock mr-1"></i> Resolved — view only'
+            : chat.is_read_only && ownerLabel
+                ? `<i class="fa-solid fa-eye mr-1"></i> Read-only teammate chat — handled by <strong>${escapeHtml(ownerLabel)}</strong>. You can view messages but cannot reply.`
+                : ownerLabel
+                    ? `<i class="fa-solid fa-eye mr-1"></i> Handled by <strong>${escapeHtml(ownerLabel)}</strong>`
+                    : '<i class="fa-solid fa-hand-pointer mr-1"></i> Open from "New" to claim this chat';
     }
+    const authDebug = chat.auth_mode === 'authenticated' && chat.authenticated_user_data
+        ? `<div class="flex-shrink-0 border-b border-gray-200 p-2.5 bg-blue-50 text-xs text-blue-900">
+                <div class="font-semibold mb-1"><i class="fa-solid fa-id-card mr-1"></i> Authenticated customer</div>
+                <pre class="font-mono text-[10px] bg-white border border-blue-100 rounded p-2 overflow-x-auto">${escapeHtml(chat.authenticated_user_data)}</pre>
+           </div>`
+        : '';
+
     document.getElementById('workspace-body').innerHTML = `
-        <div id="messages-panel" class="flex-1 min-h-0 overflow-y-auto p-3 bg-gray-50 chat-scroll">${renderMessages(state.selectedMessages)}</div>
+        ${authDebug}
+        <div id="messages-panel" class="flex-1 min-h-0 overflow-y-auto px-3 pt-3 pb-4 bg-gray-50 chat-scroll">${renderMessages(state.selectedMessages, chat)}</div>
         ${chat.can_reply ? `
-        <div class="flex-shrink-0 border-t border-gray-200 p-2.5 bg-white">
+        <div class="flex-shrink-0 border-t border-gray-200 p-3 bg-white shadow-[0_-4px_12px_rgba(15,23,42,0.04)]">
             <form id="reply-form" class="flex items-end gap-2">
                 <textarea name="message" placeholder="Reply to customer…" rows="2"
-                    class="flex-1 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm resize-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-100 focus:outline-none"></textarea>
-                <button type="submit" class="h-9 px-4 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-bold transition-colors flex items-center gap-1.5">
+                    class="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm resize-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-100 focus:outline-none"></textarea>
+                <button type="submit" class="h-10 px-4 rounded-xl bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-bold transition-colors flex items-center gap-1.5 shadow-sm">
                     <i class="fa-solid fa-paper-plane text-xs"></i> Send
                 </button>
             </form>
         </div>` : `<div class="flex-shrink-0 border-t border-yellow-200 p-2.5 bg-yellow-50 text-xs text-gray-600">${readOnlyNote}</div>`}`;
-    const mp = document.getElementById('messages-panel'); if (mp) mp.scrollTop = mp.scrollHeight;
+    const mp = document.getElementById('messages-panel');
+    if (mp) mp.scrollTop = prevNearBottom ? mp.scrollHeight : Math.min(prevScroll, mp.scrollHeight);
     const rf = document.getElementById('reply-form');
     if (rf) {
         const ta = rf.querySelector('textarea');
+        const sendBtn = rf.querySelector('button[type="submit"]');
         ta.value = getDraftMessage(chat.id);
         ta.addEventListener('input', e => setDraftMessage(chat.id, e.target.value));
         ta.addEventListener('focus', () => { state.composingChatId = String(chat.id); });
         rf.addEventListener('submit', async e => {
             e.preventDefault();
+            if (state.sendingReply) return;
             const msg = ta.value.trim();
             if (!msg) { showBanner('Type a message first.', 'error'); return; }
+
+            setReplySending(true, rf, sendBtn, ta);
+
+            // Optimistic: show the reply immediately so Send feels instant.
+            const nowIso = new Date().toISOString();
+            const optimisticMessage = {
+                id: `optimistic-${Date.now()}`,
+                sender_type: 'csr',
+                content: msg,
+                created_at: nowIso,
+                images: []
+            };
+            const optimisticMessages = [...(state.selectedMessages || []), optimisticMessage];
+            const mp = document.getElementById('messages-panel');
+            if (mp) {
+                mp.innerHTML = renderMessages(optimisticMessages, chat);
+                mp.scrollTop = mp.scrollHeight;
+            }
+
             try {
                 const resp = await requestJson(`/api/chats/${chat.id}/reply`, { method: 'POST', body: JSON.stringify({ message: msg }) });
-                setDraftMessage(chat.id, ''); ta.value = '';
-                state.selectedMessages = resp.messages;
-                await refreshDashboard(false);
+                setDraftMessage(chat.id, '');
+                ta.value = '';
+                state.selectedMessages = resp.messages || [];
+                // Swap in the confirmed server messages right away.
+                const mpNow = document.getElementById('messages-panel');
+                if (mpNow) { mpNow.innerHTML = renderMessages(state.selectedMessages, chat); mpNow.scrollTop = mpNow.scrollHeight; }
+                // Refresh in background so the reply stays visible instantly.
+                refreshDashboard(false).catch(() => {});
                 showBanner('Reply sent.');
-            } catch (err) { showBanner(err.message, 'error'); }
+            } catch (err) {
+                showBanner(err.message, 'error');
+            } finally {
+                setReplySending(false, rf, sendBtn, ta);
+                ta.focus();
+            }
         });
     }
     document.getElementById('resolve-btn')?.addEventListener('click', async () => {
@@ -827,6 +1270,7 @@ function renderWorkspace() {
         try {
             const resp = await requestJson(`/api/chats/${chat.id}/resolve`, { method: 'POST', body: '{}' });
             state.selectedChatId = null; state.selectedMessages = []; state.dashboard = resp.dashboard;
+            state.renderSignatures.workspace = '';
             allTickets = []; activeTicketChatId = null;
             showUserListView(); showTicketListView();
             renderSummary(); renderChatList(); loadAllTickets();
@@ -936,6 +1380,18 @@ function renderTicketSection() {
 
     const filtered = state.ticketFilter === 'all' ? allTickets : allTickets.filter(t => ticketBucket(t) === state.ticketFilter);
 
+    const minuteTick = Math.floor(Date.now() / 60000);
+    const sig = [state.ticketFilter, state.selectedChatId || 0, minuteTick, filtered.map(t => [
+        t.id, t.status || '', t.assigned_tech_id || 0, t.latest_message_id || 0, t.title || '',
+        t.ticket_number || '', (t.assigned_tech && t.assigned_tech.display_name) || '',
+        t.updated_at || '', t.resolved_at || '', seenTechMessages[t.id] || 0,
+        Number(activeTicketChatId) === Number(t.id) ? 1 : 0,
+    ].join('|')).join(';')].join('::');
+    if (sig === state.renderSignatures.ticketList) return;
+    state.renderSignatures.ticketList = sig;
+
+    const prevScroll = list.scrollTop;
+
     if (!filtered.length) {
         const msg = state.ticketFilter === 'all'
             ? (state.selectedChatId ? 'No tickets for this customer' : 'No tickets yet')
@@ -974,12 +1430,14 @@ function renderTicketSection() {
                 </div>
             </div>
             <div class="text-sm font-medium text-black line-clamp-1">${escapeHtml(ticket.title)}</div>
-            <div class="flex items-center justify-between mt-1">
+            <div class="flex flex-col gap-0.5 mt-1">
                 <span class="text-[11px] text-gray-400"><i class="fa-solid fa-user-gear mr-0.5 text-[9px]"></i>${escapeHtml(techName)}</span>
+                <span class="text-[10px] text-gray-400">${escapeHtml(formatTicketCardTime(ticket))}</span>
                 ${ticket.chat ? `<span class="text-[10px] text-gray-300">${escapeHtml(ticket.chat.customer_name || '')}</span>` : ''}
             </div>
         </button>`;
     }).join('');
+    list.scrollTop = prevScroll;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -993,11 +1451,21 @@ function openTicketChat(ticketId) {
         state.ticketSnapshots[ticket.id] = Number(ticket.latest_message_id || 0);
     }
     lastTicketChatMessageId = 0;
+    state.renderSignatures.ticketChat = '';
     showTicketChatView();
     document.getElementById('ticket-chat-title').textContent = ticket ? ticket.title : `Ticket #${ticketId}`;
     const statusObj = ticketStatuses.find(s => s.name === ticket?.status);
+    const ticketTime = ticket
+        ? (ticket.resolved_at
+            ? `Completed ${formatDateTime(ticket.resolved_at)}`
+            : ticket.updated_at
+                ? `Updated ${formatDateTime(ticket.updated_at)}`
+                : ticket.created_at
+                    ? `Created ${formatDateTime(ticket.created_at)}`
+                    : '')
+        : '';
     document.getElementById('ticket-chat-subtitle').textContent = ticket
-        ? `${ticket.ticket_number || '#'+ticket.id} · ${statusObj?.label || ticket.status} · ${ticket.assigned_tech ? ticket.assigned_tech.display_name : 'Waiting for tech'}`
+        ? [ticket.ticket_number || '#'+ticket.id, statusObj?.label || ticket.status, ticket.assigned_tech ? ticket.assigned_tech.display_name : 'Waiting for tech', ticketTime].filter(Boolean).join(' · ')
         : '';
     document.getElementById('ticket-chat-input').disabled = false;
     document.getElementById('ticket-chat-input').placeholder = 'Message the tech team…';
@@ -1008,17 +1476,19 @@ function openTicketChat(ticketId) {
 
 function renderTicketChatMessages(messages) {
     const container = document.getElementById('ticket-chat-messages');
-    if (!messages.length) { container.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-center"><p class="text-xs text-gray-400">No messages yet. Send one below.</p></div>'; return; }
-    container.innerHTML = messages.map(m => {
-        const isMine = m.sender_type === 'csr';
-        return `<div class="flex ${isMine ? 'justify-end' : 'justify-start'} msg-bubble">
-            <div class="max-w-[85%]">
-                <div class="text-[10px] font-semibold mb-0.5 ${isMine ? 'text-right text-yellow-700' : 'text-blue-600'}">${isMine ? 'You' : escapeHtml(m.sender_name || 'Tech Team')}</div>
-                <div class="px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${isMine ? 'bg-yellow-400 text-black rounded-br-sm' : 'bg-white border border-gray-200 rounded-bl-sm'}">${escapeHtml(m.content)}</div>
-                <div class="text-[10px] text-gray-300 mt-0.5 ${isMine ? 'text-right' : ''}">${formatDateTime(m.created_at)}</div>
-            </div>
-        </div>`;
-    }).join('');
+    if (!container) return;
+    const sig = `${activeTicketChatId}|` + messages.map(m => `${m.id}:${m.created_at || ''}`).join(',');
+    const prevScroll = container.scrollTop;
+    const prevNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 90;
+    if (sig !== state.renderSignatures.ticketChat) {
+        state.renderSignatures.ticketChat = sig;
+        if (!messages.length) {
+            container.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-center"><p class="text-xs text-gray-400">No messages yet. Send one below.</p></div>';
+        } else {
+            container.innerHTML = renderTicketChatMessagesHtml(messages);
+            container.scrollTop = prevNearBottom ? container.scrollHeight : Math.min(prevScroll, container.scrollHeight);
+        }
+    }
     const latest = messages[messages.length - 1];
     if (latest && latest.id !== lastTicketChatMessageId) {
         if (lastTicketChatMessageId && latest.sender_type !== 'csr') playAlertSound();
@@ -1027,20 +1497,63 @@ function renderTicketChatMessages(messages) {
     }
 }
 
-async function loadTicketChatMessages() {
-    if (!activeTicketChatId) return;
-    try { const resp = await requestJson(`/api/tickets/${activeTicketChatId}/messages`); renderTicketChatMessages(resp.messages || []); } catch (err) { console.error(err); }
+function renderTicketChatMessagesHtml(messages) {
+    return `<div class="msg-stack">${messages.map(m => messageBubbleHtml(m, { ticket: true })).join('')}</div>`;
+}
+
+function setTicketSendSending(sending, button, input) {
+    state.sendingTicketMessage = sending;
+    if (button) {
+        button.disabled = sending;
+        button.innerHTML = sending
+            ? '<i class="fa-solid fa-spinner fa-spin text-xs"></i> Sending…'
+            : '<i class="fa-solid fa-paper-plane text-xs"></i>';
+        button.classList.toggle('opacity-70', sending);
+        button.classList.toggle('cursor-not-allowed', sending);
+    }
+    if (input) input.readOnly = sending;
 }
 
 async function sendTicketChatMessage() {
-    if (!activeTicketChatId) return;
+    if (!activeTicketChatId || state.sendingTicketMessage) return;
     const input = document.getElementById('ticket-chat-input');
+    const sendBtn = document.getElementById('ticket-chat-send');
     const content = input.value.trim();
     if (!content) return;
+
+    setTicketSendSending(true, sendBtn, input);
+
+    // Optimistic: show the message immediately.
+    const container = document.getElementById('ticket-chat-messages');
+    const optimisticMessage = {
+        id: `optimistic-${Date.now()}`,
+        sender_type: 'csr',
+        sender_name: 'You',
+        content,
+        created_at: new Date().toISOString()
+    };
+    if (container) {
+        let stack = container.querySelector('.msg-stack');
+        if (!stack) {
+            container.innerHTML = '<div class="msg-stack"></div>';
+            stack = container.querySelector('.msg-stack');
+        }
+        stack.insertAdjacentHTML('beforeend', messageBubbleHtml(optimisticMessage, { ticket: true }));
+        container.scrollTop = container.scrollHeight;
+    }
+
     try {
         const resp = await requestJson(`/api/tickets/${activeTicketChatId}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
-        if (resp.success) { input.value = ''; await loadTicketChatMessages(); }
-    } catch (err) { showTicketToast('Send failed', 'error'); }
+        if (resp.success) {
+            input.value = '';
+            await loadTicketChatMessages();
+        }
+    } catch (err) {
+        showTicketToast('Send failed', 'error');
+    } finally {
+        setTicketSendSending(false, sendBtn, input);
+        input.focus();
+    }
 }
 
 document.getElementById('ticket-chat-input')?.addEventListener('keydown', e => {
@@ -1058,6 +1571,7 @@ async function refreshDashboard(loadMessagesAfter = true) {
     state.dashboard = payload;
     if (state.selectedChatId && !payload.chats.some(c => c.id === state.selectedChatId)) {
         state.selectedChatId = null; state.selectedMessages = [];
+        state.renderSignatures.workspace = '';
         allTickets = [];
         showUserListView(); showTicketListView();
         loadAllTickets();
@@ -1067,15 +1581,78 @@ async function refreshDashboard(loadMessagesAfter = true) {
     if (!preserveComposer && loadMessagesAfter && getSelectedChat()) await loadSelectedMessages();
 }
 
+async function refreshAllData(showToast = false) {
+    await refreshDashboard(true);
+    if (state.chatBucket === 'other') {
+        await loadOtherChats({ background: true, page: 1 });
+    }
+    if (state.selectedChatId) await loadTicketsForChat(state.selectedChatId);
+    else await loadAllTickets();
+    if (activeTicketChatId) await loadTicketChatMessages();
+    await loadClosedChats(state.closedPagination.page, { background: true });
+    if (showToast) showBanner('Refreshed.');
+}
+
 document.getElementById('refresh-btn').addEventListener('click', async () => {
-    try {
-        await refreshDashboard(true);
-        if (state.selectedChatId) await loadTicketsForChat(state.selectedChatId);
-        else await loadAllTickets();
-        await loadClosedChats(state.closedPagination.page);
-        showBanner('Refreshed.');
-    } catch (e) { showBanner(e.message, 'error'); }
+    try { await refreshAllData(true); }
+    catch (e) { showBanner(e.message, 'error'); }
 });
+
+// ═══════════════════════════════════════════════════════════
+// AUTO REFRESH
+// ═══════════════════════════════════════════════════════════
+const AUTO_REFRESH_MS = 5000;
+let autoRefreshTimer = null;
+let autoRefreshInFlight = false;
+const autoRefreshBtn = document.getElementById('auto-refresh-btn');
+const autoRefreshIcon = document.getElementById('auto-refresh-icon');
+
+function updateAutoRefreshToggle() {
+    if (!autoRefreshBtn || !autoRefreshIcon) return;
+    if (state.autoRefreshEnabled) {
+        autoRefreshBtn.classList.add('border-green-400', 'bg-green-50', 'text-green-600');
+        autoRefreshBtn.classList.remove('border-gray-200', 'text-gray-500');
+        autoRefreshBtn.title = 'Auto refresh on (every 5s) — click to turn off';
+        autoRefreshIcon.classList.add('fa-spin');
+    } else {
+        autoRefreshBtn.classList.remove('border-green-400', 'bg-green-50', 'text-green-600');
+        autoRefreshBtn.classList.add('border-gray-200', 'text-gray-500');
+        autoRefreshBtn.title = 'Auto refresh off — click to turn on';
+        autoRefreshIcon.classList.remove('fa-spin');
+    }
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
+}
+
+function startAutoRefresh() {
+    stopAutoRefresh();
+    autoRefreshTimer = setInterval(async () => {
+        if (autoRefreshInFlight) return;
+        autoRefreshInFlight = true;
+        try { await refreshAllData(false); }
+        catch (e) { console.warn('Auto refresh failed:', e); }
+        finally { autoRefreshInFlight = false; }
+    }, AUTO_REFRESH_MS);
+}
+
+function setAutoRefreshEnabled(enabled) {
+    state.autoRefreshEnabled = enabled;
+    localStorage.setItem('csrAutoRefreshEnabled', enabled ? 'true' : 'false');
+    updateAutoRefreshToggle();
+    if (enabled) startAutoRefresh();
+    else stopAutoRefresh();
+}
+
+if (autoRefreshBtn) {
+    autoRefreshBtn.addEventListener('click', () => setAutoRefreshEnabled(!state.autoRefreshEnabled));
+    updateAutoRefreshToggle();
+    if (state.autoRefreshEnabled) startAutoRefresh();
+}
 
 // ═══════════════════════════════════════════════════════════
 // TICKET MODAL
@@ -1156,16 +1733,73 @@ async function bootstrapWorkspace() {
 }
 
 bootstrapWorkspace().catch(e => showBanner(e.message, 'error'));
+bindOtherChatControls();
 
-const DASHBOARD_POLL_MS = 5000;
-setInterval(async () => {
-    try {
-        await refreshDashboard(!isComposingSelectedChat());
-        if (state.selectedChatId) await loadTicketsForChat(state.selectedChatId);
-        else await loadAllTickets();
-        if (activeTicketChatId) await loadTicketChatMessages();
-    } catch (e) { /* background refresh */ }
-}, DASHBOARD_POLL_MS);
+// Presence: keep last_seen accurate while dashboard is open; stamp on logout/close.
+(function setupCsrPresence() {
+    const HEARTBEAT_MS = 12000;
+    let heartbeatTimer = null;
+    let offlineSent = false;
+
+    function sendHeartbeat() {
+        if (document.hidden) return;
+        fetch('/api/csr/heartbeat', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+        }).catch(() => {});
+    }
+
+    function markOffline() {
+        if (offlineSent) return;
+        offlineSent = true;
+        try {
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon('/api/csr/presence/offline', new Blob(['{}'], { type: 'application/json' }));
+                return;
+            }
+        } catch (_err) {}
+        fetch('/api/csr/presence/offline', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+            keepalive: true
+        }).catch(() => {});
+    }
+
+    function startHeartbeat() {
+        offlineSent = false;
+        sendHeartbeat();
+        window.clearInterval(heartbeatTimer);
+        heartbeatTimer = window.setInterval(sendHeartbeat, HEARTBEAT_MS);
+    }
+
+    function stopHeartbeat() {
+        window.clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopHeartbeat();
+            markOffline();
+        } else {
+            startHeartbeat();
+        }
+    });
+
+    window.addEventListener('pagehide', markOffline);
+    window.addEventListener('beforeunload', markOffline);
+
+    const logoutLink = document.getElementById('csr-logout-link');
+    if (logoutLink) {
+        logoutLink.addEventListener('click', () => markOffline());
+    }
+
+    startHeartbeat();
+})();
 </script>
 </body>
 </html>
