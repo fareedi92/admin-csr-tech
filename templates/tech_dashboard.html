@@ -302,6 +302,32 @@
         </div>
     </div>
 
+    <!-- Detailed Ticket Info Modal -->
+    <div id="ticket-details-modal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 hidden w-[95%] max-w-2xl max-h-[85vh] flex flex-col">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-2xl overflow-hidden flex flex-col h-full">
+            <div class="px-5 py-4 border-b border-gray-100 bg-blue-50 flex items-center justify-between flex-shrink-0">
+                <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded-lg bg-blue-500 text-white flex items-center justify-center text-xs">
+                        <i class="fa-solid fa-circle-info"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-900" id="details-modal-title">Full Technical Ticket Details</h3>
+                        <p class="text-[11px] text-gray-500 font-mono" id="details-modal-number">TCK-1000</p>
+                    </div>
+                </div>
+                <button onclick="closeTicketDetailsModal()" class="w-7 h-7 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-black flex items-center justify-center transition-colors"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-5 overflow-y-auto custom-scroll space-y-5 flex-1" id="details-modal-body">
+                <!-- Dynamically populated -->
+            </div>
+            <div class="px-5 py-3 border-t border-gray-100 bg-gray-50 flex justify-end flex-shrink-0">
+                <button onclick="closeTicketDetailsModal()" class="px-4 py-2 rounded-xl bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 text-xs font-semibold transition-colors">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
 <script>
 let currentTab = 'queue';
 let tickets = [];
@@ -600,11 +626,14 @@ function renderTicketDetail(ticket) {
     const customerName = ticket.chat && (ticket.chat.visitor_name || ticket.chat.customer_name) ? (ticket.chat.visitor_name || ticket.chat.customer_name) : 'Customer';
     const customerId = ticket.chat && (ticket.chat.visitor_id || ticket.chat.external_chat_id) ? (ticket.chat.visitor_id || ticket.chat.external_chat_id) : 'No ID';
 
-    let actions = '';
+    const pPriority = (ticket.priority || 'normal').toLowerCase();
+    const pClass = pPriority === 'high' || pPriority === 'urgent' ? 'bg-red-50 text-red-700 border border-red-100' : pPriority === 'low' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-blue-50 text-blue-700 border border-blue-100';
+
+    let actions = `<button onclick="openTicketDetailsModal(${ticket.id})" class="px-3.5 py-2 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-bold transition-colors shadow-sm"><i class="fa-solid fa-circle-info mr-1.5"></i>Full Details</button>`;
     if (ticket.status === 'open' && !ticket.assigned_tech_id) {
-        actions = `<button onclick="claimTicket(${ticket.id})" class="px-4 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-bold shadow-sm transition-colors"><i class="fa-solid fa-hand-pointer mr-1.5"></i>Claim Ticket</button>`;
+        actions += `<button onclick="claimTicket(${ticket.id})" class="px-4 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-bold shadow-sm transition-colors"><i class="fa-solid fa-hand-pointer mr-1.5"></i>Claim Ticket</button>`;
     } else if (isMine) {
-        actions = `
+        actions += `
             <button onclick="openStatusModal(${ticket.id})" class="px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold transition-colors shadow-sm"><i class="fa-solid fa-pen-to-square mr-1.5 text-blue-500"></i>Update Status</button>
             <button onclick="openReferModal(${ticket.id})" class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"><i class="fa-solid fa-share-nodes mr-1.5"></i>Assign / Refer</button>
         `;
@@ -633,6 +662,7 @@ function renderTicketDetail(ticket) {
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-2 flex-wrap">
                     <span class="status-badge status-${ticket.status}">${getStatusLabel(ticket.status)}</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${pClass}"><i class="fa-solid fa-flag text-[9px] mr-1"></i>${escapeHtml(pPriority)} Priority</span>
                     <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${originBadgeClass(ticket)}">${escapeHtml(originLabel(ticket))}</span>
                     <span class="font-mono text-xs font-bold text-gray-400">${escapeHtml(ticketNum(ticket))}</span>
                 </div>
@@ -650,7 +680,7 @@ function renderTicketDetail(ticket) {
                     </div>
                 </div>
             </div>
-            <div class="flex items-center gap-2 flex-shrink-0">
+            <div class="flex items-center gap-2 flex-shrink-0 flex-wrap">
                 ${actions}
             </div>
         </div>
@@ -984,6 +1014,116 @@ function openReferModal(id) {
 function closeReferModal() {
     document.getElementById('modal-overlay').classList.add('hidden');
     document.getElementById('refer-modal').classList.add('hidden');
+}
+
+function openTicketDetailsModal(ticketId) {
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+
+    document.getElementById('details-modal-number').textContent = ticketNum(ticket);
+    document.getElementById('details-modal-title').textContent = ticket.title || 'Ticket Details';
+
+    const pPriority = (ticket.priority || 'normal').toLowerCase();
+    const pClass = pPriority === 'high' || pPriority === 'urgent' ? 'bg-red-50 text-red-700 border border-red-100' : pPriority === 'low' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-blue-50 text-blue-700 border border-blue-100';
+
+    const creatorName = ticket.created_by_label
+        || (ticket.created_by_tech && (ticket.created_by_tech.display_name || ticket.created_by_tech.email))
+        || (ticket.created_by_admin && (ticket.created_by_admin.display_name || ticket.created_by_admin.email))
+        || (ticket.created_by_csr && (ticket.created_by_csr.display_name || ticket.created_by_csr.email))
+        || 'Unknown';
+
+    const assigneeName = ticket.assigned_tech ? (ticket.assigned_tech.display_name || ticket.assigned_tech.email) : 'Unassigned';
+
+    const chat = ticket.chat;
+
+    let customerBlock = '<p class="text-xs text-gray-500 italic">No associated CSR customer chat.</p>';
+    if (chat) {
+        const cName = chat.visitor_name || chat.customer_name || 'Anonymous Visitor';
+        const cId = chat.visitor_id || chat.external_chat_id || 'N/A';
+        const extId = chat.customer_external_user_id || 'None';
+        const authMode = chat.auth_mode || 'anonymous';
+        const authUserObj = chat.authenticated_user_data ? (typeof chat.authenticated_user_data === 'string' ? chat.authenticated_user_data : JSON.stringify(chat.authenticated_user_data, null, 2)) : null;
+
+        customerBlock = `
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div><span class="text-gray-500">Customer Name:</span> <strong class="text-gray-900">${escapeHtml(cName)}</strong></div>
+                <div><span class="text-gray-500">Visitor / Chat ID:</span> <strong class="font-mono text-gray-900">${escapeHtml(cId)}</strong></div>
+                <div><span class="text-gray-500">External User ID:</span> <strong class="font-mono text-gray-900">${escapeHtml(extId)}</strong></div>
+                <div><span class="text-gray-500">Auth Mode:</span> <span class="font-semibold uppercase ${authMode === 'authenticated' ? 'text-green-600' : 'text-gray-600'}">${escapeHtml(authMode)}</span></div>
+            </div>
+            ${authUserObj ? `
+                <div class="mt-3">
+                    <span class="text-xs font-semibold text-gray-600 block mb-1">Authenticated Customer Metadata:</span>
+                    <pre class="font-mono text-[10px] bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto">${escapeHtml(authUserObj)}</pre>
+                </div>
+            ` : ''}
+        `;
+    }
+
+    const hist = (ticket.history && ticket.history.length) ? ticket.history : (ticket.assignment_history || []);
+    let historyBlock = '<p class="text-xs text-gray-400">No status logs recorded.</p>';
+    if (hist.length) {
+        const ordered = [...hist].sort((a, b) => (parseServerDate(b.created_at)?.getTime() || 0) - (parseServerDate(a.created_at)?.getTime() || 0));
+        historyBlock = ordered.map(item => {
+            const time = formatLocalDateTime(item.created_at);
+            const by = item.changed_by_name ? `by <strong>${escapeHtml(item.changed_by_name)}</strong> (${escapeHtml(item.changed_by_role || 'system')})` : '';
+            const note = item.notes ? `<div class="mt-1 text-xs text-gray-600 bg-white border border-gray-100 p-2 rounded italic">"${escapeHtml(item.notes)}"</div>` : '';
+            return `
+                <div class="text-xs border-l-2 border-yellow-400 pl-3 py-1 bg-gray-50 rounded-r-lg mb-2">
+                    <div class="text-gray-500 text-[10px]">${time} ${by}</div>
+                    <div class="font-medium text-gray-800">${historyActionText(item)}</div>
+                    ${note}
+                </div>
+            `;
+        }).join('');
+    }
+
+    document.getElementById('details-modal-body').innerHTML = `
+        <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-3">
+                <div class="flex items-center gap-2">
+                    <span class="status-badge status-${ticket.status}">${getStatusLabel(ticket.status)}</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${pClass}">${escapeHtml(pPriority)} Priority</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${originBadgeClass(ticket)}">${escapeHtml(originLabel(ticket))}</span>
+                </div>
+                <span class="text-xs text-gray-400 font-mono">ID: #${ticket.id}</span>
+            </div>
+            <div>
+                <h4 class="text-sm font-bold text-gray-900 mb-1">${escapeHtml(ticket.title)}</h4>
+                <p class="text-xs text-gray-600 bg-white p-3 rounded-lg border border-gray-100">${escapeHtml(ticket.description || 'No description provided.')}</p>
+            </div>
+        </div>
+
+        <div class="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
+            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5"><i class="fa-solid fa-sliders text-blue-500"></i> Metadata & Assignment</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div><span class="text-gray-500">Creator:</span> <strong class="text-gray-900">${escapeHtml(creatorName)} (${escapeHtml(creatorRoleLabel(ticket))})</strong></div>
+                <div><span class="text-gray-500">Assigned Tech:</span> <strong class="text-gray-900">${escapeHtml(assigneeName)}</strong></div>
+                <div><span class="text-gray-500">Created At:</span> <strong class="text-gray-800">${formatLocalDateTime(ticket.created_at)}</strong></div>
+                <div><span class="text-gray-500">Updated At:</span> <strong class="text-gray-800">${formatLocalDateTime(ticket.updated_at)}</strong></div>
+                <div><span class="text-gray-500">Resolved At:</span> <strong class="text-gray-800">${ticket.resolved_at ? formatLocalDateTime(ticket.resolved_at) : 'N/A'}</strong></div>
+                <div><span class="text-gray-500">Messages Exchanged:</span> <strong class="text-gray-800">${ticket.message_count || 0} messages</strong></div>
+            </div>
+        </div>
+
+        <div class="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
+            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5"><i class="fa-solid fa-user-circle text-blue-500"></i> Customer Context</h4>
+            ${customerBlock}
+        </div>
+
+        <div class="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
+            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5"><i class="fa-solid fa-clock-rotate-left text-blue-500"></i> Complete Audit Trail</h4>
+            ${historyBlock}
+        </div>
+    `;
+
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    document.getElementById('ticket-details-modal').classList.remove('hidden');
+}
+
+function closeTicketDetailsModal() {
+    document.getElementById('modal-overlay').classList.add('hidden');
+    document.getElementById('ticket-details-modal').classList.add('hidden');
 }
 
 function referTicket() {

@@ -1137,6 +1137,7 @@ function setReplySending(sending, form, button, textarea) {
             : '<i class="fa-solid fa-paper-plane text-xs"></i> Send';
         button.classList.toggle('opacity-70', sending);
         button.classList.toggle('cursor-not-allowed', sending);
+        button.classList.toggle('pointer-events-none', sending);
     }
     if (textarea) textarea.readOnly = sending;
 }
@@ -1230,6 +1231,10 @@ function renderWorkspace() {
 
             setReplySending(true, rf, sendBtn, ta);
 
+            // Instantly clear draft & text so user gets immediate visual confirmation and cannot double send
+            setDraftMessage(chat.id, '');
+            ta.value = '';
+
             // Optimistic: show the reply immediately so Send feels instant.
             const nowIso = new Date().toISOString();
             const optimisticMessage = {
@@ -1248,8 +1253,6 @@ function renderWorkspace() {
 
             try {
                 const resp = await requestJson(`/api/chats/${chat.id}/reply`, { method: 'POST', body: JSON.stringify({ message: msg }) });
-                setDraftMessage(chat.id, '');
-                ta.value = '';
                 state.selectedMessages = resp.messages || [];
                 // Swap in the confirmed server messages right away.
                 const mpNow = document.getElementById('messages-panel');
@@ -1258,6 +1261,9 @@ function renderWorkspace() {
                 refreshDashboard(false).catch(() => {});
                 showBanner('Reply sent.');
             } catch (err) {
+                // Restore draft & input on error
+                setDraftMessage(chat.id, msg);
+                ta.value = msg;
                 showBanner(err.message, 'error');
             } finally {
                 setReplySending(false, rf, sendBtn, ta);
@@ -1510,6 +1516,7 @@ function setTicketSendSending(sending, button, input) {
             : '<i class="fa-solid fa-paper-plane text-xs"></i>';
         button.classList.toggle('opacity-70', sending);
         button.classList.toggle('cursor-not-allowed', sending);
+        button.classList.toggle('pointer-events-none', sending);
     }
     if (input) input.readOnly = sending;
 }
@@ -1522,6 +1529,7 @@ async function sendTicketChatMessage() {
     if (!content) return;
 
     setTicketSendSending(true, sendBtn, input);
+    input.value = '';
 
     // Optimistic: show the message immediately.
     const container = document.getElementById('ticket-chat-messages');
@@ -1545,10 +1553,10 @@ async function sendTicketChatMessage() {
     try {
         const resp = await requestJson(`/api/tickets/${activeTicketChatId}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
         if (resp.success) {
-            input.value = '';
             await loadTicketChatMessages();
         }
     } catch (err) {
+        input.value = content;
         showTicketToast('Send failed', 'error');
     } finally {
         setTicketSendSending(false, sendBtn, input);
