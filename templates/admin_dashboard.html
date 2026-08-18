@@ -21,7 +21,7 @@
             }
         };
     </script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='admin-dashboard.css') }}?v=20260730s">
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin-dashboard.css') }}?v=20260818e">
 </head>
 <body
     data-admin-name="{{ (user.display_name or user.email) if user else 'Admin' }}"
@@ -157,58 +157,41 @@
                     </div>
 
                     <div class="overview-grid" style="margin-top:12px;">
-                        <div class="overview-stack">
-                            <section class="panel">
-                                <div class="panel-head">
-                                    <div class="panel-title">Resolution Performance</div>
-                                    <span class="tiny-note">Today vs yesterday by CSR</span>
-                                </div>
-                                <div class="panel-copy">Bar chart of which CSR resolved how many chats today and yesterday, alongside their current open workload.</div>
-                                <div class="panel-body">
-                                    <canvas id="resolution-chart" class="chart-canvas chart-canvas--lg" height="280"></canvas>
-                                </div>
-                            </section>
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div class="panel-title">Resolution Performance</div>
+                                <span class="tiny-note">Today vs yesterday by CSR</span>
+                            </div>
+                            <div class="panel-copy">Compare resolved chats today and yesterday with each CSR's current open workload.</div>
+                            <div class="panel-body">
+                                <canvas id="resolution-chart" class="chart-canvas chart-canvas--lg" height="280"></canvas>
+                            </div>
+                        </section>
 
-                            <section class="panel">
-                                <div class="panel-head">
-                                    <div class="panel-title">CSR resolution details</div>
-                                    <span class="tiny-note">Today / yesterday / open chats · all CSRs</span>
-                                </div>
-                                <div class="panel-copy">Per-rep workload and resolution counts; matches the bar chart above.</div>
-                                <div class="panel-body">
-                                    <div class="leaderboard-list" id="leaderboard-list">
-                                        <div class="tiny-note">Loading leaderboard...</div>
-                                    </div>
-                                </div>
-                            </section>
-                        </div>
-
-                        <div class="chart-stack">
-                            <section class="panel">
-                                <div class="panel-head">
-                                    <div class="panel-title">Open Chat Status Mix</div>
-                                    <span class="tiny-note">Queue and resolution distribution</span>
-                                </div>
-                                <div class="panel-copy">Pie-style chart of queued, assigned, in progress, and resolved chat records.</div>
-                                <div class="panel-body">
-                                    <canvas id="status-chart" class="chart-canvas" height="190"></canvas>
-                                </div>
-                            </section>
-
-                            <section class="panel">
-                                <div class="panel-head">
-                                    <div class="panel-title">CSR coverage snapshot</div>
-                                    <span class="tiny-note">Live roster and workload</span>
-                                </div>
-                                <div class="panel-copy">Quick view of who is online and their open chat load.</div>
-                                <div class="panel-body">
-                                    <div class="coverage-list" id="coverage-list">
-                                        <div class="tiny-note">Loading CSR coverage...</div>
-                                    </div>
-                                </div>
-                            </section>
-                        </div>
+                        <section class="panel">
+                            <div class="panel-head">
+                                <div class="panel-title">Open Chat Status Mix</div>
+                                <span class="tiny-note">Queue and resolution distribution</span>
+                            </div>
+                            <div class="panel-copy">Current totals for queued, assigned, in-progress, and resolved chats.</div>
+                            <div class="panel-body">
+                                <canvas id="status-chart" class="chart-canvas chart-canvas--status" height="286"></canvas>
+                            </div>
+                        </section>
                     </div>
+
+                    <section class="panel csr-overview-panel">
+                        <div class="panel-head">
+                            <div class="panel-title">CSR Team Overview</div>
+                            <span class="tiny-note">One complete view per CSR</span>
+                        </div>
+                        <div class="panel-copy">Online presence, availability, resolutions, and open workload in one place.</div>
+                        <div class="panel-body">
+                            <div class="csr-overview-list" id="csr-overview-list">
+                                <div class="tiny-note">Loading CSR team overview...</div>
+                            </div>
+                        </div>
+                    </section>
                 </section>
                 {# Credentials tab temporarily disabled
                 {% elif admin_page == 'credentials' %}
@@ -350,7 +333,7 @@
                     <div class="section-head">
                         <div>
                             <div class="section-title">CSR Management</div>
-                            <div class="section-copy">Add CSR login accounts and see exactly who is online, offline, paused, or busy. All CSRs handle unlimited concurrent chats.</div>
+                            <div class="section-copy">Add CSR login accounts and see exactly who is online, offline, paused, or busy.</div>
                         </div>
                     </div>
 
@@ -397,8 +380,12 @@
                                 <div class="panel-title">CSR Roster & Control</div>
                                 <span class="tiny-note" id="roster-count">0 CSRs</span>
                             </div>
-                            <div class="panel-copy">Track each CSR’s open workload, online/offline presence, resolution output, and assignment availability. All CSRs handle unlimited concurrent chats.</div>
+                            <div class="panel-copy">Track each CSR’s open workload, presence, resolution output, and assignment availability.</div>
                             <div class="panel-body csr-roster-wrap">
+                                <div class="roster-capacity-note">
+                                    <i class="fa-solid fa-infinity"></i>
+                                    <span><strong>Unlimited chat handling</strong> is enabled for every CSR account.</span>
+                                </div>
                                 <div id="csr-roster-list" class="csr-roster-list flex flex-col gap-3">
                                     <div class="tiny-note p-6">Loading CSR roster...</div>
                                 </div>
@@ -494,7 +481,7 @@
                         </div>
                         <div class="panel-copy">Member details, live online status, ticket workload, and account actions in one place.</div>
                         <div class="panel-body">
-                            <div class="admin-soft-table-wrap">
+                            <div class="admin-soft-table-wrap tech-team-table-wrap" tabindex="0" aria-label="Technical team members table. Scroll horizontally to view all columns.">
                                 <table class="tech-team-table">
                                     <thead>
                                         <tr>
@@ -514,6 +501,7 @@
                                     </tbody>
                                 </table>
                             </div>
+                            <div class="table-scroll-hint"><i class="fa-solid fa-arrows-left-right"></i> Scroll horizontally to view all columns</div>
                         </div>
                     </section>
 
@@ -704,16 +692,22 @@
                                     <div class="chat-meta-card"><div class="meta-label">Last Activity</div><div class="meta-value">Not available</div></div>
                                 </div>
                                 <div class="detail-columns">
-                                    <div class="messages" id="messages-panel">
-                                        <div class="empty-state">
-                                            <i class="fa-solid fa-comments"></i>
-                                            <div>No chat selected yet.</div>
+                                    <div class="detail-pane">
+                                        <div class="detail-pane-title"><i class="fa-solid fa-comments"></i> Customer chat</div>
+                                        <div class="messages" id="messages-panel" aria-label="Customer chat transcript">
+                                            <div class="empty-state">
+                                                <i class="fa-solid fa-comments"></i>
+                                                <div>No chat selected yet.</div>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="event-timeline" id="event-panel">
-                                        <div class="empty-state">
-                                            <i class="fa-solid fa-timeline"></i>
-                                            <div>Tracking events will appear here.</div>
+                                    <div class="detail-pane">
+                                        <div class="detail-pane-title"><i class="fa-solid fa-timeline"></i> Chat activity</div>
+                                        <div class="event-timeline" id="event-panel" aria-label="Chat activity timeline">
+                                            <div class="empty-state">
+                                                <i class="fa-solid fa-timeline"></i>
+                                                <div>Tracking events will appear here.</div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -796,7 +790,7 @@
                             </div>
                             <div class="panel-copy">End your admin session on this device.</div>
                             <div class="panel-body">
-                                <a class="btn danger account-logout-btn" href="/logout">
+                                <a class="btn danger account-logout-btn" href="{{ url_for('admin_logout') }}">
                                     <i class="fa-solid fa-right-from-bracket"></i>
                                     <span>Logout from Admin</span>
                                 </a>
@@ -809,8 +803,12 @@
         </main>
     </div>
 
-    <script src="{{ url_for('static', filename='admin-dashboard.js') }}?v=20260730t" defer></script>
+    <script src="{{ url_for('static', filename='admin-dashboard.js') }}?v=20260818e" defer></script>
     <script>
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted) window.location.reload();
+        });
+
         (function () {
             const el = document.getElementById('account-last-seen');
             if (!el || !el.dataset.iso) return;

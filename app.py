@@ -102,6 +102,16 @@ CORS(
 )
 
 
+@app.after_request
+def prevent_dynamic_page_caching(response):
+    """Never let a signed-in dashboard be restored after logout via browser history."""
+    if not request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0, private"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 def utcnow():
     return datetime.now(UTC).replace(tzinfo=None)
 
@@ -610,6 +620,13 @@ class TicketStatus(db.Model):
         ]
 
 
+def normalize_ticket_status_label(label):
+    """Keep legacy status labels readable in every dashboard."""
+    value = (label or "").strip()
+    compact_value = value.lower().replace("_", "").replace("-", "").replace(" ", "")
+    return "On Hold" if compact_value == "onhold" else value
+
+
 class Ticket(db.Model):
     __tablename__ = "tickets"
 
@@ -714,7 +731,41 @@ def get_current_admin():
 
 
 def get_current_user():
+    # A browser can have more than one portal identity alive at once. Prefer
+    # the portal that made the request (or the most recently authenticated
+    # portal) instead of always choosing the admin account first. This keeps
+    # CSR-only dashboard calls, such as opening a Mine chat, in the CSR scope.
+    preferred_role = (request.headers.get("X-Portal") or session.get("account_type") or "").strip().lower()
+    getters = {
+        "admin": get_current_admin,
+        "csr": get_current_csr_user,
+        "tech": get_current_tech_user,
+    }
+    preferred_getter = getters.get(preferred_role)
+    if preferred_getter:
+        preferred_user = preferred_getter()
+        if preferred_user:
+            return preferred_user
     return get_current_admin() or get_current_csr_user() or get_current_tech_user()
+
+
+def clear_portal_session(role):
+    """Remove only one portal identity so CSR, admin, and tech tabs can coexist."""
+    key_by_role = {
+        "admin": "admin_id",
+        "csr": "csr_user_id",
+        "tech": "tech_user_id",
+    }
+    session.pop(key_by_role[role], None)
+    if role == "csr":
+        session.pop("user_id", None)  # Legacy CSR session key.
+
+    if session.get("account_type") == role:
+        session.pop("account_type", None)
+        session.pop("user_email", None)
+
+    if not any(session.get(key) for key in key_by_role.values()):
+        session.clear()
 
 
 def get_online_cutoff(now=None):
@@ -2355,6 +2406,41 @@ def login():
     return portal_login_page()
 
 
+@app.route("/admin/forgot-password", methods=["GET", "POST"])
+def admin_forgot_password():
+    if get_current_admin():
+        return redirect(url_for("admin_dashboard"))
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        if not email or not password or not confirm_password:
+            flash("All fields are required.", "error")
+            return render_template("admin_forgot_password.html")
+
+        if len(password) < 6:
+            flash("Password must be at least 6 characters.", "error")
+            return render_template("admin_forgot_password.html")
+
+        if password != confirm_password:
+            flash("Passwords do not match.", "error")
+            return render_template("admin_forgot_password.html")
+
+        admin = AdminAccount.query.filter_by(email=email).first()
+        if not admin:
+            flash("No administrator account was found for that email address.", "error")
+            return render_template("admin_forgot_password.html")
+
+        admin.set_password(password)
+        db.session.commit()
+        flash("Password updated successfully. You can now sign in.", "success")
+        return redirect(url_for("admin_login"))
+
+    return render_template("admin_forgot_password.html")
+
+
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
     if get_current_admin():
@@ -2375,7 +2461,6 @@ def admin_login():
 
         admin.last_seen_at = utcnow()
         db.session.commit()
-        session.clear()
         session.permanent = True
         session["account_type"] = "admin"
         session["admin_id"] = admin.id
@@ -2405,7 +2490,6 @@ def csr_login():
 
         user.last_seen_at = utcnow()
         db.session.commit()
-        session.clear()
         session.permanent = True
         session["account_type"] = "csr"
         session["csr_user_id"] = user.id
@@ -2415,22 +2499,56 @@ def csr_login():
     return render_template("csr_login.html")
 
 
+@app.route("/csr/forgot-password")
+def csr_forgot_password():
+    """CSR accounts are provisioned and reset by administrators."""
+    if get_current_csr_user():
+        return redirect(url_for("csr_dashboard"))
+    return render_template("csr_forgot_password.html")
+
+
 @app.route("/logout")
 def logout():
-    current_tech = get_current_tech_user()
-    current_csr = get_current_csr_user()
-    current_admin = get_current_admin()
+    # Legacy route: end only the identity that most recently opened a portal.
+    role = session.get("account_type")
+    if role == "tech":
+        tech = get_current_tech_user()
+        if tech:
+            finalize_tech_presence(tech)
+    elif role == "csr":
+        csr = get_current_csr_user()
+        if csr:
+            finalize_user_presence(csr)
+    elif role == "admin":
+        admin = get_current_admin()
+        if admin:
+            finalize_admin_presence(admin)
+    else:
+        role = "csr" if get_current_csr_user() else "admin" if get_current_admin() else "tech"
 
-    if current_tech:
-        finalize_tech_presence(current_tech)
-    elif current_csr:
-        finalize_user_presence(current_csr)
-    elif current_admin:
-        finalize_admin_presence(current_admin)
-
-    session.clear()
+    clear_portal_session(role)
     flash("You have been logged out.", "success")
     return redirect(url_for("login"))
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    admin = get_current_admin()
+    if admin:
+        finalize_admin_presence(admin)
+    clear_portal_session("admin")
+    flash("You have been logged out of the admin portal.", "success")
+    return redirect(url_for("admin_login"))
+
+
+@app.route("/csr/logout")
+def csr_logout():
+    csr = get_current_csr_user()
+    if csr:
+        finalize_user_presence(csr)
+    clear_portal_session("csr")
+    flash("You have been logged out of the CSR portal.", "success")
+    return redirect(url_for("csr_login"))
 
 
 @app.route("/tech/login", methods=["GET", "POST"])
@@ -2450,11 +2568,14 @@ def tech_login():
         if not tech or not tech.check_password(password):
             flash("Invalid technical team email or password.", "error")
             return render_template("tech_login.html")
+        if not tech.is_active:
+            flash("Your technical team account is disabled. Contact an administrator.", "error")
+            return render_template("tech_login.html")
         
         tech.last_seen_at = utcnow()
         db.session.commit()
-        session.clear()
         session.permanent = True
+        session["account_type"] = "tech"
         session["tech_user_id"] = tech.id
         session["user_email"] = tech.email
         return redirect(url_for("tech_dashboard"))
@@ -2467,8 +2588,8 @@ def tech_logout():
     tech = get_current_tech_user()
     if tech:
         finalize_tech_presence(tech)
-    session.clear()
-    flash("You have been logged out.", "success")
+    clear_portal_session("tech")
+    flash("You have been logged out of the technical portal.", "success")
     return redirect(url_for("tech_login"))
 
 
@@ -3079,7 +3200,11 @@ def reassign_chat(chat_id):
     )
     db.session.commit()
 
-    return jsonify({"success": True, "dashboard": build_dashboard_payload(current_user, page=get_request_dashboard_page())})
+    return jsonify({
+        "success": True,
+        "message": "Chat reassigned.",
+        "dashboard": build_dashboard_payload(current_user, page=get_request_dashboard_page()),
+    })
 
 
 @app.route("/api/chats/rebalance", methods=["POST"])
@@ -3104,7 +3229,28 @@ def update_csr_settings(user_id):
     csr_user.unlimited_chats = True
     db.session.commit()
 
-    return jsonify({"success": True, "dashboard": build_dashboard_payload(current_user, page=get_request_dashboard_page())})
+    return jsonify({
+        "success": True,
+        "message": "CSR availability saved successfully.",
+        "dashboard": build_dashboard_payload(current_user, page=get_request_dashboard_page()),
+    })
+
+
+@app.route("/api/csrs/<int:user_id>/password", methods=["POST"])
+@admin_required
+def reset_csr_password(user_id):
+    """Allow an administrator to reset a CSR password from the roster."""
+    csr_user = db.session.get(User, user_id)
+    if not csr_user or csr_user.role not in ASSIGNABLE_ROLES:
+        return jsonify({"error": "CSR not found."}), 404
+
+    password = get_request_payload().get("password") or ""
+    if len(password) < 6:
+        return jsonify({"error": "CSR password must be at least 6 characters."}), 400
+
+    csr_user.set_password(password)
+    db.session.commit()
+    return jsonify({"success": True, "message": "CSR password updated."})
 
 
 @app.route("/api/admin/csrs/create", methods=["POST"])
@@ -3542,7 +3688,7 @@ def serialize_ticket_status(status):
     return {
         "id": status.id,
         "name": status.name,
-        "label": status.label,
+        "label": normalize_ticket_status_label(status.label),
         "color": status.color,
         "sort_order": status.sort_order,
         "is_default": status.is_default,
@@ -3643,12 +3789,17 @@ def admin_get_tickets():
             joinedload(Ticket.created_by_tech),
             joinedload(Ticket.assigned_tech),
         )
-        if lifecycle == "current":
+        # An explicit status selection is authoritative. This lets the
+        # Current Tickets page show a selected Closed/Resolved record instead
+        # of applying the page's default active-ticket scope and producing an
+        # empty intersection. With "All statuses", retain each page's normal
+        # lifecycle scope (active on Current, completed on Old).
+        if status_filter and status_filter != "all":
+            list_query = list_query.filter(Ticket.status == status_filter)
+        elif lifecycle == "current":
             list_query = list_query.filter(~Ticket.status.in_(list(resolved_names)))
         elif lifecycle == "old":
             list_query = list_query.filter(Ticket.status.in_(list(resolved_names)))
-        if status_filter and status_filter != "all":
-            list_query = list_query.filter(Ticket.status == status_filter)
         tickets = list_query.order_by(Ticket.updated_at.desc()).limit(300).all()
 
     ticket_ids = [ticket.id for ticket in tickets]
@@ -3896,16 +4047,24 @@ def create_ticket():
 def claim_ticket(ticket_id):
     """Technical team member claims an open ticket."""
     tech_user = get_current_tech_user()
-    ticket = db.session.get(Ticket, ticket_id)
+    # Lock the ticket while assigning it. This makes simultaneous button clicks
+    # safe and avoids a valid technician receiving a misleading denial.
+    ticket = Ticket.query.filter_by(id=ticket_id).with_for_update().first()
     
     if not ticket:
         return jsonify({"error": "Ticket not found."}), 404
     
-    if ticket.status != "open":
-        return jsonify({"error": "This ticket is no longer open and cannot be claimed."}), 400
-    
     if ticket.assigned_tech_id:
-        return jsonify({"error": "This ticket has already been claimed."}), 400
+        if ticket.assigned_tech_id == tech_user.id:
+            return jsonify({
+                "success": True,
+                "message": "This ticket is already assigned to you.",
+                "ticket": serialize_ticket(ticket),
+            })
+        return jsonify({"error": "This ticket has already been claimed by another technical team member."}), 409
+
+    if ticket.status != "open":
+        return jsonify({"error": "This ticket is no longer open and cannot be claimed."}), 409
     
     old_status = ticket.status
     ticket.assigned_tech_id = tech_user.id
@@ -4057,9 +4216,18 @@ def serialize_ticket_message(message):
 def ticket_chat_actor(ticket):
     """Return (allowed, actor, sender_type) for ticket CSR↔tech chat."""
     tech_user = get_current_tech_user()
+    csr_user = get_current_csr_user()
+    preferred_role = (request.headers.get("X-Portal") or session.get("account_type") or "").strip().lower()
+
+    # Respect the portal that made the request when both identities are
+    # present in one browser session. Otherwise a CSR tab can accidentally
+    # write a message as the technical user (or vice versa).
+    if preferred_role == "tech" and tech_user:
+        return True, tech_user, "tech"
+    if preferred_role == "csr" and csr_user:
+        return True, csr_user, "csr"
     if tech_user:
         return True, tech_user, "tech"
-    csr_user = get_current_csr_user()
     if csr_user:
         return True, csr_user, "csr"
     return False, None, None
@@ -4136,7 +4304,7 @@ def create_ticket_status():
     """Admin creates a new ticket status."""
     payload = get_request_payload()
     name = (payload.get("name") or "").strip().lower()
-    label = (payload.get("label") or "").strip()
+    label = normalize_ticket_status_label(payload.get("label"))
     color = (payload.get("color") or "#64748b").strip()
     sort_order = parse_int(payload.get("sort_order"), 10)
     is_resolved = parse_bool(payload.get("is_resolved"), default=False)
@@ -4246,17 +4414,36 @@ def update_tech_account(tech_id):
 @app.route("/api/admin/tech-accounts/<int:tech_id>", methods=["DELETE"])
 @admin_required
 def delete_tech_account(tech_id):
-    """Admin deletes a technical team account."""
+    """Admin deletes a technical team account without orphaning tickets."""
     tech = db.session.get(TechTeamAccount, tech_id)
     if not tech:
         return jsonify({"error": "Technical team account not found."}), 404
-    
+
+    # Keep ticket history, but release this technician's active work back to
+    # the queue and clear nullable creator/assignment references before the
+    # account row is removed. Without this, the database FK can reject the
+    # delete and the UI only receives a generic request failure.
+    assigned_tickets = Ticket.query.filter_by(assigned_tech_id=tech_id).all()
+    created_tickets = Ticket.query.filter_by(created_by_tech_id=tech_id).all()
+    for ticket in assigned_tickets:
+        ticket.assigned_tech_id = None
+        if ticket.status in {"assigned", "in_progress"}:
+            ticket.status = "open"
+            ticket.resolved_at = None
+        ticket.updated_at = utcnow()
+    for ticket in created_tickets:
+        ticket.created_by_tech_id = None
+
     db.session.delete(tech)
     db.session.commit()
-    
+
+    released_count = len({ticket.id for ticket in assigned_tickets})
+    message = "Technical team account deleted."
+    if released_count:
+        message += f" {released_count} ticket{' was' if released_count == 1 else 's were'} returned to the queue."
     return jsonify({
         "success": True,
-        "message": "Technical team account deleted.",
+        "message": message,
     })
 
 
@@ -4296,6 +4483,14 @@ with app.app_context():
             if not existing:
                 status = TicketStatus(**status_data)
                 db.session.add(status)
+        db.session.commit()
+
+    # Repair a legacy label once in storage, while serialization also protects
+    # any future imported record that uses the compact "onhold" spelling.
+    legacy_on_hold_statuses = TicketStatus.query.filter(func.lower(TicketStatus.label) == "onhold").all()
+    if legacy_on_hold_statuses:
+        for status in legacy_on_hold_statuses:
+            status.label = "On Hold"
         db.session.commit()
 
 

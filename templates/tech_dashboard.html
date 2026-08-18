@@ -18,7 +18,19 @@
         .priority-high { color: #ef4444; background: #fef2f2; }
         .priority-normal { color: #3b82f6; background: #eff6ff; }
         .priority-low { color: #10b981; background: #ecfdf5; }
-        .status-badge { font-size: 10px; padding: 2px 8px; border-radius: 9999px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .status-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 112px; padding: 3px 8px; border-radius: 9999px; font-size: 10px; font-weight: 700; line-height: 1.2; letter-spacing: 0.05em; text-align: center; text-transform: uppercase; white-space: nowrap; }
+        .unread-ticket-dot { width: 10px; height: 10px; flex: 0 0 10px; margin-right: 4px; border: 2px solid #fff; border-radius: 9999px; background: #ef4444; box-shadow: 0 1px 3px rgba(127, 29, 29, 0.35); }
+        .ticket-origin-tag { margin-left: 4px; }
+        #create-ticket-modal { width: min(calc(100% - 24px), 448px); max-height: calc(100dvh - 24px); }
+        #create-ticket-modal > div { max-height: inherit; }
+        #create-ticket-body { overscroll-behavior: contain; }
+        #create-ticket-actions { padding: 14px 20px max(16px, env(safe-area-inset-bottom)); }
+        @media (max-width: 480px) {
+            #create-ticket-modal { top: 12px; transform: translateX(-50%); }
+            #create-ticket-modal > div { border-radius: 18px; }
+            #create-ticket-body { padding: 16px; }
+            #create-ticket-actions { padding: 12px 16px max(16px, env(safe-area-inset-bottom)); }
+        }
         .status-open { background: #fef3c7; color: #d97706; }
         .status-in_progress { background: #dbeafe; color: #2563eb; }
         .status-closed { background: #f1f5f9; color: #64748b; }
@@ -62,12 +74,12 @@
 
         <!-- COLUMN 1: Ticket List -->
         <section id="col-list" class="flex-col min-h-0 w-full lg:w-[380px] xl:w-[420px] flex-shrink-0 bg-white lg:rounded-xl lg:border lg:border-gray-200 overflow-hidden flex transition-all">
-            <div class="flex-shrink-0 px-4 py-2.5 border-b border-gray-100 flex items-center justify-between bg-yellow-50">
+            <div class="flex-shrink-0 px-4 py-2.5 border-b border-gray-100 flex items-center justify-between gap-3 bg-yellow-50">
                 <div class="flex items-center gap-2">
                     <span class="w-6 h-6 rounded-md bg-yellow-400 flex items-center justify-center text-black text-[10px] font-bold">1</span>
                     <h2 class="text-sm font-bold text-black">Tickets</h2>
                 </div>
-                <span id="col1-count" class="text-[11px] text-yellow-700 font-semibold bg-yellow-100 px-2 py-0.5 rounded-md">0 tickets</span>
+                <span id="col1-count" class="inline-flex min-h-6 shrink-0 items-center whitespace-nowrap rounded-md bg-yellow-100 px-2 text-[11px] font-semibold leading-none text-yellow-700">0 tickets</span>
             </div>
 
             <!-- Tabs -->
@@ -206,19 +218,20 @@
     </div>
 
     <!-- Create Ticket Modal -->
-    <div id="create-ticket-modal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 hidden w-[90%] max-w-md">
+    <div id="create-ticket-modal" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 hidden">
         <div class="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col">
             <div class="px-5 py-4 border-b border-gray-100 bg-yellow-50 flex items-center justify-between">
                 <h3 class="text-sm font-bold text-black flex items-center gap-2">
                     <i class="fa-solid fa-plus text-yellow-600"></i>
                     Create Technical Ticket
                 </h3>
-                <button onclick="closeCreateTicketModal()" class="text-gray-400 hover:text-black"><i class="fa-solid fa-xmark"></i></button>
+                <button type="button" onclick="closeCreateTicketModal()" class="-mr-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-white hover:text-black focus:outline-none focus:ring-2 focus:ring-yellow-300" aria-label="Close create ticket dialog"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div class="p-5">
-                <p class="text-xs text-gray-500 mb-4 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
-                    Independent of CSR chat tickets. Use this for internal technical work, then claim/refer with full history.
-                </p>
+            <div id="create-ticket-body" class="flex-1 overflow-y-auto p-5">
+                <div class="mb-4 flex items-start gap-2.5 rounded-lg border border-blue-200 border-l-4 border-l-blue-500 bg-blue-50 px-3 py-2.5 text-xs leading-relaxed text-blue-900">
+                    <i class="fa-solid fa-circle-info mt-0.5 text-blue-600"></i>
+                    <p><strong>Internal technical work.</strong> This ticket is separate from CSR chat tickets. Create it here, then claim or refer it with full history.</p>
+                </div>
                 <div class="mb-3">
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Title <span class="text-red-500">*</span></label>
                     <input id="create-ticket-title" type="text" maxlength="255" class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black focus:border-yellow-400 outline-none" placeholder="Short summary">
@@ -250,18 +263,18 @@
                         <option value="">Select tech person...</option>
                     </select>
                 </div>
-                <div class="mb-5">
+                <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-2">Notes (optional)</label>
                     <textarea id="create-ticket-notes" rows="2" class="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-black resize-none focus:border-yellow-400 outline-none" placeholder="Why this ticket was created..."></textarea>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="submitCreateTicket()" id="create-ticket-submit-btn" class="flex-1 py-2.5 rounded-xl bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-semibold transition-colors shadow-sm">
-                        Create Ticket
-                    </button>
-                    <button onclick="closeCreateTicketModal()" class="flex-1 py-2.5 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-sm font-semibold transition-colors">
-                        Cancel
-                    </button>
-                </div>
+            </div>
+            <div id="create-ticket-actions" class="flex flex-shrink-0 items-center gap-3 border-t border-gray-200 bg-white shadow-[0_-4px_12px_rgba(15,23,42,0.05)]">
+                <button onclick="submitCreateTicket()" id="create-ticket-submit-btn" class="flex-1 py-2.5 rounded-xl bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-semibold transition-colors shadow-sm">
+                    Create Ticket
+                </button>
+                <button onclick="closeCreateTicketModal()" class="flex-1 py-2.5 rounded-xl bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 text-sm font-semibold transition-colors">
+                    Cancel
+                </button>
             </div>
         </div>
     </div>
@@ -380,24 +393,31 @@ function parseServerDate(v) {
     return Number.isNaN(d.getTime()) ? null : d;
 }
 
+const viewerLocale = navigator.languages?.[0] || navigator.language || undefined;
+const viewerTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+function withViewerTimeZone(opts) {
+    return { ...(opts || {}), timeZone: viewerTimeZone };
+}
+
 function formatLocalDate(v, opts) {
     const d = parseServerDate(v);
     if (!d) return '';
-    return d.toLocaleDateString(undefined, opts || { month: 'short', day: 'numeric' });
+    return d.toLocaleDateString(viewerLocale, withViewerTimeZone(opts || { month: 'short', day: 'numeric' }));
 }
 
 function formatLocalDateTime(v, opts) {
     const d = parseServerDate(v);
     if (!d) return '';
-    return d.toLocaleString(undefined, opts || {
+    return d.toLocaleString(viewerLocale, withViewerTimeZone(opts || {
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
-    });
+    }));
 }
 
 function formatLocalTime(v, opts) {
     const d = parseServerDate(v);
     if (!d) return '';
-    return d.toLocaleTimeString(undefined, opts || { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString(viewerLocale, withViewerTimeZone(opts || { hour: '2-digit', minute: '2-digit' }));
 }
 
 function ticketNum(ticket) {
@@ -440,7 +460,7 @@ function showTab(tab) {
         const btn = document.getElementById(`tab-btn-${t}`);
         const badge = document.getElementById(`${t}-count`);
         if (t === tab) {
-            btn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-yellow-100 text-yellow-800 border border-yellow-200 whitespace-nowrap';
+            btn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-blue-500 text-white border border-blue-500 whitespace-nowrap shadow-sm';
             if(badge) badge.className = 'ml-1 opacity-80 bg-white px-1.5 rounded-full';
         } else {
             btn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-white text-gray-500 border border-transparent hover:bg-gray-50 whitespace-nowrap';
@@ -456,7 +476,7 @@ function loadTickets() {
     // Always fetch the full ticket list. Tab and status filtering is handled
     // client-side in renderTicketList so the "All" tab shows every ticket and
     // the Queue / Mine counts stay accurate.
-    return fetch('/api/tickets')
+    return fetch('/api/tickets', { credentials: 'same-origin', headers: { 'X-Portal': 'tech' } })
         .then(r => r.json())
         .then(data => {
             let playedSound = false;
@@ -527,7 +547,7 @@ function renderTicketList() {
         const date = formatLocalDate(ticket.created_at);
         
         const isUnread = ticket.latest_message_sender_type === 'csr' && (!seenMessages[ticket.id] || seenMessages[ticket.id] < ticket.latest_message_id);
-        const unreadIndicator = isUnread ? `<span class="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-sm"></span>` : '';
+        const unreadIndicator = isUnread ? '<span class="unread-ticket-dot animate-pulse" title="New CSR message" aria-label="New CSR message"></span>' : '';
         const borderClass = isUnread ? 'border-red-500 border-2 bg-red-50' : 'border-gray-200 border';
         
         let metaHtml = '';
@@ -540,19 +560,18 @@ function renderTicketList() {
 
         return `
         <div onclick="openTicketDetail(${ticket.id})" class="ticket-card ${activeClass} rounded-xl ${borderClass} p-3 cursor-pointer shadow-sm relative overflow-hidden group">
-            ${unreadIndicator}
             <div class="absolute left-0 top-0 bottom-0 w-1 ${pClass}"></div>
             <div class="flex justify-between items-start mb-2 pl-2 gap-2">
-                <div class="flex items-center gap-1.5 min-w-0">
+                <div class="flex items-center gap-2.5 min-w-0">
                     <span class="font-mono text-[11px] font-bold text-gray-500">${escapeHtml(ticketNum(ticket))}</span>
-                    <span class="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${originBadgeClass(ticket)}">${escapeHtml(originLabel(ticket))}</span>
+                    <span class="ticket-origin-tag text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${originBadgeClass(ticket)}">${escapeHtml(originLabel(ticket))}</span>
                 </div>
-                <span class="status-badge ${sClass}">${getStatusLabel(ticket.status)}</span>
+                <div class="flex shrink-0 items-center gap-2 pr-1">${unreadIndicator}<span class="status-badge ${sClass}">${getStatusLabel(ticket.status)}</span></div>
             </div>
             <h3 class="text-sm font-bold text-gray-900 mb-1 pl-2 truncate" title="${escapeHtml(ticket.title)}">${escapeHtml(ticket.title)}</h3>
-            <div class="flex items-center justify-between pl-2 mt-3 text-[10px] text-gray-500 font-semibold uppercase tracking-wider">
+            <div class="flex items-center justify-between pl-2 mt-3 text-[10px] font-semibold uppercase tracking-wider text-gray-700">
                 ${metaHtml}
-                <span class="text-gray-400">${date}</span>
+                <span class="text-gray-600">${date}</span>
             </div>
         </div>
         `;
@@ -631,9 +650,10 @@ function renderTicketDetail(ticket) {
 
     let actions = `<button onclick="openTicketDetailsModal(${ticket.id})" class="px-3.5 py-2 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-bold transition-colors shadow-sm"><i class="fa-solid fa-circle-info mr-1.5"></i>Full Details</button>`;
     if (ticket.status === 'open' && !ticket.assigned_tech_id) {
-        actions += `<button onclick="claimTicket(${ticket.id})" class="px-4 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black text-sm font-bold shadow-sm transition-colors"><i class="fa-solid fa-hand-pointer mr-1.5"></i>Claim Ticket</button>`;
+        actions += `<button type="button" data-claim-ticket="${ticket.id}" onclick="claimTicket(${ticket.id})" class="px-4 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-500 disabled:cursor-wait disabled:opacity-70 text-black text-sm font-bold shadow-sm transition-colors"><i class="fa-solid fa-hand-pointer mr-1.5"></i>Claim Ticket</button>`;
     } else if (isMine) {
         actions += `
+            <span class="inline-flex cursor-default items-center rounded-lg border border-emerald-300 bg-emerald-100 px-4 py-2 text-sm font-bold text-emerald-800 shadow-sm" aria-label="Ticket claimed by you"><i class="fa-solid fa-circle-check mr-1.5"></i>Claimed by you</span>
             <button onclick="openStatusModal(${ticket.id})" class="px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold transition-colors shadow-sm"><i class="fa-solid fa-pen-to-square mr-1.5 text-blue-500"></i>Update Status</button>
             <button onclick="openReferModal(${ticket.id})" class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"><i class="fa-solid fa-share-nodes mr-1.5"></i>Assign / Refer</button>
         `;
@@ -760,7 +780,7 @@ function renderHistory(ticket) {
 
 function loadTicketMessages(id) {
     if (activeChatTicketId !== id) return;
-    fetch(`/api/tickets/${id}/messages`)
+    fetch(`/api/tickets/${id}/messages`, { credentials: 'same-origin', headers: { 'X-Portal': 'tech' } })
         .then(r => r.json())
         .then(data => {
             if (activeChatTicketId === id && data.messages) {
@@ -819,17 +839,52 @@ function renderMessages(messages) {
     }
 }
 
-function claimTicket(id) {
-    fetch(`/api/tickets/${id}/claim`, { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                showNotification('Ticket claimed!');
-                loadTickets();
-            } else {
-                showNotification(data.error || 'Failed to claim', 'error');
-            }
+const claimRequestsInFlight = new Set();
+
+async function claimTicket(id) {
+    if (claimRequestsInFlight.has(id)) return;
+    claimRequestsInFlight.add(id);
+
+    const buttons = [...document.querySelectorAll(`[data-claim-ticket="${id}"]`)];
+    buttons.forEach((button) => {
+        button.disabled = true;
+        button.dataset.originalLabel = button.innerHTML;
+        button.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Claiming...';
+    });
+
+    try {
+        const response = await fetch(`/api/tickets/${id}/claim`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json', 'X-Portal': 'tech' }
         });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) {
+            if (response.status === 403) {
+                throw new Error('Your technical session has expired. Please sign in again.');
+            }
+            throw new Error(data.error || 'Unable to claim this ticket.');
+        }
+
+        if (data.ticket) {
+            const index = tickets.findIndex((ticket) => Number(ticket.id) === Number(id));
+            if (index >= 0) tickets[index] = data.ticket;
+            updateCounts();
+            renderTicketList();
+            if (Number(activeChatTicketId) === Number(id)) renderTicketDetail(data.ticket);
+        }
+        showNotification(data.message || 'Ticket claimed successfully.');
+        loadTickets().catch(() => {});
+    } catch (error) {
+        showNotification(error.message || 'Unable to claim this ticket.', 'error');
+    } finally {
+        claimRequestsInFlight.delete(id);
+        buttons.forEach((button) => {
+            if (!button.isConnected) return;
+            button.disabled = false;
+            button.innerHTML = button.dataset.originalLabel || '<i class="fa-solid fa-hand-pointer mr-1.5"></i>Claim Ticket';
+        });
+    }
 }
 
 function sendTicketChatMessage() {
@@ -843,7 +898,8 @@ function sendTicketChatMessage() {
     
     fetch(`/api/tickets/${activeChatTicketId}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Portal': 'tech' },
         body: JSON.stringify({ content })
     }).then(r => r.json()).then(data => {
         if (data.success) {
@@ -1212,6 +1268,9 @@ setInterval(() => {
 
     window.addEventListener('pagehide', markOffline);
     window.addEventListener('beforeunload', markOffline);
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) window.location.reload();
+    });
 
     startHeartbeat();
 })();

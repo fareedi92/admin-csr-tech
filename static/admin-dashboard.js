@@ -200,6 +200,7 @@
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Admin-Page': currentPage,
+                    'X-Portal': 'admin',
                     ...(options.headers || {})
                 },
                 ...options
@@ -492,23 +493,20 @@
                 { key: 'resolved_yesterday', label: 'Yesterday', color: '#10b981' },
                 { key: 'open_chats', label: 'Open Chats', color: '#f59e0b' }
             ];
-            if (!rows.length) {
+            const chartRows = rows.filter((row) => metrics.some((metric) => Number(row[metric.key] || 0) > 0));
+            if (!chartRows.length) {
                 drawChartEmptyState(ctx, w, h, 'No resolution data yet', 'CSR activity will appear here once chats are handled.');
                 return;
             }
 
-            const maxValue = Math.max(...rows.flatMap((row) => metrics.map((metric) => Number(row[metric.key] || 0))));
-            if (!maxValue) {
-                drawChartEmptyState(ctx, w, h, 'No comparable workload yet', 'No CSR has resolved or opened chats in this reporting window.');
-                return;
-            }
+            const maxValue = Math.max(...chartRows.flatMap((row) => metrics.map((metric) => Number(row[metric.key] || 0))));
 
             const compact = w < 760;
             const legendRowHeight = compact ? 22 : 0;
             const padding = { top: compact ? 60 : 42, right: 18, bottom: 38, left: 44 };
             const chartWidth = w - padding.left - padding.right;
             const slotPx = 108;
-            const plotWidth = Math.min(chartWidth, Math.max(200, rows.length * slotPx));
+            const plotWidth = Math.min(chartWidth, Math.max(200, chartRows.length * slotPx));
             const plotLeft = padding.left + (chartWidth - plotWidth) / 2;
             const chartHeight = h - padding.top - padding.bottom;
             const scaleMax = getScaleMax(maxValue);
@@ -544,7 +542,7 @@
                 ctx.fillText(Number.isInteger(value) ? String(value) : value.toFixed(1), padding.left - 8, y);
             }
 
-            const groupWidth = plotWidth / rows.length;
+            const groupWidth = plotWidth / chartRows.length;
             const groupGap = Math.max(12, groupWidth * 0.12);
             const availableBarWidth = Math.max(30, groupWidth - groupGap);
             const barGap = Math.max(6, Math.min(10, availableBarWidth * 0.08));
@@ -557,21 +555,9 @@
             ctx.lineTo(plotLeft + plotWidth, padding.top + chartHeight);
             ctx.stroke();
 
-            rows.forEach((row, index) => {
+            chartRows.forEach((row, index) => {
                 const totalBarsWidth = metrics.length * barWidth + (metrics.length - 1) * barGap;
                 const groupStartX = plotLeft + index * groupWidth + (groupWidth - totalBarsWidth) / 2;
-                const laneX = plotLeft + index * groupWidth + 6;
-                const laneWidth = Math.max(groupWidth - 12, totalBarsWidth + 14);
-
-                fillRoundedRect(
-                    ctx,
-                    laneX,
-                    padding.top + 10,
-                    laneWidth,
-                    chartHeight - 10,
-                    12,
-                    CHART_THEME.lane
-                );
 
                 metrics.forEach((metric, metricIndex) => {
                     const rawValue = Number(row[metric.key] || 0);
@@ -599,6 +585,8 @@
         }
 
         function drawDonutChart(canvas, statusBreakdown) {
+            const compactHeight = canvas.getBoundingClientRect().width < 430;
+            canvas.style.height = `${compactHeight ? 286 : 220}px`;
             const { ctx, w, h } = prepareCanvas(canvas);
             const entries = [
                 { label: 'Queued', value: statusBreakdown.queued || 0, color: '#f59e0b' },
@@ -615,12 +603,12 @@
 
             const compact = w < 430;
             const centerX = compact ? w / 2 : Math.min(132, w * 0.31);
-            const centerY = compact ? 82 : h / 2;
-            const radius = compact ? 48 : Math.min(72, h * 0.29);
-            const ringWidth = Math.max(16, radius * 0.34);
+            const centerY = compact ? 64 : h / 2;
+            const radius = compact ? 44 : Math.min(68, h * 0.29);
+            const ringWidth = Math.max(12, radius * 0.24);
             const segmentRadius = radius - ringWidth / 2;
             const legendX = compact ? 18 : Math.max(228, w * 0.58);
-            const legendStartY = compact ? centerY + radius + 22 : 40;
+            const legendStartY = compact ? 132 : 40;
             let startAngle = -Math.PI / 2;
 
             ctx.beginPath();
@@ -643,10 +631,11 @@
             ctx.textAlign = 'center';
             ctx.fillStyle = CHART_THEME.donutTotal;
             ctx.font = '700 22px Inter';
-            ctx.fillText(String(total), centerX, centerY - 4);
+            ctx.fillText(String(total), centerX, centerY - 8);
             ctx.fillStyle = CHART_THEME.donutSub;
-            ctx.font = '12px Inter';
-            ctx.fillText('Tracked chats', centerX, centerY + 18);
+            ctx.font = '600 10px Inter';
+            ctx.fillText('Tracked', centerX, centerY + 10);
+            ctx.fillText('chats', centerX, centerY + 22);
 
             entries.forEach((entry, index) => {
                 const legendY = legendStartY + index * 34;
@@ -670,50 +659,27 @@
             ctx.textAlign = 'left';
         }
 
-        function renderLeaderboard() {
-            const container = document.getElementById('leaderboard-list');
-            const rows = state.dashboard.reports.resolution_leaderboard || [];
-
-            if (!rows.length) {
-                container.innerHTML = '<div class="tiny-note">No CSR resolution activity has been recorded yet.</div>';
-                return;
-            }
-
-            container.innerHTML = rows.map((row) => `
-                <article class="leaderboard-item">
-                    <div class="item-head">
-                        <div>
-                            <div style="font-size:14px;font-weight:800;">${escapeHtml(row.display_name)}</div>
-                            <div class="tiny-note">${escapeHtml(row.email)}</div>
-                        </div>
-                        <span class="badge ${row.is_online ? 'online' : 'offline'}">${row.is_online ? 'Online' : 'Offline'}</span>
-                    </div>
-                    <div class="row" style="margin-top:10px;">
-                        <div class="tiny-note">Today ${row.resolved_today}</div>
-                        <div class="tiny-note">Yesterday ${row.resolved_yesterday}</div>
-                        <div class="tiny-note">Open ${row.open_chats}</div>
-                    </div>
-                    <div class="load-bar"><span style="width:${Math.max(8, Math.min(40, Number(row.open_chats || 0) * 4))}%"></span></div>
-                </article>
-            `).join('');
-
-            drawBarChart(document.getElementById('resolution-chart'), rows);
-        }
-
         function renderCharts(force = false) {
+            renderCsrOverview();
             const signature = buildChartSignature(state.dashboard);
             if (!force && signature && signature === state.chartSignature) {
                 return;
             }
             state.chartSignature = signature;
             drawDonutChart(document.getElementById('status-chart'), state.dashboard.reports.status_breakdown || {});
-            renderLeaderboard();
-            renderCoverageList();
+            drawBarChart(document.getElementById('resolution-chart'), state.dashboard.reports.resolution_leaderboard || []);
         }
 
-        function renderCoverageList() {
-            const container = document.getElementById('coverage-list');
-            const rows = state.dashboard.csr_users || [];
+        function renderCsrOverview() {
+            const container = document.getElementById('csr-overview-list');
+            if (!container) return;
+
+            const rows = [...(state.dashboard.csr_users || [])].sort((left, right) => {
+                if (Boolean(left.is_online) !== Boolean(right.is_online)) return left.is_online ? -1 : 1;
+                const workloadDifference = Number(right.active_chat_count || 0) - Number(left.active_chat_count || 0);
+                if (workloadDifference) return workloadDifference;
+                return String(left.display_name || left.email).localeCompare(String(right.display_name || right.email));
+            });
             const leaderboard = new Map((state.dashboard.reports.resolution_leaderboard || []).map((row) => [row.id, row]));
 
             if (!rows.length) {
@@ -722,19 +688,28 @@
             }
 
             container.innerHTML = rows.map((csr) => {
-                const report = leaderboard.get(csr.id) || { resolved_today: 0 };
-                const activeChats = Number(csr.active_chat_count || 0);
+                const report = leaderboard.get(csr.id) || {};
+                const activeChats = Number(report.open_chats ?? csr.active_chat_count ?? 0);
                 return `
-                    <article class="coverage-row">
-                        <div>
-                            <div class="item-head">
-                                <div class="coverage-name">${escapeHtml(csr.display_name)}</div>
-                                <span class="badge ${csr.is_online ? 'online' : 'offline'}">${csr.is_online ? 'Online' : 'Offline'}</span>
+                    <article class="csr-overview-card">
+                        <div class="csr-overview-head">
+                            <div class="csr-overview-identity">
+                                <div class="csr-overview-name">${escapeHtml(csr.display_name || csr.email)}</div>
+                                <div class="csr-overview-email" title="${escapeHtml(csr.email)}">${escapeHtml(csr.email)}</div>
                             </div>
-                            <div class="tiny-note" style="margin-top:6px;">${csr.is_available ? 'Available' : 'Paused'} · Resolved today ${report.resolved_today || 0}</div>
+                            <span class="badge ${csr.is_online ? 'online' : 'offline'}">${csr.is_online ? 'Online' : 'Offline'}</span>
                         </div>
-                        <div class="coverage-stat">Open ${activeChats}</div>
-                        <div class="coverage-stat">Unlimited</div>
+                        <div class="csr-overview-state">
+                            <span class="availability-badge ${csr.is_available ? 'available' : 'paused'}">
+                                <i class="fa-solid ${csr.is_available ? 'fa-circle-check' : 'fa-circle-pause'}"></i>
+                                ${csr.is_available ? 'Available' : 'Paused'}
+                            </span>
+                        </div>
+                        <div class="csr-overview-metrics">
+                            <div class="csr-metric today"><strong>${Number(report.resolved_today || 0)}</strong><span>Resolved today</span></div>
+                            <div class="csr-metric yesterday"><strong>${Number(report.resolved_yesterday || 0)}</strong><span>Yesterday</span></div>
+                            <div class="csr-metric open"><strong>${activeChats}</strong><span>Open chats</span></div>
+                        </div>
                     </article>
                 `;
             }).join('');
@@ -759,51 +734,81 @@
             list.innerHTML = rows.map((csr) => {
                 const report = leaderboard.get(csr.id) || { resolved_today: 0, resolved_yesterday: 0 };
                 return `
-                    <article class="csr-roster-card rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0 flex-1">
-                                <div class="text-sm font-extrabold text-slate-900 break-words">${escapeHtml(csr.display_name)}</div>
-                                <div class="mt-0.5 text-xs text-slate-500 break-all">${escapeHtml(csr.email)}</div>
+                    <article class="csr-roster-card">
+                        <div class="csr-roster-head">
+                            <div class="csr-roster-identity">
+                                <div class="csr-roster-name">${escapeHtml(csr.display_name || csr.email)}</div>
+                                <div class="csr-roster-email" title="${escapeHtml(csr.email)}">${escapeHtml(csr.email)}</div>
                             </div>
-                            <span class="badge ${csr.is_online ? 'online' : 'offline'} shrink-0">${csr.is_online ? 'Online' : 'Offline'}</span>
+                            <span class="badge ${csr.is_online ? 'online' : 'offline'}">${csr.is_online ? 'Online' : 'Offline'}</span>
                         </div>
-                        <div class="mt-1.5 text-xs text-slate-500">${escapeHtml(formatPresence(csr))}</div>
-                        <div class="mt-3 grid grid-cols-3 gap-2">
-                            <div class="rounded-xl bg-slate-50 border border-slate-100 p-2 min-w-0">
-                                <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Load</div>
-                                <div class="mt-1 flex flex-wrap items-center gap-1">
-                                    <span class="text-sm font-extrabold text-slate-900">${csr.active_chat_count}</span>
-                                    <span class="badge unlimited">Unlimited</span>
-                                </div>
-                                <div class="mt-1 text-xs text-slate-500">${csr.is_available ? 'Available' : 'Paused'}</div>
+                        <div class="csr-roster-presence">${escapeHtml(formatPresence(csr))}</div>
+                        <div class="csr-roster-metrics">
+                            <div class="csr-roster-metric load">
+                                <span>Open chats</span>
+                                <strong>${csr.active_chat_count}</strong>
+                                <small>Current workload</small>
                             </div>
-                            <div class="rounded-xl bg-slate-50 border border-slate-100 p-2 min-w-0">
-                                <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Today</div>
-                                <div class="mt-1 text-sm font-extrabold text-slate-900">${report.resolved_today}</div>
-                                <div class="mt-1 text-xs text-slate-500">Resolved</div>
+                            <div class="csr-roster-metric today">
+                                <span>Resolved today</span>
+                                <strong>${report.resolved_today}</strong>
+                                <small>Since midnight</small>
                             </div>
-                            <div class="rounded-xl bg-slate-50 border border-slate-100 p-2 min-w-0">
-                                <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Yesterday</div>
-                                <div class="mt-1 text-sm font-extrabold text-slate-900">${report.resolved_yesterday}</div>
-                                <div class="mt-1 text-xs text-slate-500">Resolved</div>
+                            <div class="csr-roster-metric yesterday">
+                                <span>Resolved yesterday</span>
+                                <strong>${report.resolved_yesterday}</strong>
+                                <small>Previous day</small>
                             </div>
                         </div>
-                        <form class="settings-form mt-3 flex flex-wrap items-center gap-2" data-csr-id="${csr.id}">
-                            <label class="checkbox-row">
+                        <form class="settings-form csr-roster-actions" data-csr-id="${csr.id}">
+                            <label class="availability-control">
                                 <input type="checkbox" name="is_available" ${csr.is_available ? 'checked' : ''}>
-                                <span>Available</span>
+                                <span>Available for assignments</span>
                             </label>
-                            <button class="mini-btn primary" type="submit">Save</button>
+                            <div class="csr-save-group">
+                                <span class="csr-save-status" role="status" aria-live="polite"></span>
+                                <button class="mini-btn csr-password-reset-toggle" type="button" aria-expanded="false"><i class="fa-solid fa-key"></i> <span>Reset password</span></button>
+                                <button class="mini-btn primary csr-save-btn" type="submit"><i class="fa-solid fa-check"></i> <span>Save</span></button>
+                            </div>
                         </form>
+                        <div class="csr-password-reset" hidden>
+                            <label for="csr-password-${csr.id}">New password</label>
+                            <div class="csr-password-reset-fields">
+                                <input class="input" id="csr-password-${csr.id}" type="password" minlength="6" autocomplete="new-password" placeholder="At least 6 characters">
+                                <button class="mini-btn primary csr-password-update" type="button" data-csr-id="${csr.id}"><i class="fa-solid fa-key"></i> Update password</button>
+                            </div>
+                            <span class="csr-password-reset-status" role="status" aria-live="polite"></span>
+                        </div>
                     </article>
                 `;
             }).join('');
 
             list.querySelectorAll('.settings-form').forEach((form) => {
+                const checkbox = form.querySelector('input[name="is_available"]');
+                const saveButton = form.querySelector('.csr-save-btn');
+                const saveButtonIcon = saveButton.querySelector('i');
+                const saveButtonLabel = saveButton.querySelector('span');
+                const saveStatus = form.querySelector('.csr-save-status');
+
+                checkbox.addEventListener('change', () => {
+                    form.classList.add('is-dirty');
+                    saveButton.classList.remove('is-saved');
+                    saveButtonIcon.className = 'fa-solid fa-check';
+                    saveStatus.className = 'csr-save-status pending';
+                    saveStatus.textContent = 'Unsaved';
+                    saveButtonLabel.textContent = 'Save changes';
+                });
+
                 form.addEventListener('submit', async (event) => {
                     event.preventDefault();
                     const csrId = form.dataset.csrId;
-                    const isAvailable = form.querySelector('input[name="is_available"]').checked;
+                    const isAvailable = checkbox.checked;
+                    saveButton.disabled = true;
+                    saveButton.classList.add('is-saving');
+                    saveButtonIcon.className = 'fa-solid fa-spinner';
+                    saveButtonLabel.textContent = 'Saving...';
+                    saveStatus.className = 'csr-save-status saving';
+                    saveStatus.textContent = 'Saving';
                     try {
                         const response = await requestJson(`/api/csrs/${csrId}/settings`, {
                             method: 'POST',
@@ -813,12 +818,112 @@
                         });
                         state.dashboard = response.dashboard;
                         renderCurrentPage();
-                        showBanner('CSR settings updated.', 'success');
+                        const updatedForm = list.querySelector(`.csr-roster-actions[data-csr-id="${csrId}"]`);
+                        if (updatedForm) {
+                            const updatedStatus = updatedForm.querySelector('.csr-save-status');
+                            const updatedButton = updatedForm.querySelector('.csr-save-btn');
+                            const updatedButtonIcon = updatedButton.querySelector('i');
+                            const updatedButtonLabel = updatedButton.querySelector('span');
+                            updatedButton.classList.add('is-saved');
+                            updatedButton.disabled = false;
+                            updatedButtonIcon.className = 'fa-solid fa-circle-check';
+                            updatedStatus.className = 'csr-save-status saved';
+                            updatedStatus.textContent = 'Saved';
+                            updatedButtonLabel.textContent = 'Saved';
+                        }
+                        showBanner(response.message || 'CSR settings updated.', 'success');
                     } catch (error) {
+                        saveButton.disabled = false;
+                        saveButton.classList.remove('is-saving');
+                        saveButtonIcon.className = 'fa-solid fa-triangle-exclamation';
+                        saveButtonLabel.textContent = 'Try again';
+                        saveStatus.className = 'csr-save-status error';
+                        saveStatus.textContent = error.message;
                         showBanner(error.message, 'error');
                     }
                 });
             });
+
+            list.querySelectorAll('.csr-password-reset-toggle').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const card = button.closest('.csr-roster-card');
+                    const resetPanel = card.querySelector('.csr-password-reset');
+                    const willOpen = resetPanel.hidden;
+                    resetPanel.hidden = !willOpen;
+                    button.setAttribute('aria-expanded', String(willOpen));
+                    button.querySelector('span').textContent = willOpen ? 'Cancel reset' : 'Reset password';
+                    if (willOpen) card.querySelector('.csr-password-reset input').focus();
+                });
+            });
+
+            list.querySelectorAll('.csr-password-update').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const card = button.closest('.csr-roster-card');
+                    const input = card.querySelector('.csr-password-reset input');
+                    const status = card.querySelector('.csr-password-reset-status');
+                    const password = input.value;
+                    if (password.length < 6) {
+                        status.className = 'csr-password-reset-status error';
+                        status.textContent = 'Use at least 6 characters.';
+                        input.focus();
+                        return;
+                    }
+
+                    button.disabled = true;
+                    button.classList.add('is-saving');
+                    const original = button.innerHTML;
+                    button.innerHTML = '<i class="fa-solid fa-spinner"></i> Updating...';
+                    status.className = 'csr-password-reset-status';
+                    status.textContent = '';
+                    try {
+                        const response = await requestJson(`/api/csrs/${button.dataset.csrId}/password`, {
+                            method: 'POST',
+                            body: JSON.stringify({ password })
+                        });
+                        input.value = '';
+                        status.className = 'csr-password-reset-status success';
+                        status.textContent = 'Password updated.';
+                        showBanner(response.message || 'CSR password updated.', 'success');
+                        window.setTimeout(() => {
+                            const resetPanel = card.querySelector('.csr-password-reset');
+                            const toggle = card.querySelector('.csr-password-reset-toggle');
+                            if (!resetPanel || !toggle) return;
+                            resetPanel.hidden = true;
+                            toggle.setAttribute('aria-expanded', 'false');
+                            toggle.querySelector('span').textContent = 'Reset password';
+                        }, 1800);
+                    } catch (error) {
+                        status.className = 'csr-password-reset-status error';
+                        status.textContent = error.message;
+                        showBanner(error.message, 'error');
+                    } finally {
+                        button.disabled = false;
+                        button.classList.remove('is-saving');
+                        button.innerHTML = original;
+                    }
+                });
+            });
+        }
+
+        function chatStatusBadgeClass(status) {
+            const normalized = String(status || '').toLowerCase();
+            if (normalized === 'queued') return 'queued';
+            if (normalized === 'assigned') return 'assigned';
+            if (normalized === 'in_progress') return 'in-progress';
+            if (normalized === 'resolved') return 'resolved';
+            if (normalized === 'closed') return 'closed';
+            return 'neutral';
+        }
+
+        function chatStatusLabel(status) {
+            const labels = {
+                queued: 'Queued',
+                assigned: 'Assigned',
+                in_progress: 'In Progress',
+                resolved: 'Resolved',
+                closed: 'Closed',
+            };
+            return labels[String(status || '').toLowerCase()] || String(status || 'Unknown').replaceAll('_', ' ');
         }
 
         function renderChatTable() {
@@ -841,16 +946,16 @@
                 <tr class="${state.selectedChatId === chat.id ? 'is-selected' : ''}">
                     <td data-label="Customer">
                         <strong>${escapeHtml(chat.customer_name || chat.visitor_id)}</strong><br>
-                        <span class="cell-subtle">${escapeHtml(chat.visitor_id)}</span>
+                        <span class="cell-subtle chat-id" title="${escapeHtml(chat.visitor_id)}">${escapeHtml(chat.visitor_id)}</span>
                     </td>
-                    <td data-label="Status">${escapeHtml(chat.status.replace('_', ' '))}</td>
-                    <td data-label="Assigned">${escapeHtml(chat.assigned_label || 'Waiting queue')}</td>
-                    <td data-label="Messages">${chat.message_count}</td>
+                    <td data-label="Status"><span class="chat-badge status-badge ${chatStatusBadgeClass(chat.status)}" title="${escapeHtml(chatStatusLabel(chat.status))}">${escapeHtml(chatStatusLabel(chat.status))}</span></td>
+                    <td data-label="Assigned"><span class="chat-badge ${chat.assigned_label ? 'assigned' : 'waiting'}" title="${escapeHtml(chat.assigned_label || 'Waiting queue')}">${escapeHtml(chat.assigned_label || 'Waiting queue')}</span></td>
+                    <td data-label="Messages"><span class="chat-badge count">${chat.message_count}</span></td>
                     <td data-label="Last Activity">
                         ${escapeHtml(formatRelative(chat.last_activity_at))}<br>
                         <span class="cell-subtle">${escapeHtml(formatDateTime(chat.last_activity_at))}</span>
                     </td>
-                    <td data-label="Preview">${escapeHtml(chat.last_customer_message || chat.preview || 'No customer message yet.')}</td>
+                    <td data-label="Preview" title="${escapeHtml(chat.last_customer_message || chat.preview || 'No customer message yet.')}">${escapeHtml(chat.last_customer_message || chat.preview || 'No customer message yet.')}</td>
                     <td data-label="Actions">
                         <div class="action-row">
                             <button class="mini-btn" type="button" data-view-chat="${chat.id}">View</button>
@@ -973,13 +1078,20 @@
                 `;
             }
 
-            return messages.map((message) => `
+            return messages.map((message) => {
+                const senderLabel = message.sender_type === 'user'
+                    ? 'Customer'
+                    : message.sender_type === 'csr'
+                        ? 'CSR'
+                        : String(message.sender_type || 'System').replaceAll('_', ' ');
+                return `
                 <div class="message ${escapeHtml(message.sender_type)}">
-                    <div class="message-label">${escapeHtml(message.sender_type.toUpperCase())}</div>
+                    <div class="message-label">${escapeHtml(senderLabel)}</div>
                     <div class="message-bubble">${escapeHtml(message.content)}</div>
                     <div class="message-time">${escapeHtml(formatDateTime(message.created_at))}</div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         function renderEvents(events) {
@@ -1040,26 +1152,26 @@
             }
 
             detailTitle.textContent = chat.customer_name || chat.visitor_id;
-            detailSubtitle.textContent = `${chat.visitor_id} · ${chat.message_count} messages · ${chat.status.replace('_', ' ')}`;
+            detailSubtitle.textContent = `${chat.visitor_id} · ${chat.message_count} messages · ${chatStatusLabel(chat.status)}`;
             detailActions.innerHTML = `
                 <button class="mini-btn danger" id="detail-delete-btn" type="button">Delete Chat</button>
             `;
             detailGrid.innerHTML = `
                 <div class="chat-meta-card">
                     <div class="meta-label">Status</div>
-                    <div class="meta-value">${escapeHtml(chat.status.replace('_', ' '))}</div>
+                    <div class="meta-value meta-value--single-line" title="${escapeHtml(chatStatusLabel(chat.status))}">${escapeHtml(chatStatusLabel(chat.status))}</div>
                 </div>
                 <div class="chat-meta-card">
                     <div class="meta-label">Assigned CSR</div>
-                    <div class="meta-value">${escapeHtml(chat.assigned_label || 'Waiting queue')}</div>
+                    <div class="meta-value meta-value--single-line" title="${escapeHtml(chat.assigned_label || 'Waiting queue')}">${escapeHtml(chat.assigned_label || 'Waiting queue')}</div>
                 </div>
                 <div class="chat-meta-card">
                     <div class="meta-label">Customer Email</div>
-                    <div class="meta-value">${escapeHtml(chat.customer_email || 'Not available')}</div>
+                    <div class="meta-value" title="${escapeHtml(chat.customer_email || 'Not available')}">${escapeHtml(chat.customer_email || 'Not available')}</div>
                 </div>
                 <div class="chat-meta-card">
                     <div class="meta-label">Last Activity</div>
-                    <div class="meta-value">${escapeHtml(formatDateTime(chat.last_activity_at))}</div>
+                    <div class="meta-value" title="${escapeHtml(formatDateTime(chat.last_activity_at))}">${escapeHtml(formatDateTime(chat.last_activity_at))}</div>
                 </div>
             `;
             messagesPanel.innerHTML = renderMessages(state.selectedMessages);
@@ -1447,6 +1559,7 @@
             if (shouldAutoPoll) {
                 const pollMs = currentPage === 'chats-active' ? 12000 : 20000;
                 refreshInterval = schedulePoll(() => {
+                    if (currentPage === 'team' && document.querySelector('.csr-roster-actions.is-dirty')) return;
                     refreshDashboard(currentPage === 'chats-active' && Boolean(state.selectedChatId)).catch(() => {});
                 }, pollMs);
             }
@@ -1616,10 +1729,21 @@
             const ticketBody = document.getElementById('admin-ticket-table-body');
             if (ticketBody) ticketBody.innerHTML = '<tr><td colspan="10" class="tiny-note" style="padding:24px;">Loading tickets...</td></tr>';
             try {
-                const lifecycle = getTicketLifecycle();
                 const statusFilter = document.getElementById('admin-ticket-status-filter')?.value || 'all';
+                const lifecycle = getTicketLifecycle();
+                // The Current page normally scopes "All statuses" to active
+                // work. If an administrator explicitly chooses a resolved
+                // status there, request the completed scope as well so the
+                // selected closed record is never filtered out by the page
+                // lifecycle.
+                const selectedStatus = adminTicketStatuses.find((status) => status.name === statusFilter);
+                const requestLifecycle = lifecycle === 'current'
+                    && statusFilter !== 'all'
+                    && (statusFilter === 'closed' || statusFilter === 'resolved' || selectedStatus?.is_resolved)
+                    ? 'old'
+                    : lifecycle;
                 const params = new URLSearchParams({
-                    lifecycle,
+                    lifecycle: requestLifecycle,
                     include_stats: '0',
                     include_workload: '0',
                 });
@@ -1837,7 +1961,7 @@
                 requestJson(`/api/admin/tech-accounts/${id}`, { method: 'DELETE' })
                     .then(data => {
                         if (data.success) {
-                            showBanner('Technical team member deleted.', 'success');
+                            showBanner(data.message || 'Technical team member deleted.', 'success');
                             loadTechData();
                         } else {
                             showBanner(data.error || 'Failed to delete member', 'error');

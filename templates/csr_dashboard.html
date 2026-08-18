@@ -9,13 +9,33 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="{{ url_for('static', filename='dashboard-theme.js') }}"></script>
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
         * { font-family: 'Inter', sans-serif; }
-        .col-panel { display: none; }
+        html, body, #app { width: 100%; max-width: 100%; overflow-x: hidden; }
+        #view-workspace, .col-panel, .col-panel > * { min-width: 0; }
+        .col-panel { display: none; max-width: 100%; }
         @media (min-width: 1024px) { .col-panel { display: flex !important; } }
         .col-panel.active { display: flex; }
-        .chat-scroll::-webkit-scrollbar { width: 5px; }
-        .chat-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
-        .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+        .chat-scroll { overflow-x: hidden; scrollbar-width: auto; scrollbar-color: #94a3b8 #f1f5f9; }
+        .chat-scroll::-webkit-scrollbar { width: 10px; }
+        .chat-scroll::-webkit-scrollbar-thumb { background: #94a3b8; border: 2px solid #f1f5f9; border-radius: 999px; }
+        .chat-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .chat-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 999px; }
+        #closed-pagination { min-height: 52px; gap: 10px; }
+        #closed-page-info { color: #475569; font-weight: 600; white-space: nowrap; }
+        #closed-pagination button { display: inline-flex; align-items: center; justify-content: center; min-width: 58px; min-height: 34px; border-radius: 8px; font-weight: 700; transition: background-color .15s ease, border-color .15s ease, color .15s ease; }
+        #closed-prev { color: #334155; background: #fff; }
+        #closed-prev:hover:not(:disabled) { border-color: #94a3b8; background: #f8fafc; }
+        #closed-next { color: #111827; border-color: #facc15 !important; background: #facc15; box-shadow: 0 1px 2px rgba(161, 98, 7, .16); }
+        #closed-next:hover:not(:disabled) { background: #eab308; border-color: #eab308 !important; }
+        #closed-pagination button:disabled { cursor: not-allowed; opacity: .4; }
+        #chat-bucket-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+        #chat-bucket-tabs .chat-tab { display: inline-flex; min-width: 0; align-items: center; justify-content: center; gap: 3px; padding: 7px 5px; text-align: center; white-space: nowrap; }
+        #ticket-filter-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+        #ticket-filter-tabs .tkt-tab { display: inline-flex; min-width: 0; align-items: center; justify-content: center; gap: 3px; padding: 7px 5px; text-align: center; white-space: nowrap; }
+        .archive-count-badge { display: inline-flex; min-width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 9999px; border: 1px solid #facc15; background: #fef3c7; color: #92400e; font-size: 10px; font-weight: 800; line-height: 1; }
+        @media (min-width: 440px) { #ticket-filter-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
         .msg-row { display: flex; width: 100%; animation: slideUp 0.18s ease-out; }
         .msg-row--out { justify-content: flex-end; }
@@ -47,9 +67,18 @@
         .msg-stack { display: flex; flex-direction: column; gap: 10px; }
         @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+        .chat-card, .ticket-card { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; }
         .chat-card { transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background-color .15s ease; }
         .chat-card:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(15, 23, 42, .08); }
         .chat-card:active { transform: translateY(0); }
+        #reply-form, #reply-form textarea, #ticket-chat-input { min-width: 0; }
+        .customer-data {
+            max-width: 100%;
+            overflow-x: hidden;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
         /* Archive collapse animation */
         #view-workspace { transition: grid-template-columns 0.3s ease; }
         #col-archive { transition: opacity 0.25s ease, transform 0.25s ease; transform-origin: right center; }
@@ -111,8 +140,8 @@
         <button type="button" data-col="tech" class="col-tab flex-1 py-2.5 text-xs font-semibold border-b-2 border-transparent text-gray-400">
             <i class="fa-solid fa-wrench mr-1"></i> Tickets
         </button>
-        <button type="button" data-col="archive" class="col-tab flex-1 py-2.5 text-xs font-semibold border-b-2 border-transparent text-gray-400">
-            <i class="fa-solid fa-box-archive mr-1"></i> Archive
+        <button type="button" data-col="archive" class="col-tab inline-flex flex-1 items-center justify-center gap-1 py-2.5 text-xs font-semibold border-b-2 border-transparent text-gray-400">
+            <i class="fa-solid fa-box-archive"></i><span>Archive</span><span id="archive-tab-count" class="archive-count-badge">0</span>
         </button>
     </div>
 
@@ -126,11 +155,12 @@
                     <span class="w-6 h-6 rounded-md bg-yellow-400 flex items-center justify-center text-black text-[10px] font-bold">1</span>
                     <h2 class="text-sm font-bold text-black">Customer Chats</h2>
                 </div>
+                <span id="customer-chat-count" class="inline-flex min-h-7 items-center rounded-full border border-amber-300 bg-amber-100 px-2.5 text-[11px] font-extrabold text-amber-900 shadow-sm">0 chats</span>
             </div>
 
             <!-- Chat List View -->
             <div id="user-list-view" class="flex-1 flex flex-col min-h-0 overflow-hidden">
-                <div class="flex-shrink-0 px-3 py-2 border-b border-gray-100 flex gap-1.5">
+                <div id="chat-bucket-tabs" class="flex-shrink-0 px-3 py-2 border-b border-gray-100">
                     <button type="button" id="tab-btn-queued" onclick="setChatBucket('queued')" class="chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
                         New <span id="bucket-queued-count" class="ml-0.5 opacity-80">0</span>
                     </button>
@@ -190,7 +220,7 @@
             <!-- Ticket List View -->
             <div id="ticket-list-view" class="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <!-- Ticket filter tabs -->
-                <div class="flex-shrink-0 px-3 py-2 border-b border-gray-100 flex gap-1.5 flex-wrap">
+                <div id="ticket-filter-tabs" class="flex-shrink-0 px-3 py-2 border-b border-gray-100">
                     <button type="button" onclick="setTicketFilter('all')" id="tkt-tab-all" class="tkt-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
                         All <span id="tkt-count-all" class="ml-0.5 opacity-70">0</span>
                     </button>
@@ -240,6 +270,7 @@
         <!-- ──── ARCHIVE MINI STRIP (shown when collapsed, hidden by default) ──── -->
         <div id="archive-mini" style="display:none" class="flex-col items-center justify-start py-3 px-1.5 bg-white rounded-xl border border-gray-200 cursor-pointer hover:bg-yellow-50 hover:border-yellow-300 transition-all gap-2 flex-shrink-0" onclick="toggleArchive()">
             <i class="fa-solid fa-box-archive text-gray-400 text-sm"></i>
+            <span id="archive-mini-count" class="archive-count-badge">0</span>
             <span class="text-[10px] text-gray-500 font-semibold [writing-mode:vertical-lr] tracking-wider">ARCHIVE</span>
             <i class="fa-solid fa-chevron-left text-gray-300 text-[10px] mt-auto"></i>
         </div>
@@ -252,6 +283,7 @@
                     <h2 class="text-sm font-bold text-black">Archive</h2>
                 </div>
                 <div class="flex items-center gap-2">
+                    <span id="archive-header-count" class="archive-count-badge">0</span>
                     <button type="button" id="archive-collapse-btn" onclick="toggleArchive()" class="hidden lg:flex w-6 h-6 items-center justify-center rounded-md hover:bg-gray-200 text-gray-400 transition-colors" title="Minimize archive">
                         <i class="fa-solid fa-chevron-right text-[10px]"></i>
                     </button>
@@ -265,9 +297,9 @@
                 </div>
                 <div id="closed-pagination" class="flex-shrink-0 border-t border-gray-200 px-3 py-2 flex items-center justify-between bg-white">
                     <span id="closed-page-info" class="text-[11px] text-gray-400"></span>
-                    <div class="flex gap-1.5">
-                        <button type="button" id="closed-prev" class="px-2.5 py-1 rounded-md border border-gray-200 text-[11px] font-medium hover:bg-gray-50 disabled:opacity-30">Prev</button>
-                        <button type="button" id="closed-next" class="px-2.5 py-1 rounded-md border border-gray-200 text-[11px] font-medium hover:bg-gray-50 disabled:opacity-30">Next</button>
+                    <div class="flex items-center gap-2">
+                        <button type="button" id="closed-prev" class="border border-gray-300 px-3 text-[11px]" aria-label="Previous archive page"><i class="fa-solid fa-chevron-left mr-1 text-[9px]"></i>Prev</button>
+                        <button type="button" id="closed-next" class="border px-3 text-[11px]" aria-label="Next archive page">Next<i class="fa-solid fa-chevron-right ml-1 text-[9px]"></i></button>
                     </div>
                 </div>
             </div>
@@ -344,7 +376,7 @@
                 <div class="font-semibold text-black mt-0.5">{{ user.email if user else '—' }}</div>
             </div>
         </div>
-        <a href="/logout" id="csr-logout-link" class="mt-4 flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm font-semibold hover:bg-red-100 transition-colors">
+        <a href="{{ url_for('csr_logout') }}" id="csr-logout-link" class="mt-4 flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm font-semibold hover:bg-red-100 transition-colors">
             <i class="fa-solid fa-right-from-bracket"></i> Log out
         </a>
     </div>
@@ -417,6 +449,11 @@ function parseServerDate(v) {
     const d = new Date(raw);
     return Number.isNaN(d.getTime()) ? null : d;
 }
+const viewerLocale = navigator.languages?.[0] || navigator.language || undefined;
+const viewerTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+function localDateOptions(options) {
+    return { ...options, timeZone: viewerTimeZone };
+}
 function formatDateTime(v, { withSeconds = false } = {}) {
     const d = parseServerDate(v);
     if (!d) return v || '';
@@ -429,21 +466,21 @@ function formatDateTime(v, { withSeconds = false } = {}) {
         timeZoneName: 'short'
     };
     if (withSeconds) opts.second = '2-digit';
-    return d.toLocaleString(undefined, opts);
+    return d.toLocaleString(viewerLocale, localDateOptions(opts));
 }
 function formatMessageTime(v) {
     const d = parseServerDate(v);
     if (!d) return '';
     const now = new Date();
     if (d.toDateString() === now.toDateString()) {
-        return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        return d.toLocaleTimeString(viewerLocale, localDateOptions({ hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }));
     }
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     if (d.toDateString() === yesterday.toDateString()) {
-        return `Yesterday ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+        return `Yesterday ${d.toLocaleTimeString(viewerLocale, localDateOptions({ hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }))}`;
     }
-    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return d.toLocaleString(viewerLocale, localDateOptions({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }));
 }
 function formatRelative(v) {
     const d = parseServerDate(v);
@@ -484,7 +521,7 @@ function showBanner(msg, tone = 'success') {
     flashTimer = setTimeout(() => { flashBanner.className = 'hidden flex-shrink-0'; }, 3500);
 }
 async function requestJson(url, options = {}) {
-    const res = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
+    const res = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Portal': 'csr', ...(options.headers || {}) }, ...options });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {
         const err = new Error(payload.error || payload.message || 'Request failed');
@@ -738,14 +775,14 @@ function renderOtherChatList(container, minuteTick = Math.floor(Date.now() / 600
 // ═══════════════════════════════════════════════════════════
 // TICKET FILTER TABS
 // ═══════════════════════════════════════════════════════════
-const TKT_ACTIVE = { all: 'bg-blue-500 text-white', unclaimed: 'bg-orange-500 text-white', in_progress: 'bg-yellow-400 text-black', closed: 'bg-gray-600 text-white' };
+const TKT_ACTIVE = { all: 'bg-blue-500 text-white', unclaimed: 'bg-blue-500 text-white', in_progress: 'bg-blue-500 text-white', closed: 'bg-blue-500 text-white' };
 const TKT_INACTIVE = 'bg-gray-100 text-gray-500 hover:bg-gray-200';
 
 function setTicketFilter(filter) {
     state.ticketFilter = filter;
     ['all', 'unclaimed', 'in_progress', 'closed'].forEach(f => {
         const btn = document.getElementById('tkt-tab-' + f);
-        if (btn) btn.className = `tkt-tab px-3 py-1 rounded-full text-xs font-semibold transition-all ${f === filter ? TKT_ACTIVE[f] : TKT_INACTIVE}`;
+        if (btn) btn.className = `tkt-tab rounded-full text-xs font-semibold transition-all ${f === filter ? TKT_ACTIVE[f] : TKT_INACTIVE}`;
     });
     renderTicketSection();
     saveWorkspaceState();
@@ -822,6 +859,8 @@ function updateTechColHint() {
 function renderSummary() {
     const s = state.dashboard.summary;
     updateChatBucketCounts();
+    const chatCount = document.getElementById('customer-chat-count');
+    if (chatCount) chatCount.textContent = `${s.active_chats ?? 0} chats`;
     const statCsrs = document.getElementById('stat-csrs');
     if (statCsrs) statCsrs.textContent = s.available_csrs;
     const rp = document.getElementById('relay-pill');
@@ -856,7 +895,7 @@ function chatCardShortTime(chat, archive) {
     if (!d) return '';
     const diff = Date.now() - d.getTime();
     if (diff >= 0 && diff < 86400000) return formatRelative(when);
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return d.toLocaleDateString(viewerLocale, localDateOptions({ month: 'short', day: 'numeric' }));
 }
 
 // Fields that, when changed, require the list DOM to update.
@@ -970,6 +1009,11 @@ async function loadClosedChats(page, { background = false } = {}) {
         const payload = await requestJson(`/api/csr/chats/resolved?page=${page}&per_page=20`);
         state.closedChats = payload.chats || [];
         state.closedPagination = payload.pagination || state.closedPagination;
+        const archiveTotal = Number(state.closedPagination.total || 0);
+        ['archive-tab-count', 'archive-mini-count', 'archive-header-count'].forEach((id) => {
+            const badge = document.getElementById(id);
+            if (badge) badge.textContent = String(archiveTotal);
+        });
         document.getElementById('closed-page-info').textContent = state.closedPagination.total ? `Page ${state.closedPagination.page}/${state.closedPagination.total_pages}` : 'No chats';
         document.getElementById('closed-prev').disabled = !state.closedPagination.has_prev;
         document.getElementById('closed-next').disabled = !state.closedPagination.has_next;
@@ -1197,7 +1241,7 @@ function renderWorkspace() {
     const authDebug = chat.auth_mode === 'authenticated' && chat.authenticated_user_data
         ? `<div class="flex-shrink-0 border-b border-gray-200 p-2.5 bg-blue-50 text-xs text-blue-900">
                 <div class="font-semibold mb-1"><i class="fa-solid fa-id-card mr-1"></i> Authenticated customer</div>
-                <pre class="font-mono text-[10px] bg-white border border-blue-100 rounded p-2 overflow-x-auto">${escapeHtml(chat.authenticated_user_data)}</pre>
+                <pre class="customer-data font-mono text-[10px] bg-white border border-blue-100 rounded p-2">${escapeHtml(chat.authenticated_user_data)}</pre>
            </div>`
         : '';
 
@@ -1213,7 +1257,7 @@ function renderWorkspace() {
                     <i class="fa-solid fa-paper-plane text-xs"></i> Send
                 </button>
             </form>
-        </div>` : `<div class="flex-shrink-0 border-t border-yellow-200 p-2.5 bg-yellow-50 text-xs text-gray-600">${readOnlyNote}</div>`}`;
+        </div>` : `<div class="flex-shrink-0 border-t border-blue-700 bg-gradient-to-r from-blue-700 to-indigo-700 p-3 text-xs font-medium leading-relaxed text-white shadow-[0_-3px_10px_rgba(30,64,175,0.16)]">${readOnlyNote}</div>`}`;
     const mp = document.getElementById('messages-panel');
     if (mp) mp.scrollTop = prevNearBottom ? mp.scrollHeight : Math.min(prevScroll, mp.scrollHeight);
     const rf = document.getElementById('reply-form');
@@ -1426,20 +1470,20 @@ function renderTicketSection() {
                 : '';
 
         return `<button type="button" onclick="openTicketChat(${ticket.id})"
-            class="relative w-full text-left rounded-lg border p-2.5 transition-all ${active ? 'border-blue-400 bg-blue-50' : unread ? 'border-red-500 bg-red-50 border-2' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'}">
+            class="ticket-card relative w-full text-left rounded-lg border p-2.5 transition-all ${active ? 'border-blue-400 bg-blue-50' : unread ? 'border-red-500 bg-red-50 border-2' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'}">
             ${unread ? '<span class="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-sm"></span>' : ''}
             <div class="flex items-center justify-between gap-2 mb-1">
-                <span class="font-mono text-[11px] font-bold text-gray-700">${escapeHtml(ticket.ticket_number || '#'+ticket.id)}</span>
-                <div class="flex items-center gap-1">
+                <span class="min-w-0 truncate font-mono text-[11px] font-bold text-gray-700">${escapeHtml(ticket.ticket_number || '#'+ticket.id)}</span>
+                <div class="flex min-w-0 max-w-[58%] items-center justify-end gap-1">
                     ${bucketBadge}
-                    <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded" style="background:${statusColor}18;color:${statusColor}">${escapeHtml(statusLabel)}</span>
+                    <span class="min-w-0 truncate text-[10px] font-semibold px-1.5 py-0.5 rounded" style="background:${statusColor}18;color:${statusColor}" title="${escapeHtml(statusLabel)}">${escapeHtml(statusLabel)}</span>
                 </div>
             </div>
             <div class="text-sm font-medium text-black line-clamp-1">${escapeHtml(ticket.title)}</div>
             <div class="flex flex-col gap-0.5 mt-1">
-                <span class="text-[11px] text-gray-400"><i class="fa-solid fa-user-gear mr-0.5 text-[9px]"></i>${escapeHtml(techName)}</span>
-                <span class="text-[10px] text-gray-400">${escapeHtml(formatTicketCardTime(ticket))}</span>
-                ${ticket.chat ? `<span class="text-[10px] text-gray-300">${escapeHtml(ticket.chat.customer_name || '')}</span>` : ''}
+                <span class="text-[11px] font-medium text-gray-600"><i class="fa-solid fa-user-gear mr-0.5 text-[9px] text-gray-500"></i>${escapeHtml(techName)}</span>
+                <span class="text-[10px] text-gray-500">${escapeHtml(formatTicketCardTime(ticket))}</span>
+                ${ticket.chat ? `<span class="text-[10px] text-gray-500">${escapeHtml(ticket.chat.customer_name || '')}</span>` : ''}
             </div>
         </button>`;
     }).join('');
@@ -1476,8 +1520,24 @@ function openTicketChat(ticketId) {
     document.getElementById('ticket-chat-input').disabled = false;
     document.getElementById('ticket-chat-input').placeholder = 'Message the tech team…';
     document.getElementById('ticket-chat-send').disabled = false;
-    loadTicketChatMessages();
+    loadTicketChatMessages().catch((err) => {
+        console.warn('Ticket messages could not be loaded:', err);
+        showTicketToast('Could not load ticket messages', 'error');
+    });
     saveWorkspaceState();
+}
+
+async function loadTicketChatMessages() {
+    const ticketId = Number(activeTicketChatId);
+    const container = document.getElementById('ticket-chat-messages');
+    if (!ticketId || !container) return;
+    if (!container.querySelector('.msg-stack')) {
+        container.innerHTML = '<div class="text-center py-8 text-xs text-gray-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading messages…</div>';
+    }
+    const payload = await requestJson(`/api/tickets/${ticketId}/messages`);
+    // Ignore a slower response if the CSR has already opened another ticket.
+    if (Number(activeTicketChatId) !== ticketId) return;
+    renderTicketChatMessages(payload.messages || []);
 }
 
 function renderTicketChatMessages(messages) {
@@ -1550,15 +1610,24 @@ async function sendTicketChatMessage() {
         container.scrollTop = container.scrollHeight;
     }
 
+    let messageSent = false;
     try {
         const resp = await requestJson(`/api/tickets/${activeTicketChatId}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
-        if (resp.success) {
-            await loadTicketChatMessages();
-        }
+        if (!resp.success) throw new Error(resp.error || 'Message could not be sent.');
+        messageSent = true;
+        // Keep the composer empty after the server confirms the write. This
+        // is repeated here (and in finally) so a later refresh cannot restore
+        // the submitted text.
+        input.value = '';
+        // The write has succeeded. Refresh independently so a transient read
+        // failure cannot incorrectly report the already-sent message as failed.
+        showTicketToast('Message sent', 'success');
+        loadTicketChatMessages().catch((err) => console.warn('Ticket message refresh failed:', err));
     } catch (err) {
-        input.value = content;
-        showTicketToast('Send failed', 'error');
+        if (!messageSent) input.value = content;
+        showTicketToast(err.message || 'Send failed', 'error');
     } finally {
+        if (messageSent) input.value = '';
         setTicketSendSending(false, sendBtn, input);
         input.focus();
     }
@@ -1800,6 +1869,9 @@ bindOtherChatControls();
 
     window.addEventListener('pagehide', markOffline);
     window.addEventListener('beforeunload', markOffline);
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) window.location.reload();
+    });
 
     const logoutLink = document.getElementById('csr-logout-link');
     if (logoutLink) {
