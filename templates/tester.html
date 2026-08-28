@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Widget Tester{% endblock %}
+{% block content %}
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-8 shadow-2xl shadow-slate-950/40">
+    <div>
+        <h1 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Widget tester</h1>
+        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-300">Select any business and launch both its chat widget and CSR widget in isolated preview pages.</p>
+    </div>
+</section>
+
+{% if businesses %}
+    <section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+        <form method="get" class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <div>
+                <label class="text-sm font-medium text-slate-200">Business</label>
+                <select name="business_id" onchange="this.form.submit()" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+                    {% for business in businesses %}
+                        <option value="{{ business.id }}" {% if selected_business and selected_business.id == business.id %}selected{% endif %}>{{ business.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if selected_business %}
+                <div class="flex flex-wrap items-center gap-3">
+                    <a href="{{ url_for('business_edit', business_id=selected_business.id) }}" class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-blue-400/40 hover:bg-white/10">Edit business</a>
+                    <a href="{{ url_for('tester_preview', business_id=selected_business.id) }}" class="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-400" target="_blank">Open preview page</a>
+                </div>
+            {% endif %}
+        </form>
+    </section>
+
+    {% if selected_business %}
+        <section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+            <h2 class="text-2xl font-semibold text-white">{{ selected_business.name }} Chat Widget</h2>
+            <p class="mt-2 text-sm text-slate-300">Widget key: <code class="rounded-lg bg-blue-500/10 px-2 py-1 font-mono text-xs text-blue-200">{{ selected_business.widget_key }}</code></p>
+            <iframe
+                title="Widget preview"
+                class="mt-5 min-h-[720px] w-full rounded-3xl border border-white/10 bg-white"
+                src="{{ url_for('tester_preview', business_id=selected_business.id) }}"
+            ></iframe>
+        </section>
+
+        <section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <h2 class="text-2xl font-semibold text-white">{{ selected_business.name }} CSR Widget</h2>
+                    <p class="mt-2 text-sm leading-6 text-slate-300">Launch the CSR dashboard widget integration for this business.</p>
+                </div>
+                <a href="{{ url_for('tester_csr_preview', business_id=selected_business.id) }}" class="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-400" target="_blank">Open CSR preview page</a>
+            </div>
+            <iframe
+                title="CSR widget preview"
+                class="mt-5 min-h-[720px] w-full rounded-3xl border border-white/10 bg-white"
+                src="{{ url_for('tester_csr_preview', business_id=selected_business.id) }}"
+            ></iframe>
+        </section>
+    {% endif %}
+{% else %}
+    <section class="rounded-3xl border border-dashed border-white/10 bg-slate-900/50 px-6 py-12 text-center">
+        <h2 class="text-2xl font-semibold text-white">No active businesses</h2>
+        <p class="mt-2 text-sm text-slate-400">Create a business first, then come back here to launch its bot.</p>
+        <a href="{{ url_for('business_new') }}" class="mt-6 inline-flex items-center justify-center rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-400">Create business</a>
+    </section>
+{% endif %}
+{% endblock %}

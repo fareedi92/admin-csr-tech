@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Database Admin{% endblock %}
+{% block content %}
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-8 shadow-2xl shadow-slate-950/40">
+    <div>
+        <h1 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Database admin</h1>
+        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-300">Inspect the chat widget and CSR widget SQLite databases separately, including schema, row counts, structure, and file details.</p>
+    </div>
+</section>
+
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+    <form method="get" class="grid gap-5 md:max-w-md">
+        <div>
+            <label class="text-sm font-medium text-slate-200">Database instance</label>
+            <select name="db_key" onchange="this.form.submit()" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+                {% for option in database_options %}
+                    <option value="{{ option.key }}" {% if selected_db_key == option.key %}selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+</section>
+
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+    <h2 class="text-2xl font-semibold text-white">Database details</h2>
+    <div class="mt-5 overflow-hidden rounded-2xl border border-white/10">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-white/10 text-sm text-slate-200">
+                <tbody class="divide-y divide-white/10 bg-slate-950/30">
+                <tr>
+                    <th class="w-56 bg-white/5 px-4 py-3 text-left text-xs uppercase tracking-[0.18em] text-slate-400">Driver</th>
+                    <td class="px-4 py-3">{{ database_details.driver }}</td>
+                </tr>
+                <tr>
+                    <th class="w-56 bg-white/5 px-4 py-3 text-left text-xs uppercase tracking-[0.18em] text-slate-400">Database URI</th>
+                    <td class="px-4 py-3"><code class="rounded-lg bg-blue-500/10 px-2 py-1 font-mono text-xs text-blue-200">{{ database_details.uri }}</code></td>
+                </tr>
+                <tr>
+                    <th class="w-56 bg-white/5 px-4 py-3 text-left text-xs uppercase tracking-[0.18em] text-slate-400">Database path</th>
+                    <td class="px-4 py-3"><code class="rounded-lg bg-blue-500/10 px-2 py-1 font-mono text-xs text-blue-200">{{ database_details.database or 'N/A' }}</code></td>
+                </tr>
+                <tr>
+                    <th class="w-56 bg-white/5 px-4 py-3 text-left text-xs uppercase tracking-[0.18em] text-slate-400">File exists</th>
+                    <td class="px-4 py-3">{{ 'Yes' if database_details.file_exists else 'No' }}</td>
+                </tr>
+                <tr>
+                    <th class="w-56 bg-white/5 px-4 py-3 text-left text-xs uppercase tracking-[0.18em] text-slate-400">File size</th>
+                    <td class="px-4 py-3">{{ database_details.file_size_bytes if database_details.file_size_bytes is not none else 'N/A' }}</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+    <div class="mb-6">
+        <div>
+            <h2 class="text-2xl font-semibold text-white">Schema overview</h2>
+            <p class="mt-2 text-sm leading-6 text-slate-300">You can open any table to inspect rows, update data, delete rows, clear the table, or drop it completely.</p>
+        </div>
+    </div>
+
+    {% if table_summaries %}
+        <div class="overflow-hidden rounded-2xl border border-white/10">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-white/10 text-sm text-slate-200">
+                    <thead class="bg-white/5 text-left text-xs uppercase tracking-[0.18em] text-slate-400">
+                    <tr>
+                        <th class="px-4 py-3 font-medium">Table</th>
+                        <th class="px-4 py-3 font-medium">Rows</th>
+                        <th class="px-4 py-3 font-medium">Columns</th>
+                        <th class="px-4 py-3 font-medium">Primary key</th>
+                        <th class="px-4 py-3 font-medium">Foreign keys</th>
+                        <th class="px-4 py-3 font-medium">Indexes</th>
+                        <th class="px-4 py-3 font-medium"></th>
+                    </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/10 bg-slate-950/30">
+                    {% for table in table_summaries %}
+                        <tr>
+                            <td class="px-4 py-4"><code class="rounded-lg bg-blue-500/10 px-2 py-1 font-mono text-xs text-blue-200">{{ table.name }}</code></td>
+                            <td class="px-4 py-4">{{ table.row_count }}</td>
+                            <td class="px-4 py-4">{{ table.columns|length }}</td>
+                            <td class="px-4 py-4">{{ table.primary_key.name if table.primary_key is not none else 'Composite / none' }}</td>
+                            <td class="px-4 py-4">{{ table.foreign_keys|length }}</td>
+                            <td class="px-4 py-4">{{ table.indexes|length }}</td>
+                            <td class="px-4 py-4"><a href="{{ url_for('database_table_detail', table_name=table.name, db_key=selected_db_key) }}" class="font-medium text-blue-300 hover:text-blue-200">Open table</a></td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% else %}
+        <p class="text-sm text-slate-400">No tables found.</p>
+    {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}{{ 'New Business' if is_new else business.name }}{% endblock %}
+{% block content %}
+<section class="flex flex-col gap-4 rounded-3xl border border-white/10 bg-slate-900/70 p-8 shadow-2xl shadow-slate-950/40 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+        <h1 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">{{ 'Create business' if is_new else business.name }}</h1>
+        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-300">Control widget keys, frontend-configurable bot fields, domains, and the n8n webhook target.</p>
+    </div>
+    <a href="{{ url_for('dashboard') }}" class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-blue-400/40 hover:bg-white/10">Back</a>
+</section>
+
+<form method="post" class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+    <div class="mb-8 flex flex-col gap-4 border-b border-white/10 pb-6 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+            <h2 class="text-2xl font-semibold text-white">Business settings</h2>
+            <p class="mt-2 text-sm leading-6 text-slate-300">These values are stored in the database and used by the widget APIs.</p>
+        </div>
+        <label class="inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm font-medium text-slate-200">
+            <input type="checkbox" name="is_active" {% if business.is_active %}checked{% endif %} class="h-4 w-4 rounded border-white/20 bg-slate-900 text-blue-500 focus:ring-blue-400/30">
+            <span>Business active</span>
+        </label>
+    </div>
+
+    <div class="grid gap-5 md:grid-cols-2">
+        <div>
+            <label class="text-sm font-medium text-slate-200">Business name</label>
+            <input type="text" name="name" value="{{ business.name }}" required class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">Phone</label>
+            <input type="text" name="phone" value="{{ business.phone or '' }}" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">Website</label>
+            <input type="text" name="website" value="{{ business.website or '' }}" placeholder="https://example.com" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">Namespace override</label>
+            <input type="text" name="namespace_override" value="{{ business.namespace_override or '' }}" placeholder="Optional custom namespace" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div class="md:col-span-2">
+            <label class="text-sm font-medium text-slate-200">Description</label>
+            <textarea name="description" rows="3" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">{{ business.description or '' }}</textarea>
+        </div>
+        <div class="md:col-span-2">
+            <label class="text-sm font-medium text-slate-200">Authorized domains</label>
+            <textarea name="authorized_domains" rows="3" placeholder="example.com, app.example.com" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">{{ business.authorized_domains or '' }}</textarea>
+        </div>
+    </div>
+
+    <h2 class="mt-10 border-t border-white/10 pt-8 text-2xl font-semibold text-white">Widget frontend fields</h2>
+    <div class="mt-6 grid gap-5 md:grid-cols-2">
+        <div>
+            <label class="text-sm font-medium text-slate-200">Widget title</label>
+            <input type="text" name="widget_title" value="{{ business.widget_title or '' }}" placeholder="{{ business.name }} Support" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">Agent icon URL</label>
+            <input type="text" name="agent_icon" value="{{ business.agent_icon or '' }}" placeholder="https://.../logo.png" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">Primary color</label>
+            <input type="text" name="primary_color" value="{{ business.primary_color or '#5B50E7' }}" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">Button color</label>
+            <input type="text" name="button_color" value="{{ business.button_color or '#5B50E7' }}" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">Header background</label>
+            <input type="text" name="header_background" value="{{ business.header_background or '' }}" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">Background color</label>
+            <input type="text" name="background_color" value="{{ business.background_color or '#121826' }}" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">Message area background</label>
+            <input type="text" name="message_area_bg_color" value="{{ business.message_area_bg_color or '#0d1520' }}" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">API timeout seconds</label>
+            <input type="number" name="api_timeout_seconds" value="{{ business.api_timeout_seconds or 30 }}" min="5" max="120" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div class="md:col-span-2">
+            <label class="text-sm font-medium text-slate-200">Welcome message</label>
+            <textarea name="welcome_message" rows="3" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">{{ business.welcome_message or '' }}</textarea>
+        </div>
+    </div>
+
+    <h2 class="mt-10 border-t border-white/10 pt-8 text-2xl font-semibold text-white">Webhook + API routing</h2>
+    <div class="mt-6 grid gap-5 md:grid-cols-2">
+        <div class="md:col-span-2">
+            <label class="text-sm font-medium text-slate-200">n8n / webhook URL</label>
+            <input type="text" name="n8n_webhook_url" value="{{ default_webhook_url }}" readonly class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-slate-300 outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+            <p class="mt-2 text-xs text-slate-400">All businesses use this fixed bot endpoint.</p>
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">X-Instance-Id header</label>
+            <input type="text" name="n8n_instance_id" value="{{ business.n8n_instance_id or '' }}" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">External CSR API endpoint</label>
+            <input type="text" name="external_csr_api_endpoint" value="{{ business.external_csr_api_endpoint or '' }}" placeholder="https://example.com" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">FLT chatbot verify base URL</label>
+            <input type="text" name="chatbot_verify_base_url" value="{{ business.chatbot_verify_base_url or 'https://beta-tj1.frontlineticketing.com' }}" placeholder="https://beta-tj1.frontlineticketing.com" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+            <p class="mt-2 text-xs text-slate-400">Calls <code>/api/chatbot/verify</code> on this host for authenticated visitors.</p>
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">Chatbot verification service secret</label>
+            <input type="password" name="chatbot_service_secret" value="" autocomplete="new-password" placeholder="{{ 'Configured — leave blank to keep it' if business.chatbot_service_secret else 'Enter X-Service-Secret value' }}" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+            <p class="mt-2 text-xs text-slate-400">Sent as <code>X-Service-Secret</code> server-side only. Never included in widget JavaScript.</p>
+        </div>
+    </div>
+
+    <h2 class="mt-10 border-t border-white/10 pt-8 text-2xl font-semibold text-white">CSR widget fields</h2>
+    <div class="mt-6 grid gap-5 md:grid-cols-2">
+        <div>
+            <label class="text-sm font-medium text-slate-200">CSR widget title</label>
+            <input type="text" name="csr_widget_title" value="{{ csr_business.widget_title if csr_business else '' }}" placeholder="Business CSR Console" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">CSR primary color</label>
+            <input type="text" name="csr_primary_color" value="{{ csr_business.primary_color if csr_business else '#2563EB' }}" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">CSR container ID</label>
+            <input type="text" name="csr_container_id" value="{{ csr_business.container_id if csr_business else 'csr-console' }}" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="mt-7 inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm font-medium text-slate-200">
+                <input type="checkbox" name="csr_auto_activate" {% if csr_business and csr_business.auto_activate %}checked{% endif %} class="h-4 w-4 rounded border-white/20 bg-slate-900 text-blue-500 focus:ring-blue-400/30">
+                <span>CSR auto activate</span>
+            </label>
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">CSR chat-list poll (ms)</label>
+            <input type="number" name="csr_chat_list_poll" value="{{ csr_business.chat_list_poll if csr_business else 5000 }}" min="1000" step="500" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">CSR message poll (ms)</label>
+            <input type="number" name="csr_message_poll" value="{{ csr_business.message_poll if csr_business else 3000 }}" min="1000" step="500" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+    </div>
+
+    <div class="mt-10 flex flex-col gap-3 sm:flex-row">
+        <button type="submit" class="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-400">Save business</button>
+        {% if not is_new %}
+            <a href="{{ url_for('tester', business_id=business.id) }}" class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:border-blue-400/40 hover:bg-white/10">Open tester</a>
+            <a href="{{ url_for('logs_page', business_id=business.id) }}" class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:border-blue-400/40 hover:bg-white/10">View logs</a>
+        {% endif %}
+    </div>
+</form>
+
+{% if not is_new %}
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+    <h2 class="text-2xl font-semibold text-white">Keys</h2>
+    <div class="mt-6 grid gap-6 md:grid-cols-2">
+        <div>
+            <label class="text-sm font-medium text-slate-200">Widget key</label>
+            <textarea rows="3" readonly class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 font-mono text-sm text-blue-200 outline-none">{{ business.widget_key }}</textarea>
+            <form method="post" action="{{ url_for('business_rotate_widget_key', business_id=business.id) }}" class="mt-3">
+                <button type="submit" class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-blue-400/40 hover:bg-white/10">Rotate widget key</button>
+            </form>
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">CSR key</label>
+            <textarea rows="3" readonly class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 font-mono text-sm text-blue-200 outline-none">{{ csr_business.csr_widget_key if csr_business else business.csr_key }}</textarea>
+            <form method="post" action="{{ url_for('business_rotate_csr_key', business_id=business.id) }}" class="mt-3">
+                <button type="submit" class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-blue-400/40 hover:bg-white/10">Rotate CSR key</button>
+            </form>
+        </div>
+    </div>
+</section>
+
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+    <h2 class="text-2xl font-semibold text-white">Chat widget integration</h2>
+    <p class="mt-2 text-sm leading-6 text-slate-300">
+        Set <code class="text-blue-200">auth: { mode, token }</code> before the embed script.
+        Missing token always runs as <strong>anonymous</strong>. Authenticated tokens are verified server-side against FLT
+        (<code class="text-blue-200">/api/chatbot/verify</code>) using the service secret — never put the secret in browser JS.
+    </p>
+
+    <h3 class="mt-8 text-lg font-semibold text-white">Anonymous visitor</h3>
+    <textarea rows="12" readonly class="mt-3 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 font-mono text-sm text-slate-200 outline-none"><script>
+window.AuthenticatedChatWidgetConfig = {
+  auth: {
+    mode: 'anonymous',
+    token: null
+  }
+};
+</script>
+<script src="{{ embed_script_url }}"></script></textarea>
+
+    <h3 class="mt-8 text-lg font-semibold text-white">Authenticated visitor</h3>
+    <textarea rows="13" readonly class="mt-3 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 font-mono text-sm text-slate-200 outline-none"><script>
+window.AuthenticatedChatWidgetConfig = {
+  auth: {
+    mode: 'authenticated',
+    token: 'CHATBOT_TOKEN_FROM_YOUR_APP'
+  }
+};
+</script>
+<script src="{{ embed_script_url }}"></script></textarea>
+
+    <h3 class="mt-8 text-lg font-semibold text-white">Embed URL only</h3>
+    <textarea rows="3" readonly class="mt-3 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 font-mono text-sm text-slate-200 outline-none"><script src="{{ embed_script_url }}"></script></textarea>
+
+    <h3 class="mt-8 text-lg font-semibold text-white">Runtime auth switch (optional)</h3>
+    <textarea rows="10" readonly class="mt-3 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 font-mono text-sm text-slate-200 outline-none"><script>
+// After widget loads:
+AuthenticatedChatWidget.setAuthentication({
+  mode: 'authenticated',
+  token: 'NEW_CHATBOT_TOKEN'
+});
+// or
+AuthenticatedChatWidget.setAuthentication({
+  mode: 'anonymous',
+  token: null
+});
+</script></textarea>
+
+    <h3 class="mt-8 text-lg font-semibold text-white">Advanced full config snippet</h3>
+    <textarea rows="28" readonly class="mt-3 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 font-mono text-sm text-slate-200 outline-none"><script>
+window.AuthenticatedChatWidgetConfig = Object.assign(
+  {{ integration_config | tojson(indent=2) }},
+  {
+    auth: {
+      mode: 'anonymous',
+      token: null
+    }
+  }
+);
+</script>
+<script src="{{ app_base_url }}/widget-assets/authenticated-chat-widget.js"></script></textarea>
+
+    <p class="mt-3 text-sm leading-6 text-slate-400">
+        Widget key for this business:
+        <code class="rounded-lg bg-blue-500/10 px-2 py-1 font-mono text-xs text-blue-200">{{ business.widget_key }}</code>
+    </p>
+</section>
+
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+    <h2 class="text-2xl font-semibold text-white">CSR widget integration</h2>
+    <p class="mt-2 text-sm leading-6 text-slate-300">This uses the CSR widget with its own CSR key and separate CSR SQLite database records.</p>
+    <textarea rows="5" readonly class="mt-4 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 font-mono text-sm text-slate-200 outline-none"><script src="{{ csr_embed_script_url }}"></script></textarea>
+
+    <h3 class="mt-8 text-lg font-semibold text-white">CSR advanced config snippet</h3>
+    <textarea rows="18" readonly class="mt-3 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 font-mono text-sm text-slate-200 outline-none"><div id="{{ csr_integration_config.containerId if csr_integration_config else 'csr-console' }}"></div>
+<script>
+window.CSRDashboardWidgetConfig = {{ csr_integration_config | tojson(indent=2) }};
+</script>
+<script src="{{ app_base_url }}/widget-assets/csr-dashboard-widget.js"></script></textarea>
+
+    <h3 class="mt-8 text-lg font-semibold text-white">CSR full HTML integration example</h3>
+    <textarea rows="28" readonly class="mt-3 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 font-mono text-sm text-slate-200 outline-none"><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ business.name }} CSR Widget</title>
+</head>
+<body>
+  <div id="{{ csr_integration_config.containerId if csr_integration_config else 'csr-console' }}"></div>
+  <script>
+  window.CSRDashboardWidgetConfig = {{ csr_integration_config | tojson(indent=2) }};
+  </script>
+  <script src="{{ app_base_url }}/widget-assets/csr-dashboard-widget.js"></script>
+</body>
+</html></textarea>
+
+    <p class="mt-3 text-sm leading-6 text-slate-400">The CSR widget connection string includes the CSR key, base URL, container ID, poll timing, and CSR styling details.</p>
+</section>
+
+<section class="rounded-3xl border border-rose-500/30 bg-rose-500/10 p-6 shadow-2xl shadow-slate-950/30">
+    <h2 class="text-2xl font-semibold text-rose-100">Danger zone</h2>
+    <p class="mt-2 text-sm leading-6 text-rose-200/90">Deleting the business removes its chat-widget records and CSR-widget records from their separate SQLite databases.</p>
+    <form method="post" action="{{ url_for('business_delete', business_id=business.id) }}" onsubmit="return confirm('Delete this business and all stored data?');">
+        <button type="submit" class="mt-4 inline-flex items-center justify-center rounded-2xl bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-500">Delete business</button>
+    </form>
+</section>
+{% endif %}
+{% endblock %}

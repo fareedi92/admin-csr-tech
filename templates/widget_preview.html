@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ widget.widget_title }} - Preview</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f0f2f5;
+            min-height: 100vh;
+        }
+        .preview-header {
+            max-width: 800px;
+            margin: 0 auto 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .preview-header h1 {
+            margin: 0 0 10px;
+            font-size: 1.5rem;
+        }
+        .preview-header p {
+            margin: 0;
+            color: #666;
+        }
+        .widget-key {
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.875rem;
+            margin-top: 15px;
+            word-break: break-all;
+        }
+        .demo-content {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px;
+            background: white;
+            border-radius: 12px;
+            min-height: 400px;
+        }
+        .demo-content h2 {
+            margin-top: 0;
+        }
+        .demo-content p {
+            color: #666;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-header">
+        <h1>{{ widget.name }} - Preview</h1>
+        <p>This is a live preview of your chat widget. Click the chat bubble to test it.</p>
+        <div class="widget-key">
+            <strong>Widget Key:</strong> {{ widget.widget_key }}
+        </div>
+    </div>
+    
+    <div class="demo-content">
+        <h2>Demo Page Content</h2>
+        <p>This is a sample page to demonstrate how the chat widget appears on a website. The widget is positioned at the bottom-right corner of the page.</p>
+        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+        <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+    </div>
+    
+    <!-- Chat Widget Configuration -->
+    <script>
+        window.AuthenticatedChatWidgetConfig = {
+            widgetKey: '{{ widget.widget_key }}',
+            widgetTitle: '{{ widget.widget_title }}',
+            primaryColor: '{{ widget.primary_color }}',
+            welcomeMessage: '{{ widget.welcome_message }}',
+            auth: {
+                mode: 'anonymous',
+                token: null
+            }
+        };
+    </script>
+    
+    <!-- Load the widget script -->
+    <script src="{{ url_for('serve_widget_js', _external=True) }}"></script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block content %}
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-8 shadow-2xl shadow-slate-950/40">
+    <div>
+        <h1 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Widget logs</h1>
+        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-300">Review all chat sessions plus every widget validation, chat, and poll API call stored in the database.</p>
+    </div>
+</section>
+
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+    <form method="get" class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+        <div>
+            <label class="text-sm font-medium text-slate-200">Business</label>
+            <select name="business_id" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+                <option value="">All businesses</option>
+                {% for business in businesses %}
+                    <option value="{{ business.id }}" {% if selected_business_id == business.id %}selected{% endif %}>{{ business.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="text-sm font-medium text-slate-200">Visitor ID</label>
+            <input type="text" name="visitor_id" value="{{ visitor_id }}" class="mt-2 block w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20">
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+            <button type="submit" class="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-400">Filter</button>
+            <a href="{{ url_for('logs_page') }}" class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-blue-400/40 hover:bg-white/10">Reset</a>
+        </div>
+    </form>
+</section>
+
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+    <h2 class="text-2xl font-semibold text-white">Chat sessions</h2>
+    {% if sessions %}
+        <div class="mt-5 overflow-hidden rounded-2xl border border-white/10">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-white/10 text-sm text-slate-200">
+                    <thead class="bg-white/5 text-left text-xs uppercase tracking-[0.18em] text-slate-400">
+                    <tr>
+                        <th class="px-4 py-3 font-medium">Business</th>
+                        <th class="px-4 py-3 font-medium">Visitor</th>
+                        <th class="px-4 py-3 font-medium">Status</th>
+                        <th class="px-4 py-3 font-medium">User type</th>
+                        <th class="px-4 py-3 font-medium">Updated</th>
+                        <th class="px-4 py-3 font-medium"></th>
+                    </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/10 bg-slate-950/30">
+                    {% for session in sessions %}
+                        <tr>
+                            <td class="px-4 py-4">{{ session.business.name }}</td>
+                            <td class="px-4 py-4"><code class="rounded-lg bg-blue-500/10 px-2 py-1 font-mono text-xs text-blue-200">{{ session.user_identifier }}</code></td>
+                            <td class="px-4 py-4">{{ session.status }}</td>
+                            <td class="px-4 py-4">{{ session.user_type or '-' }}</td>
+                            <td class="px-4 py-4">{{ session.updated_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td class="px-4 py-4"><a href="{{ url_for('session_detail', session_id=session.id) }}" class="font-medium text-blue-300 hover:text-blue-200">Open</a></td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% else %}
+        <p class="mt-4 text-sm text-slate-400">No sessions found for this filter.</p>
+    {% endif %}
+</section>
+
+<section class="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/30">
+    <h2 class="text-2xl font-semibold text-white">API request logs</h2>
+    {% if api_logs %}
+        <div class="mt-5 overflow-hidden rounded-2xl border border-white/10">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-white/10 text-sm text-slate-200">
+                    <thead class="bg-white/5 text-left text-xs uppercase tracking-[0.18em] text-slate-400">
+                    <tr>
+                        <th class="px-4 py-3 font-medium">Time</th>
+                        <th class="px-4 py-3 font-medium">Business</th>
+                        <th class="px-4 py-3 font-medium">Endpoint</th>
+                        <th class="px-4 py-3 font-medium">Visitor</th>
+                        <th class="px-4 py-3 font-medium">Domain</th>
+                        <th class="px-4 py-3 font-medium">Status</th>
+                    </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/10 bg-slate-950/30">
+                    {% for log in api_logs %}
+                        <tr>
+                            <td class="px-4 py-4">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td class="px-4 py-4">{{ log.business.name if log.business else 'Unknown' }}</td>
+                            <td class="px-4 py-4"><code class="rounded-lg bg-blue-500/10 px-2 py-1 font-mono text-xs text-blue-200">{{ log.endpoint }}</code></td>
+                            <td class="px-4 py-4"><code class="rounded-lg bg-slate-800 px-2 py-1 font-mono text-xs text-slate-200">{{ log.visitor_id or '-' }}</code></td>
+                            <td class="px-4 py-4">{{ log.domain or '-' }}</td>
+                            <td class="px-4 py-4">{{ log.status_code }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% else %}
+        <p class="mt-4 text-sm text-slate-400">No API logs found for this filter.</p>
+    {% endif %}
+</section>
+{% endblock %}
