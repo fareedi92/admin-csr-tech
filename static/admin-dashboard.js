@@ -183,6 +183,60 @@
             return reference ? formatLastSeen(reference) : 'No heartbeat yet';
         }
 
+        function applyPresenceSnapshot(payload) {
+            if (!payload) return;
+            const csrMap = new Map((payload.csrs || []).map((row) => [Number(row.id), row]));
+            const techMap = new Map((payload.techs || []).map((row) => [Number(row.id), row]));
+
+            if (state.dashboard && Array.isArray(state.dashboard.csr_users)) {
+                state.dashboard.csr_users.forEach((csr) => {
+                    const snap = csrMap.get(Number(csr.id));
+                    if (!snap) return;
+                    csr.is_online = Boolean(snap.is_online);
+                    csr.last_seen_at = snap.last_seen_at;
+                });
+                state.dashboard.available_csr_users = state.dashboard.csr_users.filter(
+                    (csr) => csr.is_active && csr.is_available && csr.is_online
+                );
+                if (state.dashboard.summary) {
+                    state.dashboard.summary.online_csrs = payload.summary
+                        ? payload.summary.online_csrs
+                        : state.dashboard.csr_users.filter((csr) => csr.is_active && csr.is_online).length;
+                    state.dashboard.summary.available_csrs = payload.summary
+                        ? payload.summary.available_csrs
+                        : state.dashboard.available_csr_users.length;
+                }
+            }
+
+            if (Array.isArray(adminTechMembers) && adminTechMembers.length) {
+                adminTechMembers = adminTechMembers.map((tech) => {
+                    const snap = techMap.get(Number(tech.id));
+                    if (!snap) return tech;
+                    return {
+                        ...tech,
+                        is_online: Boolean(snap.is_online),
+                        last_seen_at: snap.last_seen_at
+                    };
+                });
+            }
+
+            if (currentPage === 'overview' && state.dashboard) {
+                renderSummary();
+                renderCsrOverview();
+            } else if (currentPage === 'team' && state.dashboard) {
+                renderAvailableCsrList();
+                renderCsrTable();
+            } else if (currentPage === 'tech') {
+                renderTechTeamTable(adminTechMembers);
+            }
+        }
+
+        async function refreshPresenceSnapshot() {
+            const payload = await requestJson('/api/admin/presence', { method: 'GET' });
+            applyPresenceSnapshot(payload);
+            return payload;
+        }
+
         function showBanner(message, tone = 'success') {
             if (!flashBanner) return;
             flashBanner.textContent = message;
@@ -1549,7 +1603,12 @@
         });
 
         if (dashboardEnabled) {
-            refreshDashboard(true).catch((error) => {
+            refreshDashboard(true).then(() => {
+                if (currentPage === 'overview' || currentPage === 'team') {
+                    return refreshPresenceSnapshot();
+                }
+                return null;
+            }).catch((error) => {
                 showBanner(error.message, 'error');
             });
 
@@ -1580,6 +1639,10 @@
         let adminTicketStatuses = [];
         let adminTechMembers = [];
         let adminTechWorkload = [];
+        let adminTicketLedgerRows = [];
+        let adminTicketLedgerTotal = 0;
+        let adminTicketLedgerHasMore = false;
+        let adminTicketLedgerLoading = false;
 
         function techPresenceLabel(tech) {
             if (!tech.is_active) return 'Account disabled';
@@ -1676,10 +1739,14 @@
             return section?.dataset?.ticketLifecycle || (currentPage === 'tickets-old' ? 'old' : 'current');
         }
 
-        function renderAdminTicketRows(tickets, statuses) {
+        function renderAdminTicketRows(tickets, statuses, total = tickets.length) {
             const ticketBody = document.getElementById('admin-ticket-table-body');
             const countEl = document.getElementById('admin-ticket-count');
-            if (countEl) countEl.textContent = `${tickets.length} ticket${tickets.length !== 1 ? 's' : ''}`;
+            if (countEl) {
+                countEl.textContent = total > tickets.length
+                    ? `${tickets.length} of ${total} tickets`
+                    : `${tickets.length} ticket${tickets.length !== 1 ? 's' : ''}`;
+            }
             if (!ticketBody) return;
 
             if (!tickets.length) {
@@ -1700,14 +1767,21 @@
                     : '';
                 const lastAssignment = t.last_assignment_update;
                 const assignmentTrail = lastAssignment
-                    ? `<div class="admin-soft-muted" style="margin-top:4px;" title="${escapeHtml(lastAssignment.notes || '')}">
-                        <i class="fa-solid fa-share-nodes"></i>
-                        ${escapeHtml(lastAssignment.old_assigned_tech ? (lastAssignment.old_assigned_tech.display_name || lastAssignment.old_assigned_tech.email) : 'Unassigned')}
+                    ? `<div class="ticket-assigned-trail" title="${escapeHtml(lastAssignment.notes || '')}">
+                        <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
+                        <span>${escapeHtml(lastAssignment.old_assigned_tech ? (lastAssignment.old_assigned_tech.display_name || lastAssignment.old_assigned_tech.email) : 'Unassigned')}
                         →
-                        ${escapeHtml(lastAssignment.new_assigned_tech ? (lastAssignment.new_assigned_tech.display_name || lastAssignment.new_assigned_tech.email) : 'Unassigned')}
-                        ${lastAssignment.changed_by_name ? `<div>By ${escapeHtml(lastAssignment.changed_by_name)}</div>` : ''}
+                        ${escapeHtml(lastAssignment.new_assigned_tech ? (lastAssignment.new_assigned_tech.display_name || lastAssignment.new_assigned_tech.email) : 'Unassigned')}</span>
+                        ${lastAssignment.changed_by_name ? `<span class="ticket-assigned-by">By ${escapeHtml(lastAssignment.changed_by_name)}</span>` : ''}
                     </div>`
                     : '';
+                const assignedHtml = t.assigned_tech
+                    ? `<div class="ticket-assigned-cell">
+                        <strong class="ticket-assigned-name">${escapeHtml(t.assigned_tech.display_name || 'Tech')}</strong>
+                        ${t.assigned_tech.specialty ? `<span class="ticket-assigned-specialty">${escapeHtml(t.assigned_tech.specialty)}</span>` : ''}
+                        ${assignmentTrail}
+                    </div>`
+                    : '<span class="admin-soft-chip">Unassigned</span>';
                 return `
                     <tr>
                         <td class="ticket-num-cell" data-label="Ticket">${escapeHtml(t.ticket_number || ('#' + t.id))}</td>
@@ -1715,7 +1789,7 @@
                         <td data-label="Status"><span class="admin-soft-chip" style="background:${statusColor}22;color:${statusColor}">${escapeHtml(status.label || t.status)}</span></td>
                         <td data-label="Priority" style="text-transform:capitalize;">${escapeHtml(t.priority || 'normal')}</td>
                         <td data-label="Created By"><strong>${escapeHtml(creatorLabel)}</strong>${creatorRole ? `<div class="admin-soft-muted">${creatorRole}</div>` : ''}</td>
-                        <td data-label="Assigned">${t.assigned_tech ? `<strong>${escapeHtml(t.assigned_tech.display_name || 'Tech')}</strong><div class="admin-soft-muted">${escapeHtml(t.assigned_tech.specialty || '')}</div>${assignmentTrail}` : '<span class="admin-soft-chip">Unassigned</span>'}</td>
+                        <td data-label="Assigned">${assignedHtml}</td>
                         <td data-label="Msgs">${t.message_count ?? 0}</td>
                         <td class="admin-soft-muted" data-label="Created">${formatDate(t.created_at)}</td>
                         <td class="admin-soft-muted" data-label="Updated">${formatDate(t.updated_at)}</td>
@@ -1725,9 +1799,22 @@
             }).join('');
         }
 
-        async function loadTicketLedger() {
+        async function loadTicketLedger({ append = false } = {}) {
             const ticketBody = document.getElementById('admin-ticket-table-body');
-            if (ticketBody) ticketBody.innerHTML = '<tr><td colspan="10" class="tiny-note" style="padding:24px;">Loading tickets...</td></tr>';
+            if (adminTicketLedgerLoading) return;
+            adminTicketLedgerLoading = true;
+            const currentLedger = getTicketLifecycle() === 'current';
+            const loadSizeInput = document.getElementById('admin-ticket-load-size');
+            const requestedSize = Math.max(1, Math.min(100, Number.parseInt(loadSizeInput?.value, 10) || 10));
+            if (loadSizeInput) loadSizeInput.value = String(requestedSize);
+            if (!append) {
+                adminTicketLedgerRows = [];
+                adminTicketLedgerTotal = 0;
+                adminTicketLedgerHasMore = false;
+                if (ticketBody) ticketBody.innerHTML = '<tr><td colspan="10" class="tiny-note" style="padding:24px;">Loading tickets...</td></tr>';
+            }
+            const loadMoreButton = document.getElementById('admin-ticket-load-more-btn');
+            if (loadMoreButton) loadMoreButton.disabled = true;
             try {
                 const statusFilter = document.getElementById('admin-ticket-status-filter')?.value || 'all';
                 const lifecycle = getTicketLifecycle();
@@ -1748,16 +1835,40 @@
                     include_workload: '0',
                 });
                 if (statusFilter !== 'all') params.set('status', statusFilter);
+                if (currentLedger) {
+                    params.set('limit', String(requestedSize));
+                    params.set('offset', String(append ? adminTicketLedgerRows.length : 0));
+                }
                 const ticketsResp = await requestJson(`/api/admin/tickets?${params.toString()}`);
                 const tickets = ticketsResp.tickets || [];
                 const statuses = ticketsResp.statuses || [];
                 adminTicketStatuses = statuses;
                 populateAdminTicketStatusFilter(statuses);
-                renderAdminTicketRows(tickets, statuses);
+                if (currentLedger) {
+                    const existingIds = new Set(adminTicketLedgerRows.map((ticket) => ticket.id));
+                    adminTicketLedgerRows = append
+                        ? adminTicketLedgerRows.concat(tickets.filter((ticket) => !existingIds.has(ticket.id)))
+                        : tickets;
+                    adminTicketLedgerTotal = Number(ticketsResp.pagination?.total ?? adminTicketLedgerRows.length);
+                    adminTicketLedgerHasMore = Boolean(ticketsResp.pagination?.has_more);
+                    renderAdminTicketRows(adminTicketLedgerRows, statuses, adminTicketLedgerTotal);
+                    const loadStatus = document.getElementById('admin-ticket-load-status');
+                    if (loadStatus) {
+                        loadStatus.textContent = adminTicketLedgerHasMore
+                            ? `Showing ${adminTicketLedgerRows.length} of ${adminTicketLedgerTotal} tickets`
+                            : `Showing all ${adminTicketLedgerRows.length} tickets`;
+                    }
+                    if (loadMoreButton) loadMoreButton.hidden = !adminTicketLedgerHasMore;
+                } else {
+                    renderAdminTicketRows(tickets, statuses, ticketsResp.pagination?.total ?? tickets.length);
+                }
             } catch (err) {
                 console.error('Failed to load tickets:', err);
                 setTechDataLoadError(err.message);
                 showBanner(err.message || 'Failed to load tickets', 'error');
+            } finally {
+                adminTicketLedgerLoading = false;
+                if (loadMoreButton) loadMoreButton.disabled = !adminTicketLedgerHasMore;
             }
         }
 
@@ -1820,6 +1931,10 @@
                 if (isTicketPage) loadTicketLedger();
                 else loadTechData();
             });
+        }
+        const adminTicketLoadMoreBtn = document.getElementById('admin-ticket-load-more-btn');
+        if (adminTicketLoadMoreBtn) {
+            adminTicketLoadMoreBtn.addEventListener('click', () => loadTicketLedger({ append: true }));
         }
 
         const adminCreateTicketForm = document.getElementById('admin-create-ticket-form');
@@ -1976,10 +2091,13 @@
 
         if (document.body.dataset.adminPage === 'tech') {
             loadTechData();
-            // Fast presence refresh so Online/Offline tracks logout / browser close quickly.
-            schedulePoll(() => refreshTechPresence().catch(() => {}), 8000);
+            schedulePoll(() => refreshPresenceSnapshot().catch(() => {}), 5000);
             // Full ticket/workload refresh less often.
             schedulePoll(() => loadTechData().catch(() => {}), 45000);
+        }
+
+        if (currentPage === 'overview' || currentPage === 'team') {
+            schedulePoll(() => refreshPresenceSnapshot().catch(() => {}), 5000);
         }
 
         if (isTicketPage) {

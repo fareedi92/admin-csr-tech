@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Admin Operations Dashboard</title>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,7 +24,7 @@
             }
         };
     </script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='admin-dashboard.css') }}?v=20260818e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin-dashboard.css') }}?v=20260825f">
 </head>
 <body
     data-admin-name="{{ (user.display_name or user.email) if user else 'Admin' }}"
@@ -590,7 +593,7 @@
                                     <i class="fa-solid fa-rotate"></i> Refresh
                                 </button>
                             </div>
-                            <div class="admin-soft-table-wrap">
+                            <div class="admin-soft-table-wrap ticket-ledger-wrap">
                                 <table>
                                     <thead>
                                         <tr>
@@ -611,6 +614,16 @@
                                     </tbody>
                                 </table>
                             </div>
+                            {% if admin_page == 'tickets-current' %}
+                            <div class="ticket-load-controls" id="admin-ticket-load-controls">
+                                <span class="tiny-note" id="admin-ticket-load-status">Showing the latest 10 tickets</span>
+                                <div class="ticket-load-actions">
+                                    <label class="tiny-note" for="admin-ticket-load-size">Load</label>
+                                    <input id="admin-ticket-load-size" class="input" type="number" min="1" max="100" value="10" inputmode="numeric" aria-label="Number of tickets to load">
+                                    <button type="button" id="admin-ticket-load-more-btn" class="btn"><i class="fa-solid fa-angles-down"></i> Load more</button>
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
                     </section>
                 </section>
@@ -676,15 +689,15 @@
                             </div>
                         </section>
 
-                        <section class="panel">
-                            <div class="panel-head">
-                                <div>
+                        <section class="panel chat-detail-panel">
+                            <div class="panel-head chat-detail-head">
+                                <div class="chat-detail-head-copy">
                                     <div class="panel-title" id="detail-title">Select a chat</div>
                                     <div class="tiny-note" id="detail-subtitle">Open a chat from the ledger to see the transcript and tracking events.</div>
                                 </div>
                                 <div class="action-row" id="detail-actions"></div>
                             </div>
-                            <div class="panel-body">
+                            <div class="panel-body chat-detail-body">
                                 <div class="detail-grid" id="detail-grid">
                                     <div class="chat-meta-card"><div class="meta-label">Status</div><div class="meta-value">No chat selected</div></div>
                                     <div class="chat-meta-card"><div class="meta-label">Assigned CSR</div><div class="meta-value">Not available</div></div>
@@ -790,7 +803,7 @@
                             </div>
                             <div class="panel-copy">End your admin session on this device.</div>
                             <div class="panel-body">
-                                <a class="btn danger account-logout-btn" href="{{ url_for('admin_logout') }}">
+                                <a class="btn danger account-logout-btn" id="admin-logout-link" href="{{ url_for('admin_logout') }}">
                                     <i class="fa-solid fa-right-from-bracket"></i>
                                     <span>Logout from Admin</span>
                                 </a>
@@ -803,10 +816,28 @@
         </main>
     </div>
 
-    <script src="{{ url_for('static', filename='admin-dashboard.js') }}?v=20260818e" defer></script>
+    <script src="{{ url_for('static', filename='admin-dashboard.js') }}?v=20260825e" defer></script>
     <script>
-        window.addEventListener('pageshow', (event) => {
+        window.addEventListener('pageshow', async (event) => {
+            try {
+                const res = await fetch('/api/admin/activity-events?limit=1', {
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                });
+                if (!res.ok) {
+                    window.location.replace('/admin/login');
+                    return;
+                }
+            } catch (_err) {
+                window.location.replace('/admin/login');
+                return;
+            }
             if (event.persisted) window.location.reload();
+        });
+
+        document.getElementById('admin-logout-link')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            window.location.replace(e.currentTarget.href);
         });
 
         (function () {

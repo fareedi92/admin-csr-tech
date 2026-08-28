@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>CSR Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -33,7 +36,30 @@
         #chat-bucket-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
         #chat-bucket-tabs .chat-tab { display: inline-flex; min-width: 0; align-items: center; justify-content: center; gap: 3px; padding: 7px 5px; text-align: center; white-space: nowrap; }
         #ticket-filter-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-        #ticket-filter-tabs .tkt-tab { display: inline-flex; min-width: 0; align-items: center; justify-content: center; gap: 3px; padding: 7px 5px; text-align: center; white-space: nowrap; }
+        #ticket-filter-tabs .tkt-tab {
+            display: inline-flex;
+            min-width: 0;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            padding: 7px 5px;
+            text-align: center;
+            white-space: nowrap;
+            border: 1px solid transparent;
+        }
+        #ticket-filter-tabs .tkt-tab.is-selected {
+            background: #0f172a;
+            color: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.18);
+        }
+        #ticket-filter-tabs .tkt-tab:not(.is-selected) {
+            background: #f3f4f6;
+            color: #6b7280;
+        }
+        #ticket-filter-tabs .tkt-tab:not(.is-selected):hover {
+            background: #e5e7eb;
+            color: #374151;
+        }
         .archive-count-badge { display: inline-flex; min-width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 9999px; border: 1px solid #facc15; background: #fef3c7; color: #92400e; font-size: 10px; font-weight: 800; line-height: 1; }
         @media (min-width: 440px) { #ticket-filter-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
@@ -65,9 +91,74 @@
         .msg-time { font-size: 10px; color: #9ca3af; margin-top: 3px; line-height: 1.2; }
         .msg-time--out { text-align: right; }
         .msg-stack { display: flex; flex-direction: column; gap: 10px; }
+        #chat-bucket-tabs .chat-tab,
+        #ticket-filter-tabs .tkt-tab { position: relative; }
+        .col-tab { position: relative; }
+        .unread-alert-dot {
+            width: 10px;
+            height: 10px;
+            flex: 0 0 10px;
+            border: 2px solid #fff;
+            border-radius: 9999px;
+            background: #ef4444;
+            box-shadow: 0 1px 3px rgba(127, 29, 29, 0.35);
+        }
+        .tab-alert-dot {
+            position: absolute;
+            top: 3px;
+            right: 6px;
+            width: 8px;
+            height: 8px;
+            border-radius: 9999px;
+            background: #ef4444;
+            border: 1.5px solid #fff;
+            box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.2);
+            pointer-events: none;
+        }
+        .col-tab .tab-alert-dot { top: 5px; right: 10px; }
+        .chat-avatar-wrap { position: relative; flex-shrink: 0; }
+        .chat-avatar-wrap .unread-alert-dot {
+            position: absolute;
+            top: -1px;
+            right: -1px;
+            width: 11px;
+            height: 11px;
+            flex: none;
+        }
         @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
         .chat-card, .ticket-card { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; }
+        .ticket-card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            min-width: 0;
+        }
+        .ticket-card-id {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+        .ticket-card-id .unread-alert-dot {
+            flex: 0 0 10px;
+            margin: 0;
+        }
+        .ticket-card-status {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+            flex: 0 0 auto;
+            max-width: 52%;
+        }
+        .ticket-card-status .ticket-status-badge,
+        .ticket-card-status .ticket-bucket-badge {
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
         .chat-card { transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background-color .15s ease; }
         .chat-card:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(15, 23, 42, .08); }
         .chat-card:active { transform: translateY(0); }
@@ -78,6 +169,98 @@
             overflow-wrap: anywhere;
             word-break: break-word;
             white-space: pre-wrap;
+        }
+        .auth-customer-card {
+            flex-shrink: 0;
+            border-bottom: 1px solid #dbeafe;
+            background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+            padding: 12px 14px;
+        }
+        .auth-customer-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .auth-customer-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 800;
+            flex-shrink: 0;
+            box-shadow: 0 4px 10px rgba(59, 130, 246, .28);
+        }
+        .auth-customer-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1.2;
+        }
+        .auth-customer-sub {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+        .auth-customer-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+        .auth-customer-chip {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 8px 10px;
+            min-width: 0;
+        }
+        .auth-customer-chip-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin-bottom: 3px;
+        }
+        .auth-customer-chip-value {
+            font-size: 12px;
+            font-weight: 600;
+            color: #0f172a;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .auth-customer-chip-value.is-ok { color: #059669; }
+        .auth-customer-chip-value.is-bad { color: #dc2626; }
+        .auth-customer-extra {
+            margin-top: 8px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 8px 10px;
+        }
+        .auth-customer-extra summary {
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            list-style: none;
+        }
+        .auth-customer-extra summary::-webkit-details-marker { display: none; }
+        .auth-customer-extra pre {
+            margin: 8px 0 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 10px;
+            line-height: 1.45;
+            color: #334155;
+            max-height: 140px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
         /* Archive collapse animation */
         #view-workspace { transition: grid-template-columns 0.3s ease; }
@@ -134,11 +317,13 @@
 
     <!-- ═══ MOBILE TAB BAR ═══ -->
     <div class="lg:hidden flex-shrink-0 flex bg-white border-b border-gray-200">
-        <button type="button" data-col="user" class="col-tab flex-1 py-2.5 text-xs font-semibold border-b-2 border-yellow-400 text-black">
+        <button type="button" data-col="user" class="col-tab relative flex-1 py-2.5 text-xs font-semibold border-b-2 border-yellow-400 text-black">
             <i class="fa-solid fa-comments mr-1"></i> Customers
+            <span id="alert-col-user" class="tab-alert-dot pulse-dot" hidden title="New customer message"></span>
         </button>
-        <button type="button" data-col="tech" class="col-tab flex-1 py-2.5 text-xs font-semibold border-b-2 border-transparent text-gray-400">
+        <button type="button" data-col="tech" class="col-tab relative flex-1 py-2.5 text-xs font-semibold border-b-2 border-transparent text-gray-400">
             <i class="fa-solid fa-wrench mr-1"></i> Tickets
+            <span id="alert-col-tech" class="tab-alert-dot pulse-dot" hidden title="New tech reply"></span>
         </button>
         <button type="button" data-col="archive" class="col-tab inline-flex flex-1 items-center justify-center gap-1 py-2.5 text-xs font-semibold border-b-2 border-transparent text-gray-400">
             <i class="fa-solid fa-box-archive"></i><span>Archive</span><span id="archive-tab-count" class="archive-count-badge">0</span>
@@ -163,12 +348,15 @@
                 <div id="chat-bucket-tabs" class="flex-shrink-0 px-3 py-2 border-b border-gray-100">
                     <button type="button" id="tab-btn-queued" onclick="setChatBucket('queued')" class="chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
                         New <span id="bucket-queued-count" class="ml-0.5 opacity-80">0</span>
+                        <span id="alert-bucket-queued" class="tab-alert-dot pulse-dot" hidden title="New customer message"></span>
                     </button>
                     <button type="button" id="tab-btn-mine" onclick="setChatBucket('mine')" class="chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
                         Mine <span id="bucket-mine-count" class="ml-0.5 opacity-80">0</span>
+                        <span id="alert-bucket-mine" class="tab-alert-dot pulse-dot" hidden title="New customer message"></span>
                     </button>
                     <button type="button" id="tab-btn-other" onclick="setChatBucket('other')" class="chat-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
                         Others <span id="bucket-other-count" class="ml-0.5 opacity-80">0</span>
+                        <span id="alert-bucket-other" class="tab-alert-dot pulse-dot" hidden title="New customer message"></span>
                     </button>
                 </div>
                 <div id="other-chat-toolbar" class="hidden flex-shrink-0 px-3 py-2 border-b border-gray-100 bg-blue-50/40 space-y-2">
@@ -221,17 +409,21 @@
             <div id="ticket-list-view" class="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <!-- Ticket filter tabs -->
                 <div id="ticket-filter-tabs" class="flex-shrink-0 px-3 py-2 border-b border-gray-100">
-                    <button type="button" onclick="setTicketFilter('all')" id="tkt-tab-all" class="tkt-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
+                    <button type="button" onclick="setTicketFilter('all')" id="tkt-tab-all" class="tkt-tab is-selected rounded-full text-xs font-semibold transition-all" aria-pressed="true">
                         All <span id="tkt-count-all" class="ml-0.5 opacity-70">0</span>
+                        <span id="alert-tkt-all" class="tab-alert-dot pulse-dot" hidden title="New tech reply"></span>
                     </button>
-                    <button type="button" onclick="setTicketFilter('unclaimed')" id="tkt-tab-unclaimed" class="tkt-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
+                    <button type="button" onclick="setTicketFilter('unclaimed')" id="tkt-tab-unclaimed" class="tkt-tab rounded-full text-xs font-semibold transition-all" aria-pressed="false">
                         Unclaimed <span id="tkt-count-unclaimed" class="ml-0.5 opacity-70">0</span>
+                        <span id="alert-tkt-unclaimed" class="tab-alert-dot pulse-dot" hidden title="New tech reply"></span>
                     </button>
-                    <button type="button" onclick="setTicketFilter('in_progress')" id="tkt-tab-in_progress" class="tkt-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
+                    <button type="button" onclick="setTicketFilter('in_progress')" id="tkt-tab-in_progress" class="tkt-tab rounded-full text-xs font-semibold transition-all" aria-pressed="false">
                         In Progress <span id="tkt-count-in_progress" class="ml-0.5 opacity-70">0</span>
+                        <span id="alert-tkt-in_progress" class="tab-alert-dot pulse-dot" hidden title="New tech reply"></span>
                     </button>
-                    <button type="button" onclick="setTicketFilter('closed')" id="tkt-tab-closed" class="tkt-tab px-3 py-1 rounded-full text-xs font-semibold transition-all">
+                    <button type="button" onclick="setTicketFilter('closed')" id="tkt-tab-closed" class="tkt-tab rounded-full text-xs font-semibold transition-all" aria-pressed="false">
                         Closed <span id="tkt-count-closed" class="ml-0.5 opacity-70">0</span>
+                        <span id="alert-tkt-closed" class="tab-alert-dot pulse-dot" hidden title="New tech reply"></span>
                     </button>
                 </div>
                 <div id="ticket-list" class="flex-1 overflow-y-auto p-2 space-y-1.5 chat-scroll">
@@ -515,8 +707,8 @@ function formatTicketCardTime(ticket) {
 function showBanner(msg, tone = 'success') {
     flashBanner.textContent = msg;
     flashBanner.className = tone === 'error'
-        ? 'block mx-3 mt-2 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0 bg-red-50 border border-red-200 text-red-700'
-        : 'block mx-3 mt-2 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0 bg-green-50 border border-green-200 text-green-700';
+        ? 'block mx-3 mt-2 px-3 py-2 rounded-lg text-sm font-semibold flex-shrink-0 bg-red-100 border-2 border-red-600 text-red-800'
+        : 'block mx-3 mt-2 px-3 py-2 rounded-lg text-sm font-semibold flex-shrink-0 bg-emerald-100 border-2 border-emerald-700 text-emerald-950';
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => { flashBanner.className = 'hidden flex-shrink-0'; }, 3500);
 }
@@ -670,6 +862,50 @@ function updateChatBucketCounts() {
     setCount('bucket-queued-count', s.queued_chats ?? 0);
     setCount('bucket-mine-count', s.my_chats ?? 0);
     setCount('bucket-other-count', s.other_chats ?? 0);
+    updateAlertIndicators();
+}
+
+function setAlertDot(id, on) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.hidden = !on;
+}
+
+function chatOwnershipBucket(chat) {
+    return chat.ownership_bucket || (chat.is_mine ? 'mine' : (chat.assigned_csr_id ? 'other' : 'queued'));
+}
+
+function isTicketUnread(ticket) {
+    return ticket.latest_message_sender_type === 'tech'
+        && (!seenTechMessages[ticket.id] || seenTechMessages[ticket.id] < ticket.latest_message_id);
+}
+
+function updateAlertIndicators() {
+    const unreadBuckets = { queued: false, mine: false, other: false };
+    const seenChatIds = new Set();
+    [...(state.dashboard?.chats || []), ...(state.otherChats || [])].forEach((chat) => {
+        if (!chat || seenChatIds.has(chat.id) || !state.unreadChats[chat.id]) return;
+        seenChatIds.add(chat.id);
+        const bucket = chatOwnershipBucket(chat);
+        if (unreadBuckets[bucket] !== undefined) unreadBuckets[bucket] = true;
+    });
+    setAlertDot('alert-bucket-queued', unreadBuckets.queued);
+    setAlertDot('alert-bucket-mine', unreadBuckets.mine);
+    setAlertDot('alert-bucket-other', unreadBuckets.other);
+    setAlertDot('alert-col-user', unreadBuckets.queued || unreadBuckets.mine || unreadBuckets.other);
+
+    const ticketUnread = { all: false, unclaimed: false, in_progress: false, closed: false };
+    (allTickets || []).forEach((ticket) => {
+        if (!isTicketUnread(ticket)) return;
+        ticketUnread.all = true;
+        const bucket = ticketBucket(ticket);
+        if (ticketUnread[bucket] !== undefined) ticketUnread[bucket] = true;
+    });
+    setAlertDot('alert-tkt-all', ticketUnread.all);
+    setAlertDot('alert-tkt-unclaimed', ticketUnread.unclaimed);
+    setAlertDot('alert-tkt-in_progress', ticketUnread.in_progress);
+    setAlertDot('alert-tkt-closed', ticketUnread.closed);
+    setAlertDot('alert-col-tech', ticketUnread.all);
 }
 
 function bindOtherChatControls() {
@@ -775,14 +1011,16 @@ function renderOtherChatList(container, minuteTick = Math.floor(Date.now() / 600
 // ═══════════════════════════════════════════════════════════
 // TICKET FILTER TABS
 // ═══════════════════════════════════════════════════════════
-const TKT_ACTIVE = { all: 'bg-blue-500 text-white', unclaimed: 'bg-blue-500 text-white', in_progress: 'bg-blue-500 text-white', closed: 'bg-blue-500 text-white' };
-const TKT_INACTIVE = 'bg-gray-100 text-gray-500 hover:bg-gray-200';
+const TKT_TAB_BASE = 'tkt-tab rounded-full text-xs font-semibold transition-all';
 
 function setTicketFilter(filter) {
     state.ticketFilter = filter;
     ['all', 'unclaimed', 'in_progress', 'closed'].forEach(f => {
         const btn = document.getElementById('tkt-tab-' + f);
-        if (btn) btn.className = `tkt-tab rounded-full text-xs font-semibold transition-all ${f === filter ? TKT_ACTIVE[f] : TKT_INACTIVE}`;
+        if (!btn) return;
+        const selected = f === filter;
+        btn.className = TKT_TAB_BASE + (selected ? ' is-selected' : '');
+        btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
     });
     renderTicketSection();
     saveWorkspaceState();
@@ -918,11 +1156,13 @@ function chatCardHtml(chat, { archive = false } = {}) {
     const unread = !archive && Boolean(state.unreadChats[chat.id]);
     const isActive = archive ? state.selectedArchiveChatId === chat.id : state.selectedChatId === chat.id;
     let badge = '';
-    if (unread) badge = '<span class="w-2 h-2 rounded-full bg-red-500 pulse-dot flex-shrink-0"></span>';
-    else if (archive) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-200 text-gray-600">Done</span>';
+    if (archive) badge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-200 text-gray-600">Done</span>';
     else if (bucket === 'mine') badge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700">Yours</span>';
     else if (bucket === 'queued') badge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-100 text-yellow-700">New</span>';
     else if (owner) badge = `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 truncate max-w-[88px]">${escapeHtml(owner.split(' ')[0])}</span>`;
+    const unreadDot = unread
+        ? '<span class="unread-alert-dot pulse-dot" title="New customer message" aria-label="New customer message"></span>'
+        : '';
     const readOnlyHint = bucket === 'other' ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">View only</span>' : '';
     const ring = isActive
         ? (bucket === 'other' ? 'border-blue-400 bg-blue-50' : 'border-yellow-400 bg-yellow-50')
@@ -931,7 +1171,10 @@ function chatCardHtml(chat, { archive = false } = {}) {
     const shortTime = chatCardShortTime(chat, archive);
     return `<div class="chat-card cursor-pointer rounded-xl border p-2.5 ${ring}" data-chat-id="${chat.id}" data-chat-bucket="${bucket}" data-archive="${archive ? '1' : '0'}">
         <div class="flex items-start gap-2.5">
-            <div class="w-9 h-9 rounded-full ${chatAvatarClass(name)} flex items-center justify-center text-[11px] font-bold flex-shrink-0 shadow-sm">${escapeHtml(chatInitials(name))}</div>
+            <div class="chat-avatar-wrap">
+                <div class="w-9 h-9 rounded-full ${chatAvatarClass(name)} flex items-center justify-center text-[11px] font-bold flex-shrink-0 shadow-sm">${escapeHtml(chatInitials(name))}</div>
+                ${unreadDot}
+            </div>
             <div class="flex-1 min-w-0">
                 <div class="flex items-center justify-between gap-2">
                     <span class="font-semibold text-[13px] text-gray-900 truncate">${escapeHtml(name)}</span>
@@ -1171,6 +1414,86 @@ function renderMessages(messages, chat = null) {
 // ═══════════════════════════════════════════════════════════
 // WORKSPACE (conversation in col 1)
 // ═══════════════════════════════════════════════════════════
+function parseAuthenticatedUserData(raw) {
+    if (!raw) return null;
+    if (typeof raw === 'object') return raw;
+    try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+function flattenAuthFields(data, prefix = '') {
+    const rows = [];
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return rows;
+    Object.keys(data).forEach((key) => {
+        const value = data[key];
+        const label = prefix ? `${prefix}.${key}` : key;
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            rows.push(...flattenAuthFields(value, label));
+        } else if (Array.isArray(value)) {
+            rows.push({ label, value: value.join(', ') });
+        } else if (value !== null && value !== undefined && String(value).trim() !== '') {
+            rows.push({ label, value: String(value) });
+        }
+    });
+    return rows;
+}
+
+function renderAuthenticatedCustomerCard(chat) {
+    if (!chat || chat.auth_mode !== 'authenticated' || !chat.authenticated_user_data) return '';
+    const data = parseAuthenticatedUserData(chat.authenticated_user_data) || {};
+    const user = data.user || data;
+    const name = user.name || chat.customer_name || chat.visitor_id || 'Customer';
+    const userId = user.id != null ? user.id : (chat.customer_external_user_id || '—');
+    const valid = data.valid;
+    const initials = String(name).trim().split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase() || 'C';
+    const knownKeys = new Set(['user', 'valid', 'id', 'name']);
+    const extraRows = flattenAuthFields(data).filter((row) => {
+        const leaf = row.label.split('.').pop();
+        return !knownKeys.has(leaf) && !knownKeys.has(row.label);
+    });
+    const chips = [
+        { label: 'Name', value: name },
+        { label: 'User ID', value: userId },
+        {
+            label: 'Status',
+            value: valid === true ? 'Verified' : (valid === false ? 'Invalid' : 'Authenticated'),
+            tone: valid === true ? 'is-ok' : (valid === false ? 'is-bad' : '')
+        },
+        { label: 'Mode', value: 'Authenticated' }
+    ];
+    const chipsHtml = chips.map((chip) => `
+        <div class="auth-customer-chip">
+            <div class="auth-customer-chip-label">${escapeHtml(chip.label)}</div>
+            <div class="auth-customer-chip-value ${chip.tone || ''}">${escapeHtml(chip.value)}</div>
+        </div>
+    `).join('');
+    const extraHtml = extraRows.length
+        ? `<details class="auth-customer-extra">
+                <summary>More customer details (${extraRows.length})</summary>
+                <div class="auth-customer-grid" style="margin-top:8px;">
+                    ${extraRows.map((row) => `
+                        <div class="auth-customer-chip">
+                            <div class="auth-customer-chip-label">${escapeHtml(row.label)}</div>
+                            <div class="auth-customer-chip-value">${escapeHtml(row.value)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+           </details>`
+        : '';
+    return `
+        <div class="auth-customer-card">
+            <div class="auth-customer-head">
+                <div class="auth-customer-avatar">${escapeHtml(initials)}</div>
+                <div>
+                    <div class="auth-customer-title">${escapeHtml(name)}</div>
+                    <div class="auth-customer-sub">Authenticated customer · ID ${escapeHtml(userId)}</div>
+                </div>
+            </div>
+            <div class="auth-customer-grid">${chipsHtml}</div>
+            ${extraHtml}
+        </div>
+    `;
+}
+
 function setReplySending(sending, form, button, textarea) {
     state.sendingReply = sending;
     if (form) form.dataset.sending = sending ? '1' : '';
@@ -1238,12 +1561,7 @@ function renderWorkspace() {
                     ? `<i class="fa-solid fa-eye mr-1"></i> Handled by <strong>${escapeHtml(ownerLabel)}</strong>`
                     : '<i class="fa-solid fa-hand-pointer mr-1"></i> Open from "New" to claim this chat';
     }
-    const authDebug = chat.auth_mode === 'authenticated' && chat.authenticated_user_data
-        ? `<div class="flex-shrink-0 border-b border-gray-200 p-2.5 bg-blue-50 text-xs text-blue-900">
-                <div class="font-semibold mb-1"><i class="fa-solid fa-id-card mr-1"></i> Authenticated customer</div>
-                <pre class="customer-data font-mono text-[10px] bg-white border border-blue-100 rounded p-2">${escapeHtml(chat.authenticated_user_data)}</pre>
-           </div>`
-        : '';
+    const authDebug = renderAuthenticatedCustomerCard(chat);
 
     document.getElementById('workspace-body').innerHTML = `
         ${authDebug}
@@ -1349,6 +1667,7 @@ function markTechTicketSeen(id, msgId) {
     if (msgId > current) {
         seenTechMessages[key] = msgId;
         localStorage.setItem('csrSeenTechMessages', JSON.stringify(seenTechMessages));
+        updateAlertIndicators();
     }
 }
 
@@ -1427,6 +1746,7 @@ function renderTicketSection() {
     document.getElementById('tkt-count-unclaimed').textContent = counts.unclaimed;
     document.getElementById('tkt-count-in_progress').textContent = counts.in_progress;
     document.getElementById('tkt-count-closed').textContent = counts.closed;
+    updateAlertIndicators();
 
     const filtered = state.ticketFilter === 'all' ? allTickets : allTickets.filter(t => ticketBucket(t) === state.ticketFilter);
 
@@ -1459,24 +1779,25 @@ function renderTicketSection() {
         const statusColor = statusObj?.color || '#64748b';
         const statusLabel = statusObj?.label || ticket.status;
         const techName = ticket.assigned_tech ? ticket.assigned_tech.display_name : 'Unassigned';
-        const isUnread = ticket.latest_message_sender_type === 'tech' && (!seenTechMessages[ticket.id] || seenTechMessages[ticket.id] < ticket.latest_message_id);
-        const unread = isUnread;
+        const unread = isTicketUnread(ticket);
         const active = Number(activeTicketChatId) === Number(ticket.id);
         const bucket = ticketBucket(ticket);
         const bucketBadge = bucket === 'unclaimed'
-            ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">Unclaimed</span>'
+            ? '<span class="ticket-bucket-badge px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">Unclaimed</span>'
             : bucket === 'closed'
-                ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-200 text-gray-600">Closed</span>'
+                ? '<span class="ticket-bucket-badge px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-200 text-gray-600">Closed</span>'
                 : '';
 
         return `<button type="button" onclick="openTicketChat(${ticket.id})"
-            class="ticket-card relative w-full text-left rounded-lg border p-2.5 transition-all ${active ? 'border-blue-400 bg-blue-50' : unread ? 'border-red-500 bg-red-50 border-2' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'}">
-            ${unread ? '<span class="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-sm"></span>' : ''}
-            <div class="flex items-center justify-between gap-2 mb-1">
-                <span class="min-w-0 truncate font-mono text-[11px] font-bold text-gray-700">${escapeHtml(ticket.ticket_number || '#'+ticket.id)}</span>
-                <div class="flex min-w-0 max-w-[58%] items-center justify-end gap-1">
+            class="ticket-card w-full text-left rounded-lg border p-2.5 transition-all ${active ? 'border-blue-400 bg-blue-50' : unread ? 'border-red-500 bg-red-50 border-2' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'}">
+            <div class="ticket-card-head mb-1">
+                <div class="ticket-card-id">
+                    <span class="min-w-0 truncate font-mono text-[11px] font-bold text-gray-700">${escapeHtml(ticket.ticket_number || '#'+ticket.id)}</span>
+                    ${unread ? '<span class="unread-alert-dot pulse-dot" title="New tech reply" aria-label="New tech reply"></span>' : ''}
+                </div>
+                <div class="ticket-card-status">
                     ${bucketBadge}
-                    <span class="min-w-0 truncate text-[10px] font-semibold px-1.5 py-0.5 rounded" style="background:${statusColor}18;color:${statusColor}" title="${escapeHtml(statusLabel)}">${escapeHtml(statusLabel)}</span>
+                    <span class="ticket-status-badge text-[10px] font-semibold px-1.5 py-0.5 rounded" style="background:${statusColor}18;color:${statusColor}" title="${escapeHtml(statusLabel)}">${escapeHtml(statusLabel)}</span>
                 </div>
             </div>
             <div class="text-sm font-medium text-black line-clamp-1">${escapeHtml(ticket.title)}</div>
@@ -1767,7 +2088,7 @@ async function createTicket() {
 function showTicketToast(message, type = 'info') {
     const toast = document.getElementById('ticket-toast');
     document.getElementById('ticket-toast-msg').textContent = message;
-    toast.className = `fixed top-16 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm font-semibold border ${type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`;
+    toast.className = `fixed top-16 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-sm font-semibold border-2 ${type === 'success' ? 'bg-emerald-100 border-emerald-700 text-emerald-950' : type === 'error' ? 'bg-red-100 border-red-600 text-red-800' : 'bg-amber-100 border-amber-700 text-amber-950'}`;
     setTimeout(() => { toast.classList.add('hidden'); toast.classList.remove('flex'); }, 3500);
     toast.classList.remove('hidden'); toast.classList.add('flex');
 }
@@ -1812,19 +2133,20 @@ async function bootstrapWorkspace() {
 bootstrapWorkspace().catch(e => showBanner(e.message, 'error'));
 bindOtherChatControls();
 
-// Presence: keep last_seen accurate while dashboard is open; stamp on logout/close.
+// Presence: Online while the dashboard is open, even in a background tab.
+// Offline only on logout or when the tab/window actually closes.
 (function setupCsrPresence() {
-    const HEARTBEAT_MS = 12000;
+    const HEARTBEAT_MS = 15000;
     let heartbeatTimer = null;
     let offlineSent = false;
 
     function sendHeartbeat() {
-        if (document.hidden) return;
         fetch('/api/csr/heartbeat', {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: '{}'
+            body: '{}',
+            cache: 'no-store'
         }).catch(() => {});
     }
 
@@ -1859,23 +2181,49 @@ bindOtherChatControls();
     }
 
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            stopHeartbeat();
-            markOffline();
-        } else {
+        if (!document.hidden) {
             startHeartbeat();
         }
     });
 
-    window.addEventListener('pagehide', markOffline);
+    window.addEventListener('pagehide', (event) => {
+        if (event.persisted) return;
+        markOffline();
+    });
     window.addEventListener('beforeunload', markOffline);
-    window.addEventListener('pageshow', (event) => {
-        if (event.persisted) window.location.reload();
+    window.addEventListener('pageshow', async (event) => {
+        // Always re-check auth when returning via Back/Forward so a logged-out
+        // session cannot restore the CSR dashboard from browser history/cache.
+        try {
+            const res = await fetch('/api/csr/heartbeat', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}',
+                cache: 'no-store'
+            });
+            if (!res.ok) {
+                window.location.replace('/csr/login');
+                return;
+            }
+        } catch (_err) {
+            window.location.replace('/csr/login');
+            return;
+        }
+        startHeartbeat();
+        if (event.persisted) {
+            startHeartbeat();
+        }
     });
 
     const logoutLink = document.getElementById('csr-logout-link');
     if (logoutLink) {
-        logoutLink.addEventListener('click', () => markOffline());
+        logoutLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            markOffline();
+            // Replace history so Back from login cannot reopen this dashboard.
+            window.location.replace(logoutLink.href);
+        });
     }
 
     startHeartbeat();

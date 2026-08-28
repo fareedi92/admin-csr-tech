@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Technical Team Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -60,7 +63,7 @@
             <button onclick="loadTickets()" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-black transition-colors" title="Refresh">
                 <i class="fa-solid fa-rotate-right text-xs"></i>
             </button>
-            <a href="/tech/logout" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors" title="Logout">
+            <a href="/tech/logout" id="tech-logout-link" class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors" title="Logout">
                 <i class="fa-solid fa-right-from-bracket text-xs"></i>
             </a>
         </div>
@@ -1213,17 +1216,17 @@ setInterval(() => {
 
 // Presence: Online while dashboard is open; Offline on logout / browser close.
 (function setupTechPresence() {
-    const HEARTBEAT_MS = 12000;
+    const HEARTBEAT_MS = 15000;
     let heartbeatTimer = null;
     let offlineSent = false;
 
     function sendHeartbeat() {
-        if (document.hidden) return;
         fetch('/api/tech/heartbeat', {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: '{}'
+            body: '{}',
+            cache: 'no-store'
         }).catch(() => {});
     }
 
@@ -1258,18 +1261,41 @@ setInterval(() => {
     }
 
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            stopHeartbeat();
-            markOffline();
-        } else {
+        if (!document.hidden) {
             startHeartbeat();
         }
     });
 
-    window.addEventListener('pagehide', markOffline);
+    window.addEventListener('pagehide', (event) => {
+        if (event.persisted) return;
+        markOffline();
+    });
     window.addEventListener('beforeunload', markOffline);
-    window.addEventListener('pageshow', (event) => {
-        if (event.persisted) window.location.reload();
+    window.addEventListener('pageshow', async (event) => {
+        try {
+            const res = await fetch('/api/tech/heartbeat', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}',
+                cache: 'no-store'
+            });
+            if (!res.ok) {
+                window.location.replace('/tech/login');
+                return;
+            }
+        } catch (_err) {
+            window.location.replace('/tech/login');
+            return;
+        }
+        startHeartbeat();
+        if (event.persisted) startHeartbeat();
+    });
+
+    document.getElementById('tech-logout-link')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        markOffline();
+        window.location.replace(e.currentTarget.href);
     });
 
     startHeartbeat();

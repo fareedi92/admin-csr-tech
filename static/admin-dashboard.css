@@ -36,6 +36,8 @@
 
         .app-shell {
             height: 100vh;
+            height: 100dvh;
+            max-height: 100dvh;
             display: grid;
             grid-template-columns: 248px minmax(0, 1fr);
             overflow: hidden;
@@ -434,7 +436,7 @@
             min-height: 0;
             overflow-y: auto;
             overflow-x: hidden;
-            padding: 20px 24px 28px;
+            padding: 20px 24px max(36px, env(safe-area-inset-bottom));
             scrollbar-width: thin;
             scrollbar-color: rgba(148,163,184,0.18) transparent;
         }
@@ -670,6 +672,58 @@
             white-space: nowrap;
         }
 
+        .ticket-assigned-cell {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+            min-width: 0;
+            max-width: 220px;
+        }
+
+        .ticket-assigned-name {
+            display: block;
+            font-weight: 700;
+            line-height: 1.3;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .ticket-assigned-specialty {
+            display: block;
+            color: var(--subtle);
+            font-size: 12px;
+            line-height: 1.3;
+        }
+
+        .ticket-assigned-trail {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            gap: 4px 6px;
+            margin-top: 4px;
+            color: var(--subtle);
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
+        .ticket-assigned-trail i {
+            flex: 0 0 auto;
+            margin-top: 2px;
+            color: var(--accent);
+        }
+
+        .ticket-assigned-trail span {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .ticket-assigned-by {
+            flex: 1 0 100%;
+            padding-left: 18px;
+        }
+
         .admin-soft-table-wrap {
             overflow-x: auto;
             border: 1px solid var(--border);
@@ -679,6 +733,41 @@
 
         .admin-soft-table-wrap table {
             min-width: 960px;
+        }
+
+        .ticket-ledger-wrap {
+            max-width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-gutter: stable;
+            scrollbar-width: auto;
+            scrollbar-color: #64748b #e2e8f0;
+        }
+
+        .ticket-ledger-wrap table {
+            width: max-content;
+            min-width: 1180px;
+            table-layout: auto;
+        }
+
+        .ticket-ledger-wrap::-webkit-scrollbar {
+            height: 12px;
+        }
+
+        .ticket-ledger-wrap::-webkit-scrollbar-track {
+            background: #e2e8f0;
+            border-radius: 999px;
+        }
+
+        .ticket-ledger-wrap::-webkit-scrollbar-thumb {
+            background: #64748b;
+            border: 2px solid #e2e8f0;
+            border-radius: 999px;
+        }
+
+        .ticket-ledger-wrap::-webkit-scrollbar-thumb:hover {
+            background: #475569;
         }
 
         .admin-soft-table-wrap tbody tr:hover {
@@ -1301,14 +1390,17 @@
             min-width: 760px;
         }
 
-        /* The seven-column chat ledger must fit its panel instead of widening it. */
+        /* Chat ledger scrolls inside its panel without pushing the detail pane. */
         .chat-table-wrap {
             max-width: 100%;
-            overflow-x: hidden;
+            max-height: min(58vh, 620px);
+            overflow: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #94a3b8 #f1f5f9;
         }
 
         .chat-table-wrap table {
-            min-width: 0;
+            min-width: 760px;
             table-layout: fixed;
         }
 
@@ -1357,14 +1449,14 @@
 
         @media (max-width: 760px) {
             .chat-table-wrap table,
-            .admin-soft-table-wrap table,
+            .admin-soft-table-wrap:not(.ticket-ledger-wrap) table,
             .ticket-admin-table-wrap table {
                 min-width: 0;
                 table-layout: auto;
             }
 
             .chat-table-wrap thead,
-            .admin-soft-table-wrap thead,
+            .admin-soft-table-wrap:not(.ticket-ledger-wrap) thead,
             .ticket-admin-table-wrap thead {
                 display: none;
             }
@@ -1373,10 +1465,10 @@
             .chat-table-wrap tbody,
             .chat-table-wrap tr,
             .chat-table-wrap td,
-            .admin-soft-table-wrap table,
-            .admin-soft-table-wrap tbody,
-            .admin-soft-table-wrap tr,
-            .admin-soft-table-wrap td,
+            .admin-soft-table-wrap:not(.ticket-ledger-wrap) table,
+            .admin-soft-table-wrap:not(.ticket-ledger-wrap) tbody,
+            .admin-soft-table-wrap:not(.ticket-ledger-wrap) tr,
+            .admin-soft-table-wrap:not(.ticket-ledger-wrap) td,
             .ticket-admin-table-wrap table,
             .ticket-admin-table-wrap tbody,
             .ticket-admin-table-wrap tr,
@@ -1386,7 +1478,7 @@
             }
 
             .chat-table-wrap tr,
-            .admin-soft-table-wrap tr,
+            .admin-soft-table-wrap:not(.ticket-ledger-wrap) tr,
             .ticket-admin-table-wrap tr {
                 border: 1px solid var(--border);
                 border-radius: 14px;
@@ -1397,7 +1489,7 @@
             }
 
             .chat-table-wrap td,
-            .admin-soft-table-wrap td,
+            .admin-soft-table-wrap:not(.ticket-ledger-wrap) td,
             .ticket-admin-table-wrap td {
                 display: flex;
                 align-items: flex-start;
@@ -1410,13 +1502,13 @@
             }
 
             .chat-table-wrap td:last-child,
-            .admin-soft-table-wrap td:last-child,
+            .admin-soft-table-wrap:not(.ticket-ledger-wrap) td:last-child,
             .ticket-admin-table-wrap td:last-child {
                 border-bottom: none;
             }
 
             .chat-table-wrap td::before,
-            .admin-soft-table-wrap td::before,
+            .admin-soft-table-wrap:not(.ticket-ledger-wrap) td::before,
             .ticket-admin-table-wrap td::before {
                 content: attr(data-label);
                 flex: 0 0 34%;
@@ -1430,14 +1522,124 @@
             }
 
             .chat-table-wrap td > *:not(.action-row),
-            .admin-soft-table-wrap td > *,
+            .admin-soft-table-wrap:not(.ticket-ledger-wrap) td > *,
             .ticket-admin-table-wrap td > * {
                 min-width: 0;
                 text-align: right;
             }
 
-            .chat-table-wrap .action-row {
+            .ticket-ledger-wrap,
+            .admin-soft-table-wrap.ticket-ledger-wrap {
+                overflow-x: visible;
+            }
+
+            .ticket-ledger-wrap table,
+            .admin-soft-table-wrap.ticket-ledger-wrap table,
+            .admin-soft-table-wrap.ticket-ledger-wrap tbody,
+            .admin-soft-table-wrap.ticket-ledger-wrap tr,
+            .admin-soft-table-wrap.ticket-ledger-wrap td {
+                display: block;
+                width: 100%;
+                min-width: 0;
+            }
+
+            .ticket-ledger-wrap thead,
+            .admin-soft-table-wrap.ticket-ledger-wrap thead {
+                display: none;
+            }
+
+            .ticket-ledger-wrap tr,
+            .admin-soft-table-wrap.ticket-ledger-wrap tr {
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                background: #fff;
+                margin-bottom: 10px;
+                padding: 10px 12px;
+            }
+
+            .ticket-ledger-wrap td,
+            .admin-soft-table-wrap.ticket-ledger-wrap td {
+                display: grid;
+                grid-template-columns: minmax(78px, 34%) minmax(0, 1fr);
+                column-gap: 12px;
+                row-gap: 4px;
+                align-items: start;
+                border-bottom: 1px dashed rgba(15, 23, 42, 0.08);
+                padding: 8px 0;
+                font-size: 13px;
+            }
+
+            .ticket-ledger-wrap td:last-child,
+            .admin-soft-table-wrap.ticket-ledger-wrap td:last-child {
+                border-bottom: none;
+            }
+
+            .ticket-ledger-wrap td::before,
+            .admin-soft-table-wrap.ticket-ledger-wrap td::before {
+                content: attr(data-label);
+                grid-column: 1;
+                grid-row: 1;
+                font-size: 10px;
+                font-weight: 800;
+                letter-spacing: .05em;
+                text-transform: uppercase;
+                color: var(--muted);
+                padding-top: 2px;
+            }
+
+            .ticket-ledger-wrap td > *,
+            .admin-soft-table-wrap.ticket-ledger-wrap td > * {
+                grid-column: 2;
+                max-width: 100%;
+                width: 100%;
+                min-width: 0;
+                text-align: right;
+            }
+
+            .ticket-ledger-wrap td[data-label="Assigned"],
+            .admin-soft-table-wrap td[data-label="Assigned"],
+            .ticket-admin-table-wrap td[data-label="Assigned"] {
+                display: grid !important;
+                grid-template-columns: minmax(78px, 34%) minmax(0, 1fr);
+                align-items: start;
+            }
+
+            .ticket-ledger-wrap td[data-label="Assigned"] > *,
+            .admin-soft-table-wrap td[data-label="Assigned"] > *,
+            .ticket-admin-table-wrap td[data-label="Assigned"] > * {
+                grid-column: 2;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 2px;
+                max-width: 100% !important;
+                width: 100%;
+                text-align: right;
+            }
+
+            .ticket-assigned-cell {
+                align-items: flex-end;
+                max-width: 100%;
+            }
+
+            .ticket-assigned-name,
+            .ticket-assigned-specialty,
+            .ticket-assigned-trail,
+            .ticket-assigned-by {
+                display: block;
+                width: 100%;
+                text-align: right;
+                white-space: normal;
+                overflow-wrap: anywhere;
+                word-break: break-word;
+            }
+
+            .ticket-assigned-trail {
                 justify-content: flex-end;
+            }
+
+            .ticket-assigned-by {
+                padding-left: 0;
             }
 
             /* The technical roster remains a table so every column is reachable by scrolling. */
@@ -1892,6 +2094,40 @@
             padding: 6px 8px;
             font-size: 12px;
         }
+
+        .ticket-load-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .ticket-load-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ticket-load-actions .input {
+            width: 68px;
+            min-width: 68px;
+            padding: 7px 8px;
+        }
+
+        .ticket-load-actions .btn {
+            min-height: 34px;
+            padding: 7px 10px;
+            white-space: nowrap;
+        }
+
+        .ticket-load-actions .btn:disabled {
+            cursor: not-allowed;
+            opacity: .55;
+        }
         @media (max-width: 720px) {
             .pagination-bar {
                 justify-content: center;
@@ -1900,15 +2136,88 @@
 
         .chat-grid {
             display: grid;
-            grid-template-columns: minmax(0, 1.4fr) minmax(340px, 0.6fr);
+            grid-template-columns: minmax(0, 1fr);
             gap: 18px;
+            align-items: start;
+        }
+
+        .chat-grid > .panel {
+            min-width: 0;
+        }
+
+        @media (min-width: 1280px) {
+            .chat-grid {
+                grid-template-columns: minmax(0, 1.15fr) minmax(420px, 0.85fr);
+                align-items: stretch;
+                min-height: calc(100dvh - 200px);
+            }
+
+            .chat-detail-panel.panel {
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+                max-height: calc(100dvh - 188px);
+                overflow: hidden;
+            }
+
+            .chat-detail-body {
+                flex: 1 1 auto;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+
+            .chat-detail-body .detail-grid {
+                flex: 0 0 auto;
+            }
+
+            .chat-detail-body .detail-columns {
+                flex: 1 1 auto;
+                min-height: 0;
+            }
+
+            .chat-detail-panel .detail-pane {
+                min-height: 0;
+            }
+
+            .chat-detail-panel .messages,
+            .chat-detail-panel .event-timeline {
+                flex: 1 1 auto;
+                min-height: 240px;
+                max-height: none;
+            }
+        }
+
+        .chat-detail-panel {
+            container-type: inline-size;
+            container-name: chat-detail;
+        }
+
+        .chat-detail-head {
+            align-items: flex-start;
+        }
+
+        .chat-detail-head-copy {
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .chat-detail-body {
+            min-width: 0;
         }
 
         .detail-grid {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
             margin-bottom: 14px;
+        }
+
+        @container chat-detail (min-width: 720px) {
+            .detail-grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
         }
 
         .chat-meta-card {
@@ -1951,9 +2260,15 @@
 
         .detail-columns {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
-            gap: 16px;
+            grid-template-columns: 1fr;
+            gap: 14px;
             min-height: 0;
+        }
+
+        @container chat-detail (min-width: 900px) {
+            .detail-columns {
+                grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+            }
         }
 
         .detail-pane {
@@ -1973,6 +2288,9 @@
             font-weight: 800;
             letter-spacing: .06em;
             text-transform: uppercase;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .detail-pane-title i {
@@ -1984,16 +2302,31 @@
             border: 1px solid var(--border);
             border-radius: 14px;
             background: var(--surface-3);
-            min-height: 320px;
-            max-height: 520px;
+            min-height: 280px;
+            max-height: min(50dvh, 520px);
             overflow-y: auto;
-            padding: 16px;
+            overflow-x: hidden;
+            padding: 16px 16px 28px;
+            scrollbar-gutter: stable;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        @container chat-detail (max-width: 520px) {
+            .messages,
+            .event-timeline {
+                min-height: 220px;
+                max-height: min(48dvh, 420px);
+            }
         }
 
         .messages {
             display: flex;
             flex-direction: column;
             gap: 12px;
+        }
+
+        .messages > * {
+            flex: 0 0 auto;
         }
 
         .message {
@@ -2301,17 +2634,6 @@
             }
         }
 
-        /* Chat history remains readable at narrow widths: the ledger gets a
-           usable horizontal/bottom scroll area, while the transcript and
-           event panes keep their own vertical scrollbars. */
-        .chat-table-wrap {
-            max-height: min(58vh, 620px);
-            overflow-x: auto;
-            overflow-y: auto;
-            scrollbar-width: auto;
-            scrollbar-color: #94a3b8 #f1f5f9;
-        }
-
         .chat-table-wrap::-webkit-scrollbar,
         .messages::-webkit-scrollbar,
         .event-timeline::-webkit-scrollbar {
@@ -2331,11 +2653,6 @@
         .messages::-webkit-scrollbar-track,
         .event-timeline::-webkit-scrollbar-track {
             background: #f1f5f9;
-        }
-
-        .chat-table-wrap table {
-            min-width: 900px;
-            table-layout: auto;
         }
 
         .chat-table-wrap .chat-id {

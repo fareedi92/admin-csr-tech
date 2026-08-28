@@ -22,8 +22,10 @@ ACTIVE_CHAT_STATUSES = ("queued", "assigned", "in_progress")
 RESOLVED_CHAT_STATUSES = ("resolved", "closed")
 ASSIGNABLE_ROLES = ("csr",)
 DEFAULT_MAX_CONCURRENT_CHATS = 4
-CSR_ONLINE_WINDOW_SECONDS = 45
-CSR_PRESENCE_WRITE_INTERVAL_SECONDS = 10
+# Stale-session fallback. Chrome throttles background timers to ~60s, so this
+# must stay well above one minute. Explicit logout/close uses presence_online.
+CSR_ONLINE_WINDOW_SECONDS = 180
+CSR_PRESENCE_WRITE_INTERVAL_SECONDS = 15
 CENTRAL_API_URL = os.environ.get("CENTRAL_API_URL", "http://52.74.227.205:5003").rstrip("/")
 CSR_WIDGET_KEY = os.environ.get("CSR_WIDGET_KEY", "csr_aridian_52_74_227_205_demo").strip()
 CSR_API_KEY = os.environ.get("CSR_API_KEY", "").strip()
@@ -114,6 +116,15 @@ def prevent_dynamic_page_caching(response):
 
 def utcnow():
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def as_naive_utc(value):
+    """Normalize DB/Python datetimes to naive UTC for consistent comparisons."""
+    if value is None:
+        return None
+    if getattr(value, "tzinfo", None) is not None:
+        return value.astimezone(UTC).replace(tzinfo=None)
+    return value
 
 
 def derive_display_name(email):
@@ -464,6 +475,7 @@ class User(db.Model):
     unlimited_chats = db.Column(db.Boolean, nullable=False, default=True)
     last_assigned_at = db.Column(db.DateTime)
     last_seen_at = db.Column(db.DateTime)
+    presence_online = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, default=utcnow)
 
     assigned_chats = db.relationship(
@@ -583,6 +595,7 @@ class TechTeamAccount(db.Model):
     specialty = db.Column(db.String(100), default="General")
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     last_seen_at = db.Column(db.DateTime)
+    presence_online = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, default=utcnow)
 
     claimed_tickets = db.relationship(
@@ -769,44 +782,68 @@ def clear_portal_session(role):
 
 
 def get_online_cutoff(now=None):
-    return (now or utcnow()) - timedelta(seconds=CSR_ONLINE_WINDOW_SECONDS)
+    return (as_naive_utc(now) or utcnow()) - timedelta(seconds=CSR_ONLINE_WINDOW_SECONDS)
+
+
+def online_presence_filters(model, now=None):
+    return [
+        model.presence_online.is_(True),
+        model.last_seen_at.is_not(None),
+        model.last_seen_at >= get_online_cutoff(now),
+    ]
+
+
+def is_presence_online(account, now=None):
+    if not account or not getattr(account, "is_active", True):
+        return False
+    if not getattr(account, "presence_online", False):
+        return False
+    last_seen = as_naive_utc(getattr(account, "last_seen_at", None))
+    if not last_seen:
+        return False
+    return last_seen >= get_online_cutoff(now)
 
 
 def is_user_online(user, now=None):
-    return bool(
-        user
-        and getattr(user, "is_active", True)
-        and user.last_seen_at
-        and user.last_seen_at >= get_online_cutoff(now)
-    )
+    return is_presence_online(user, now=now)
 
 
 def is_tech_online(tech, now=None):
-    """Live presence for technical team (heartbeat within online window)."""
-    return bool(
-        tech
-        and getattr(tech, "is_active", True)
-        and tech.last_seen_at
-        and tech.last_seen_at >= get_online_cutoff(now)
-    )
+    """Live presence for technical team (explicit session + recent heartbeat)."""
+    return is_presence_online(tech, now=now)
+
+
+def _stamp_presence(account, *, online, force=False):
+    if not account:
+        return False
+    now = utcnow()
+    changed = False
+    current_online = bool(getattr(account, "presence_online", False))
+    if current_online != bool(online):
+        account.presence_online = bool(online)
+        changed = True
+    last_seen = as_naive_utc(getattr(account, "last_seen_at", None))
+    age_seconds = None if last_seen is None else (now - last_seen).total_seconds()
+    if force or last_seen is None or age_seconds is None or age_seconds >= CSR_PRESENCE_WRITE_INTERVAL_SECONDS:
+        account.last_seen_at = now
+        changed = True
+    if changed:
+        db.session.commit()
+    return changed
 
 
 def touch_user_presence(user, force=False):
     if not user or not user.is_active:
         return
-
-    now = utcnow()
-    if force or not user.last_seen_at or (now - user.last_seen_at).total_seconds() >= CSR_PRESENCE_WRITE_INTERVAL_SECONDS:
-        user.last_seen_at = now
-        db.session.commit()
+    _stamp_presence(user, online=True, force=force)
 
 
 def touch_admin_presence(admin, force=False):
     if not admin:
         return
-
     now = utcnow()
-    if force or not admin.last_seen_at or (now - admin.last_seen_at).total_seconds() >= CSR_PRESENCE_WRITE_INTERVAL_SECONDS:
+    last_seen = as_naive_utc(admin.last_seen_at)
+    if force or not last_seen or (now - last_seen).total_seconds() >= CSR_PRESENCE_WRITE_INTERVAL_SECONDS:
         admin.last_seen_at = now
         db.session.commit()
 
@@ -889,21 +926,27 @@ def get_current_tech_user():
 def touch_tech_presence(tech, force=False):
     if not tech or not getattr(tech, "is_active", True):
         return
-    now = utcnow()
-    if force or not tech.last_seen_at or (now - tech.last_seen_at).total_seconds() >= CSR_PRESENCE_WRITE_INTERVAL_SECONDS:
-        tech.last_seen_at = now
-        db.session.commit()
+    _stamp_presence(tech, online=True, force=force)
+
+
+def mark_user_offline(user):
+    """Close the live session but keep last_seen as the logout/close time."""
+    if user:
+        _stamp_presence(user, online=False, force=True)
+
+
+def mark_tech_offline(tech):
+    if tech:
+        _stamp_presence(tech, online=False, force=True)
 
 
 def finalize_user_presence(user):
-    """Stamp last activity time (keeps accurate last seen on logout/close)."""
-    if user and getattr(user, "is_active", True):
-        touch_user_presence(user, force=True)
+    """Mark CSR offline on logout or browser close."""
+    mark_user_offline(user)
 
 
 def finalize_tech_presence(tech):
-    if tech:
-        touch_tech_presence(tech, force=True)
+    mark_tech_offline(tech)
 
 
 def finalize_admin_presence(admin):
@@ -940,8 +983,7 @@ def get_support_user_rows(available_only=False, online_only=False, include_inact
     if available_only:
         filters.append(User.is_available.is_(True))
     if online_only:
-        filters.append(User.last_seen_at.is_not(None))
-        filters.append(User.last_seen_at >= get_online_cutoff())
+        filters.extend(online_presence_filters(User))
 
     return (
         db.session.query(
@@ -1334,6 +1376,7 @@ def serialize_user(user):
         "is_active": bool(user.is_active),
         "is_available": bool(user.is_available),
         "is_online": is_user_online(user),
+        "presence_online": bool(getattr(user, "presence_online", False)),
         "max_concurrent_chats": None,
         "unlimited_chats": True,
         "last_assigned_at": isoformat_or_none(user.last_assigned_at),
@@ -1593,7 +1636,6 @@ def get_latest_messages_for_chats(chat_ids):
 def build_admin_dashboard_payload(current_admin, page=None, chat_page=1, chat_per_page=ADMIN_CHATS_DEFAULT_PER_PAGE):
     scope = ADMIN_DASHBOARD_PAGE_SCOPES.get(page)
     integration = serialize_integration_settings()
-    online_cutoff = get_online_cutoff()
     payload = {
         "mode": "admin",
         "current_user": serialize_admin(current_admin),
@@ -1629,15 +1671,13 @@ def build_admin_dashboard_payload(current_admin, page=None, chat_page=1, chat_pe
         online_csrs = User.query.filter(
             User.role.in_(ASSIGNABLE_ROLES),
             User.is_active.is_(True),
-            User.last_seen_at.is_not(None),
-            User.last_seen_at >= online_cutoff,
+            *online_presence_filters(User),
         ).count()
         available_csrs = User.query.filter(
             User.role.in_(ASSIGNABLE_ROLES),
             User.is_active.is_(True),
             User.is_available.is_(True),
-            User.last_seen_at.is_not(None),
-            User.last_seen_at >= online_cutoff,
+            *online_presence_filters(User),
         ).count()
         active_csrs = (
             db.session.query(func.count(func.distinct(ChatConversation.assigned_csr_id)))
@@ -1847,8 +1887,7 @@ def build_csr_dashboard_payload(current_user):
                 User.is_active.is_(True),
                 User.is_available.is_(True),
                 User.role.in_(ASSIGNABLE_ROLES),
-                User.last_seen_at.is_not(None),
-                User.last_seen_at >= get_online_cutoff(),
+                *online_presence_filters(User),
             ).count(),
         },
         "csrs": support_users,
@@ -2003,6 +2042,39 @@ def ensure_schema():
                     connection.execute(text("ALTER TABLE tickets ALTER COLUMN created_by_csr_id DROP NOT NULL"))
                 except Exception:
                     pass
+
+    added_user_presence = _ensure_presence_online_column("users")
+    added_tech_presence = _ensure_presence_online_column("tech_team_accounts")
+    if added_user_presence or added_tech_presence:
+        cutoff = get_online_cutoff()
+        if added_user_presence:
+            User.query.filter(User.last_seen_at.is_not(None), User.last_seen_at >= cutoff).update(
+                {User.presence_online: True},
+                synchronize_session=False,
+            )
+        if added_tech_presence:
+            TechTeamAccount.query.filter(
+                TechTeamAccount.last_seen_at.is_not(None),
+                TechTeamAccount.last_seen_at >= cutoff,
+            ).update(
+                {TechTeamAccount.presence_online: True},
+                synchronize_session=False,
+            )
+        db.session.commit()
+
+
+def _ensure_presence_online_column(table_name):
+    inspector = inspect(db.engine)
+    if not inspector.has_table(table_name):
+        return False
+    columns = {column["name"] for column in inspector.get_columns(table_name)}
+    if "presence_online" in columns:
+        return False
+    with db.engine.begin() as connection:
+        connection.execute(
+            text(f"ALTER TABLE {table_name} ADD COLUMN presence_online BOOLEAN NOT NULL DEFAULT FALSE")
+        )
+    return True
 
 
 def generate_ticket_number():
@@ -2489,6 +2561,7 @@ def csr_login():
             return render_template("csr_login.html")
 
         user.last_seen_at = utcnow()
+        user.presence_online = True
         db.session.commit()
         session.permanent = True
         session["account_type"] = "csr"
@@ -2531,24 +2604,37 @@ def logout():
     return redirect(url_for("login"))
 
 
-@app.route("/admin/logout")
-def admin_logout():
-    admin = get_current_admin()
-    if admin:
-        finalize_admin_presence(admin)
-    clear_portal_session("admin")
-    flash("You have been logged out of the admin portal.", "success")
-    return redirect(url_for("admin_login"))
-
-
 @app.route("/csr/logout")
 def csr_logout():
     csr = get_current_csr_user()
     if csr:
         finalize_user_presence(csr)
     clear_portal_session("csr")
+    session.modified = True
     flash("You have been logged out of the CSR portal.", "success")
-    return redirect(url_for("csr_login"))
+    response = redirect(url_for("csr_login"))
+    # Prevent browser back/forward cache from restoring a logged-in dashboard.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0, private"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    response.headers["Clear-Site-Data"] = '"cache"'
+    return response
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    admin = get_current_admin()
+    if admin:
+        finalize_admin_presence(admin)
+    clear_portal_session("admin")
+    session.modified = True
+    flash("You have been logged out of the admin portal.", "success")
+    response = redirect(url_for("admin_login"))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0, private"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    response.headers["Clear-Site-Data"] = '"cache"'
+    return response
 
 
 @app.route("/tech/login", methods=["GET", "POST"])
@@ -2573,6 +2659,7 @@ def tech_login():
             return render_template("tech_login.html")
         
         tech.last_seen_at = utcnow()
+        tech.presence_online = True
         db.session.commit()
         session.permanent = True
         session["account_type"] = "tech"
@@ -2589,8 +2676,14 @@ def tech_logout():
     if tech:
         finalize_tech_presence(tech)
     clear_portal_session("tech")
+    session.modified = True
     flash("You have been logged out of the technical portal.", "success")
-    return redirect(url_for("tech_login"))
+    response = redirect(url_for("tech_login"))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0, private"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    response.headers["Clear-Site-Data"] = '"cache"'
+    return response
 
 
 @app.route("/api/csr/heartbeat", methods=["POST"])
@@ -2609,10 +2702,10 @@ def csr_heartbeat():
 
 @app.route("/api/csr/presence/offline", methods=["POST"])
 def csr_presence_offline():
-    """Record CSR last activity on logout or browser/tab close."""
+    """Mark CSR offline on logout or browser/tab close."""
     user = get_current_csr_user()
     if user:
-        finalize_user_presence(user)
+        mark_user_offline(user)
     return jsonify({"success": True, "is_online": False})
 
 
@@ -2632,10 +2725,10 @@ def tech_heartbeat():
 
 @app.route("/api/tech/presence/offline", methods=["POST"])
 def tech_presence_offline():
-    """Record tech last activity on logout or browser/tab close."""
+    """Mark technical team offline on logout or browser/tab close."""
     tech = get_current_tech_user()
     if tech:
-        finalize_tech_presence(tech)
+        mark_tech_offline(tech)
     return jsonify({"success": True, "is_online": False})
 
 
@@ -3354,6 +3447,7 @@ def serialize_tech_account_brief(tech):
         "specialty": tech.specialty,
         "is_active": tech.is_active,
         "is_online": is_tech_online(tech),
+        "presence_online": bool(getattr(tech, "presence_online", False)),
         "last_seen_at": isoformat_or_none(tech.last_seen_at),
     }
 
@@ -3767,6 +3861,15 @@ def admin_get_tickets():
     lifecycle = (request.args.get("lifecycle") or "all").strip().lower()
     include_workload = (request.args.get("include_workload") or "1").strip() != "0"
     include_stats = (request.args.get("include_stats") or "1").strip() != "0"
+    try:
+        ticket_offset = max(0, int(request.args.get("offset", 0)))
+    except (TypeError, ValueError):
+        ticket_offset = 0
+    try:
+        ticket_limit = int(request.args.get("limit", 300))
+    except (TypeError, ValueError):
+        ticket_limit = 300
+    ticket_limit = max(1, min(ticket_limit, 300))
 
     statuses = TicketStatus.query.order_by(TicketStatus.sort_order.asc()).all()
     resolved_names = resolved_ticket_status_names(statuses)
@@ -3782,6 +3885,7 @@ def admin_get_tickets():
         )
 
     tickets = []
+    ticket_total = 0
     if want_list or not (include_stats or include_workload):
         list_query = Ticket.query.options(
             joinedload(Ticket.created_by_csr),
@@ -3800,7 +3904,8 @@ def admin_get_tickets():
             list_query = list_query.filter(~Ticket.status.in_(list(resolved_names)))
         elif lifecycle == "old":
             list_query = list_query.filter(Ticket.status.in_(list(resolved_names)))
-        tickets = list_query.order_by(Ticket.updated_at.desc()).limit(300).all()
+        ticket_total = list_query.order_by(None).count()
+        tickets = list_query.order_by(Ticket.updated_at.desc()).offset(ticket_offset).limit(ticket_limit).all()
 
     ticket_ids = [ticket.id for ticket in tickets]
     message_counts = get_ticket_message_counts(ticket_ids)
@@ -3821,6 +3926,12 @@ def admin_get_tickets():
         ],
         "statuses": [serialize_ticket_status(s) for s in statuses],
         "lifecycle": lifecycle,
+        "pagination": {
+            "offset": ticket_offset,
+            "limit": ticket_limit,
+            "total": ticket_total,
+            "has_more": ticket_offset + len(tickets) < ticket_total,
+        },
     }
     if include_stats:
         payload["stats"] = build_admin_ticket_stats(all_tickets or tickets, statuses)
@@ -4402,6 +4513,9 @@ def update_tech_account(tech_id):
         tech.specialty = (payload.get("specialty") or "General").strip()
     if "is_active" in payload:
         tech.is_active = parse_bool(payload.get("is_active"), default=True)
+        if not tech.is_active:
+            tech.presence_online = False
+            tech.last_seen_at = utcnow()
     
     db.session.commit()
     
@@ -4444,6 +4558,43 @@ def delete_tech_account(tech_id):
     return jsonify({
         "success": True,
         "message": message,
+    })
+
+
+@app.route("/api/admin/presence", methods=["GET"])
+@admin_required
+def admin_presence_snapshot():
+    """Lightweight live Online/Offline snapshot for CSR and technical team."""
+    now = utcnow()
+    csrs = User.query.filter(User.role.in_(ASSIGNABLE_ROLES)).all()
+    techs = TechTeamAccount.query.all()
+    return jsonify({
+        "csrs": [
+            {
+                "id": user.id,
+                "is_online": is_user_online(user, now=now),
+                "last_seen_at": isoformat_or_none(user.last_seen_at),
+            }
+            for user in csrs
+        ],
+        "techs": [
+            {
+                "id": tech.id,
+                "is_online": is_tech_online(tech, now=now),
+                "last_seen_at": isoformat_or_none(tech.last_seen_at),
+            }
+            for tech in techs
+        ],
+        "summary": {
+            "online_csrs": sum(1 for user in csrs if is_user_online(user, now=now)),
+            "available_csrs": sum(
+                1
+                for user in csrs
+                if user.is_active and user.is_available and is_user_online(user, now=now)
+            ),
+            "online_techs": sum(1 for tech in techs if is_tech_online(tech, now=now)),
+        },
+        "online_window_seconds": CSR_ONLINE_WINDOW_SECONDS,
     })
 
 

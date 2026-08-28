@@ -40,7 +40,7 @@
 
             {% with messages = get_flashed_messages(with_categories=true) %}
             {% for category, message in messages %}
-            <div class="mb-4 flex items-center gap-2 rounded-xl px-4 py-3 text-sm {{ 'bg-red-500/10 border border-red-500/20 text-red-300' if category == 'error' else 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300' }}">
+            <div class="mb-4 flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold {{ 'bg-red-100 border-2 border-red-600 text-red-800' if category == 'error' else 'bg-emerald-100 border-2 border-emerald-700 text-emerald-950' }}" role="alert">
                 <i class="fa-solid {{ 'fa-circle-exclamation' if category == 'error' else 'fa-circle-check' }}"></i>
                 {{ message }}
             </div>
@@ -58,8 +58,13 @@
                         <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
                         <a href="{{ url_for('csr_forgot_password') }}" class="text-xs font-semibold text-blue-600 hover:text-blue-700 focus:outline-none focus:underline">Forgot password?</a>
                     </div>
-                    <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Enter your password"
-                        class="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-black placeholder-gray-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20">
+                    <div class="relative">
+                        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Enter your password"
+                            class="w-full rounded-xl border border-gray-300 bg-white py-3 pl-4 pr-12 text-sm text-black placeholder-gray-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20">
+                        <button type="button" id="password-toggle" class="absolute right-1 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-300" aria-label="Show password" aria-pressed="false">
+                            <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                        </button>
+                    </div>
                 </div>
                 <button type="submit" class="w-full rounded-xl bg-yellow-400 hover:bg-amber-500 py-3.5 text-sm font-semibold text-black shadow transition">
                     <i class="fa-solid fa-right-to-bracket mr-2"></i>Sign In to Dashboard
@@ -72,5 +77,19 @@
             </a>
         </div>
     </main>
+    <script>
+        const passwordToggle = document.getElementById('password-toggle');
+        const passwordInput = document.getElementById('password');
+        if (passwordToggle && passwordInput) {
+            passwordToggle.addEventListener('click', () => {
+                const isVisible = passwordInput.type === 'text';
+                passwordInput.type = isVisible ? 'password' : 'text';
+                passwordToggle.setAttribute('aria-pressed', String(!isVisible));
+                passwordToggle.setAttribute('aria-label', isVisible ? 'Show password' : 'Hide password');
+                passwordToggle.querySelector('i').classList.toggle('fa-eye', isVisible);
+                passwordToggle.querySelector('i').classList.toggle('fa-eye-slash', !isVisible);
+            });
+        }
+    </script>
 </body>
 </html>
