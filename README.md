@@ -54,6 +54,19 @@ requirements.txt       # Python dependencies
 | CSR    | `/csr/login` |
 | Tech   | `/tech/login` |
 
+## Buyer / organizer ticket APIs
+
+Server-to-server endpoints for the FLT web backend:
+
+- `GET /api/integration/tickets`
+- `GET /api/integration/tickets?user_id=<flt_user_id>`
+- `GET /api/integration/tickets/admin-generated`
+- `POST /api/integration/tickets/<ticket_number>/status`
+
+Auth header: `X-Service-Secret: <TICKETS_API_KEY>`
+
+Full payloads and examples: [`TICKETS_API.md`](TICKETS_API.md)
+
 ## Notes
 
 - Do not commit `.env`, database files under `instance/`, or the `.venv/` directory.

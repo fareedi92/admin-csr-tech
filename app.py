@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 from html import escape
+import hmac
 import json
 import os
 import random
@@ -34,6 +35,7 @@ TICKET_CODE_PREFIXES = ("TCK", "FLT", "CLP", "IDK", "SUP", "OPS", "HLP", "TKT", 
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(basedir, ".env"))
+TICKETS_API_KEY = os.environ.get("TICKETS_API_KEY", "").strip()
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "csr-widget-app-secret-key-2024")
@@ -172,6 +174,14 @@ def isoformat_or_none(value):
 def get_request_payload():
     if request.is_json:
         return request.get_json(silent=True) or {}
+    raw = request.get_data(cache=True, as_text=True)
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                return parsed
+        except (TypeError, ValueError):
+            pass
     return request.form.to_dict()
 
 
@@ -726,6 +736,25 @@ def build_unauthorized_response():
     if request.path.startswith("/tech/"):
         return redirect(url_for("tech_login"))
     return redirect(url_for("login"))
+
+
+def tickets_api_required(f):
+    """Protect server-to-server ticket integration endpoints."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not TICKETS_API_KEY:
+            return jsonify({"error": "Ticket integration API is not configured."}), 503
+
+        supplied_key = (request.headers.get("X-Service-Secret") or "").strip()
+        authorization = (request.headers.get("Authorization") or "").strip()
+        if not supplied_key and authorization.lower().startswith("bearer "):
+            supplied_key = authorization[7:].strip()
+
+        if not supplied_key or not hmac.compare_digest(supplied_key, TICKETS_API_KEY):
+            return jsonify({"error": "Invalid or missing API credentials."}), 401
+        return f(*args, **kwargs)
+
+    return decorated_function
 
 
 def get_current_csr_user():
@@ -1993,6 +2022,36 @@ def find_chat_by_visitor_id(visitor_id):
 
 
 # ─── Schema Bootstrap ────────────────────────────────────────
+def backfill_chat_external_user_ids():
+    """Recover the external user link for chats stored before the ID column."""
+    chats = ChatConversation.query.filter(
+        ChatConversation.customer_external_user_id.is_(None),
+        ChatConversation.authenticated_user_data.is_not(None),
+    ).all()
+    changed = False
+    for chat in chats:
+        try:
+            authenticated_user = json.loads(chat.authenticated_user_data)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(authenticated_user, dict):
+            continue
+
+        external_user_id = authenticated_user.get("id")
+        verification_response = authenticated_user.get("verification_response")
+        if external_user_id is None and isinstance(verification_response, dict):
+            verified_user = verification_response.get("user")
+            if isinstance(verified_user, dict):
+                external_user_id = verified_user.get("id")
+
+        if external_user_id is not None:
+            chat.customer_external_user_id = str(external_user_id)
+            changed = True
+
+    if changed:
+        db.session.commit()
+
+
 def ensure_schema():
     os.makedirs(instance_dir, exist_ok=True)
     db.create_all()
@@ -2009,6 +2068,8 @@ def ensure_schema():
                 connection.execute(
                     text(f"ALTER TABLE chat_conversations ADD COLUMN {column_name} {column_definition}")
                 )
+
+    backfill_chat_external_user_ids()
 
     if inspector.has_table("tickets"):
         ticket_columns = {column["name"]: column for column in inspector.get_columns("tickets")}
@@ -3788,6 +3849,288 @@ def serialize_ticket_status(status):
         "is_default": status.is_default,
         "is_resolved": status.is_resolved,
     }
+
+
+def serialize_integration_ticket(ticket):
+    """Ticket payload safe for buyer/organizer integrations."""
+    origin = resolve_ticket_origin(ticket)
+    linked_chat = ticket.chat_conversation if origin == "csr" else None
+    assigned_tech = ticket.assigned_tech
+    creator_account = {
+        "csr": ticket.created_by_csr,
+        "admin": ticket.created_by_admin,
+        "tech": ticket.created_by_tech,
+    }.get(origin)
+    creator_name = getattr(creator_account, "display_name", None) or {
+        "csr": "Customer Support",
+        "admin": "Admin",
+        "tech": "Technical Team",
+    }.get(origin, "Unknown")
+    return {
+        "id": ticket.id,
+        "ticket_number": ticket.ticket_number or f"TCK_{ticket.id}",
+        "title": ticket.title,
+        "description": ticket.description,
+        "priority": ticket.priority,
+        "status": ticket.status,
+        "origin": origin,
+        "is_admin_generated": origin == "admin",
+        "is_chat_linked": bool(linked_chat),
+        "chat_id": linked_chat.id if linked_chat else None,
+        "customer_external_user_id": (
+            linked_chat.customer_external_user_id if linked_chat else None
+        ),
+        "created_by": {
+            "role": origin,
+            "name": creator_name,
+        },
+        "assigned_tech": (
+            {
+                "id": assigned_tech.id,
+                "name": assigned_tech.display_name or "Technical Team",
+                "specialty": assigned_tech.specialty,
+            }
+            if assigned_tech
+            else None
+        ),
+        "created_at": isoformat_or_none(ticket.created_at),
+        "updated_at": isoformat_or_none(ticket.updated_at),
+        "resolved_at": isoformat_or_none(ticket.resolved_at),
+    }
+
+
+def integration_ticket_query():
+    return Ticket.query.options(
+        joinedload(Ticket.created_by_csr),
+        joinedload(Ticket.created_by_admin),
+        joinedload(Ticket.created_by_tech),
+        joinedload(Ticket.chat_conversation),
+        joinedload(Ticket.assigned_tech),
+    )
+
+
+def tickets_linked_to_external_user(query, external_user_id):
+    """Find CSR chat tickets for a widget/FLT user id."""
+    external_user_id = str(external_user_id or "").strip()
+    id_values = {external_user_id}
+    if external_user_id.isdigit():
+        id_values.add(str(int(external_user_id)))
+
+    json_matchers = []
+    for user_id in id_values:
+        json_matchers.extend(
+            [
+                ChatConversation.authenticated_user_data.contains(f'"id": "{user_id}"'),
+                ChatConversation.authenticated_user_data.contains(f'"id": {user_id}'),
+                ChatConversation.authenticated_user_data.contains(f'"id":{user_id}'),
+            ]
+        )
+
+    return query.join(ChatConversation, Ticket.chat_id == ChatConversation.id).filter(
+        Ticket.origin == "csr",
+        or_(
+            ChatConversation.customer_external_user_id.in_(list(id_values)),
+            *json_matchers,
+        ),
+    )
+
+
+def external_user_id_candidates(external_user_id):
+    value = str(external_user_id or "").strip()
+    candidates = {value} if value else set()
+    if value.isdigit():
+        candidates.add(str(int(value)))
+    return candidates
+
+
+def load_ticket_by_ref(ticket_ref):
+    ticket_ref = str(ticket_ref or "").strip()
+    if not ticket_ref:
+        return None
+    if ticket_ref.isdigit():
+        ticket = db.session.get(Ticket, int(ticket_ref))
+        if ticket:
+            return ticket
+    return Ticket.query.filter(func.lower(Ticket.ticket_number) == ticket_ref.lower()).first()
+
+
+def ticket_belongs_to_external_user(ticket, external_user_id):
+    if not ticket or resolve_ticket_origin(ticket) != "csr":
+        return False
+    chat = ticket.chat_conversation
+    if not chat:
+        return False
+    id_values = external_user_id_candidates(external_user_id)
+    if chat.customer_external_user_id in id_values:
+        return True
+    raw = chat.authenticated_user_data or ""
+    return any(
+        f'"id": "{user_id}"' in raw or f'"id": {user_id}' in raw or f'"id":{user_id}' in raw
+        for user_id in id_values
+    )
+
+
+def resolve_named_ticket_status(status_value):
+    raw = (status_value or "").strip()
+    if not raw:
+        return None
+    slug = raw.lower().replace(" ", "_").replace("-", "_")
+    for row in TicketStatus.query.all():
+        if row.name.lower() == slug:
+            return row
+        if normalize_ticket_status_label(row.label).lower() == raw.lower():
+            return row
+    return None
+
+
+def integration_ticket_response(query, filters=None):
+    try:
+        limit = int(request.args.get("limit", 100))
+        offset = int(request.args.get("offset", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "limit and offset must be integers."}), 400
+
+    limit = max(1, min(limit, 300))
+    offset = max(0, offset)
+    status_filter = (request.args.get("status") or "").strip()
+    if status_filter:
+        query = query.filter(Ticket.status == status_filter)
+
+    total = query.order_by(None).count()
+    tickets = (
+        query.order_by(Ticket.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return jsonify({
+        "tickets": [serialize_integration_ticket(ticket) for ticket in tickets],
+        "filters": filters or {},
+        "pagination": {
+            "offset": offset,
+            "limit": limit,
+            "total": total,
+            "has_more": offset + len(tickets) < total,
+        },
+    })
+
+
+@app.route("/api/integration/tickets", methods=["GET"])
+@tickets_api_required
+def integration_get_all_tickets():
+    """Return tickets for a trusted organizer/backend integration.
+
+    Optional filters:
+    - user_id: FLT widget user id (buyer/organizer), e.g. 139006
+    - origin: csr | admin | tech
+    """
+    query = integration_ticket_query()
+    filters = {}
+    user_id = (
+        request.args.get("user_id")
+        or request.args.get("customer_external_user_id")
+        or ""
+    ).strip()
+    origin = (request.args.get("origin") or "").strip().lower()
+
+    if user_id:
+        query = tickets_linked_to_external_user(query, user_id)
+        filters["customer_external_user_id"] = user_id
+    elif origin in {"csr", "admin", "tech"}:
+        query = query.filter(Ticket.origin == origin)
+        filters["origin"] = origin
+
+    return integration_ticket_response(query, filters)
+
+
+@app.route("/api/integration/tickets/users/<string:external_user_id>", methods=["GET"])
+@tickets_api_required
+def integration_get_user_tickets(external_user_id):
+    """Return tickets linked to an authenticated external user through chats."""
+    external_user_id = external_user_id.strip()
+    if not external_user_id:
+        return jsonify({"error": "external_user_id is required."}), 400
+
+    query = tickets_linked_to_external_user(integration_ticket_query(), external_user_id)
+    return integration_ticket_response(
+        query,
+        filters={"customer_external_user_id": external_user_id},
+    )
+
+
+@app.route("/api/integration/tickets/admin-generated", methods=["GET"])
+@tickets_api_required
+def integration_get_admin_tickets():
+    """Return tickets created independently by administrators."""
+    query = integration_ticket_query().filter(Ticket.origin == "admin")
+    return integration_ticket_response(query, filters={"origin": "admin"})
+
+
+@app.route("/api/integration/tickets/<string:ticket_ref>/status", methods=["POST"])
+@tickets_api_required
+def integration_update_user_ticket_status(ticket_ref):
+    """Let a buyer/organizer update status only on a ticket linked to their user id."""
+    payload = get_request_payload()
+    user_id = str(
+        payload.get("user_id")
+        or payload.get("customer_external_user_id")
+        or request.args.get("user_id")
+        or request.args.get("customer_external_user_id")
+        or ""
+    ).strip()
+    new_status = str(payload.get("status") or "").strip()
+    notes = str(payload.get("notes") or "").strip()
+
+    if not user_id:
+        return jsonify({"error": "user_id is required."}), 400
+    if not new_status:
+        return jsonify({"error": "status is required."}), 400
+
+    ticket = load_ticket_by_ref(ticket_ref)
+    if not ticket:
+        return jsonify({"error": "Ticket not found."}), 404
+    if not ticket_belongs_to_external_user(ticket, user_id):
+        return jsonify({"error": "This ticket does not belong to this user."}), 403
+
+    status_obj = resolve_named_ticket_status(new_status)
+    if not status_obj:
+        return jsonify({"error": f"Invalid status: {new_status}"}), 400
+
+    old_status = ticket.status
+    if old_status == status_obj.name:
+        return jsonify({
+            "success": True,
+            "message": f"Ticket already has status {status_obj.label}.",
+            "ticket": serialize_integration_ticket(ticket),
+        })
+
+    ticket.status = status_obj.name
+    ticket.updated_at = utcnow()
+    if status_obj.is_resolved:
+        ticket.resolved_at = utcnow()
+    else:
+        ticket.resolved_at = None
+
+    changed_by_user_id = int(user_id) if user_id.isdigit() else None
+    db.session.add(
+        TicketStatusLog(
+            ticket_id=ticket.id,
+            old_status=old_status,
+            new_status=status_obj.name,
+            old_assigned_tech_id=ticket.assigned_tech_id,
+            new_assigned_tech_id=ticket.assigned_tech_id,
+            changed_by_user_id=changed_by_user_id,
+            changed_by_role="user",
+            notes=notes or f"Status updated by user {user_id}.",
+        )
+    )
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": f"Ticket status updated to {status_obj.label}.",
+        "ticket": serialize_integration_ticket(ticket),
+    })
 
 
 @app.route("/api/tickets", methods=["GET"])
